@@ -334,7 +334,7 @@ details[open] summary::after{content:" －"}
   <details>
     <summary>自我檢查與其他</summary>
     <button class="apply" id="checkBtn">執行自我檢查</button>
-    <p class="note">用全新的宇宙實例驗證程式的不變式：可重現性、成核合法性、物理與畫面歸屬一致、繪製邊界、穿隧率、長時間數值、疇壁穩定與繪製效能。約需 10 秒，不影響正在播放的模擬。</p>
+    <p class="note">用全新的宇宙實例驗證程式的不變式：可重現性、成核合法性、物理與畫面歸屬一致、繪製邊界、動作紀錄與向上穿隧、穿隧率、長時間數值、疇壁穩定與繪製效能。約需 15 秒，不影響正在播放的模擬。</p>
     <ul class="checks" id="checkOut"></ul>
     <button class="apply" id="resetAll" style="margin-top:10px">所有參數還原預設</button>
   </details>
@@ -417,6 +417,8 @@ details[open] summary::after{content:" －"}
     tView: 0,
     isLive: true,
     playing: true,
+    simPaused: false,
+    // 暫停演化（模擬本身停止；與只暫停畫面的「播放／暫停」不同）
     speed: 1,
     scrubbing: false,
     selected: null,
@@ -565,6 +567,15 @@ details[open] summary::after{content:" －"}
       const ea = F.eps(a), eb = F.eps(b);
       return ea < eb || ea === eb && a.tn > b.tn;
     };
+    const dkey = (F, b) => {
+      let e = F.eps(b);
+      for (let q = b.parent; q; q = q.parent) {
+        const x = F.eps(q);
+        if (x < e) e = x;
+      }
+      return e;
+    };
+    const drawOrder = (F, a, b) => dkey(F, b.b) - dkey(F, a.b) || a.b.tn - b.b.tn;
     function rule(F, A, B) {
       const d = Math.hypot(B.cx - A.cx, B.cy - A.cy);
       if (d >= A.r + B.r) return null;
@@ -589,7 +600,13 @@ details[open] summary::after{content:" －"}
       if (A.b.vac === B.b.vac) return { kind: "merge", A, B };
       const [W, L] = beats(F, A.b, B.b) ? [A, B] : [B, A];
       const g = wallGeom(W.cx, W.cy, W.r, L.cx, L.cy, L.r, F.shift(W.b, L.b));
-      return g ? { kind: "wall", W, L, g } : null;
+      if (!g) return null;
+      const R = { kind: "wall", W, L, g };
+      if (drawOrder(F, L, W) > 0) {
+        R.lYield = true;
+        R.cE = arrival(W, L.cx, L.cy) < 0 && !g.lSide(L.cx, L.cy);
+      }
+      return R;
     }
     const otherOf = (R, v) => R.kind === "merge" ? R.A === v ? R.B : R.A : R.kind === "wall" ? R.W === v ? R.L : R.W : R.X === v ? R.Y : R.X;
     function ownerIn(R, x, y) {
@@ -599,14 +616,17 @@ details[open] summary::after{content:" －"}
       return R.g && R.g.lSide(x, y) ? R.X : R.Y;
     }
     const takes = (R, v, x, y) => ownerIn(R, x, y) !== v;
-    const drawOrder = (F, a, b) => F.eps(b.b) - F.eps(a.b) || a.b.tn - b.b.tn;
     function drawContains(v, x, y) {
       if (arrival(v, x, y) >= 0) return false;
       for (const R of v.rules || []) {
         if (R.kind === "merge") {
           if (arrival(otherOf(R, v), x, y) < arrival(v, x, y)) return false;
         } else if (R.kind === "wall") {
-          if (R.W === v && arrival(R.L, x, y) < 0 && R.g.lSide(x, y)) return false;
+          if (R.W === v) {
+            if (arrival(R.L, x, y) < 0 && R.g.lSide(x, y)) return false;
+          } else if (R.lYield) {
+            if (R.cE || arrival(R.W, x, y) < 0 && !R.g.lSide(x, y)) return false;
+          }
         } else if (R.X === v && !R.free) {
           if (!R.g || !R.g.lSide(x, y)) return false;
         }
@@ -656,7 +676,42 @@ details[open] summary::after{content:" －"}
             if (r < rho) rho = r;
           }
         } else if (R.kind === "wall") {
-          if (R.W !== v) continue;
+          if (R.W !== v) {
+            if (!R.lYield) continue;
+            if (R.cE) {
+              rho = 0;
+              break;
+            }
+            const o2 = R.W, g2 = R.g;
+            const fx2 = v.cx - o2.cx, fy2 = v.cy - o2.cy, bq2 = ex * fx2 + ey * fy2, disc2 = bq2 * bq2 - (fx2 * fx2 + fy2 * fy2 - o2.r * o2.r);
+            if (disc2 <= 0) continue;
+            const sq2 = Math.sqrt(disc2), r12 = Math.max(0, -bq2 - sq2), r22 = -bq2 + sq2;
+            if (r22 <= 0 || r12 >= rho) continue;
+            let rs2 = Infinity;
+            if (g2.line) {
+              const eu = ex * g2.ux + ey * g2.uy, x0 = (v.cx - g2.wx) * g2.ux + (v.cy - g2.wy) * g2.uy;
+              if (x0 + r12 * eu <= g2.xc) rs2 = r12;
+              else if (eu < -1e-12) {
+                const t = (g2.xc - x0) / eu;
+                if (t < r22) rs2 = Math.max(r12, t);
+              }
+            } else {
+              const gx = v.cx - g2.cx, gy = v.cy - g2.cy, bb = ex * gx + ey * gy, dd = bb * bb - (gx * gx + gy * gy - g2.R * g2.R);
+              if (g2.sig < 0) {
+                if (dd <= 0) rs2 = r12;
+                else {
+                  const t1 = -bb - Math.sqrt(dd), t2 = -bb + Math.sqrt(dd);
+                  if (r12 < t1 || r12 > t2) rs2 = r12;
+                  else if (t2 < r22) rs2 = t2;
+                }
+              } else if (dd > 0) {
+                const t1 = -bb - Math.sqrt(dd), t2 = -bb + Math.sqrt(dd), lo = Math.max(r12, t1), hi = Math.min(r22, t2);
+                if (lo < hi) rs2 = lo;
+              }
+            }
+            if (rs2 < rho) rho = rs2;
+            continue;
+          }
           const o = R.L, g = R.g;
           const fx = v.cx - o.cx, fy = v.cy - o.cy, bq = ex * fx + ey * fy, disc = bq * bq - (fx * fx + fy * fy - o.r * o.r);
           if (disc <= 0) continue;
@@ -918,6 +973,7 @@ details[open] summary::after{content:" －"}
   var BUCKET = 0.5;
   var MAXB = 16e4;
   var FALSE_EPS = 1;
+  var UP_EPS = 1.6;
   var VNAMES = "子丑寅卯辰巳午未申酉戌亥甲乙丙丁";
   function makeLandscape(r, p) {
     const n = p.vacN, VAC = [];
@@ -972,9 +1028,30 @@ details[open] summary::after{content:" －"}
         hdT: kind === "tiny" ? (30 + (lexp - 100) * 2) * (0.25 / p.H) : Infinity
       });
     }
+    const r2 = mulberry32((p.seed ^ 1540483477) >>> 0);
+    {
+      const val = UP_EPS * 1e-10, lexp = Math.ceil(-Math.log10(val));
+      VAC.push({
+        i: n,
+        name: "激發態假真空",
+        kind: "up",
+        eps: UP_EPS,
+        lexp,
+        lman: val * Math.pow(10, lexp),
+        lsign: 1,
+        dims: 3,
+        ainv: 60 + r2() * 190,
+        mratio: 300 + r2() * 3600,
+        grel: 0,
+        hue: 40 + r2() * 20,
+        w: 0,
+        crunchT: Infinity,
+        hdT: Infinity
+      });
+    }
     return VAC;
   }
-  function createUniverse(p, tune2) {
+  function createUniverse(p, tune2, opts = {}) {
     const rng = mulberry32(p.seed);
     const VAC = makeLandscape(rng, p);
     const maxInner = Math.max(0, ...VAC.map((v) => v.grel));
@@ -997,7 +1074,7 @@ details[open] summary::after{content:" －"}
       stepN: 0
     };
     Object.defineProperty(U, "tLive", { get: () => U.tSim + U.acc });
-    const listeners = { born: [], retire: [] };
+    const listeners = { born: [], retire: [], act: [] };
     U.on = (name, fn) => {
       listeners[name].push(fn);
       return () => {
@@ -1012,7 +1089,7 @@ details[open] summary::after{content:" －"}
     U.E = E;
     U.circleAt = (b, t) => {
       const e = E(b, t);
-      return { b, cx: b.x * e, cy: b.y * e, r: p.R0 * e + p.RH * (e - 1) };
+      return { b, cx: b.x * e, cy: b.y * e, r: b.s < 0 ? Math.max(0, b.r0 * e - p.RH * (e - 1)) : p.R0 * e + p.RH * (e - 1) };
     };
     U.eps = (b) => VAC[b.vac].eps;
     const tcCache = /* @__PURE__ */ new Map();
@@ -1026,7 +1103,24 @@ details[open] summary::after{content:" －"}
       };
       let lo = Math.max(a.tn, b.tn), hi = lo + 0.5;
       if (f(lo) <= 0) tc = lo;
-      else {
+      else if (a.s < 0 || b.s < 0) {
+        const end = Math.min(a.texit, b.texit, lo + 600), h = 0.05;
+        tc = Infinity;
+        for (let t = lo + h; t < end + h; t += h) {
+          const tt = Math.min(t, end);
+          if (f(tt) <= 0) {
+            let l = tt - h, r = tt;
+            for (let i = 0; i < 30; i++) {
+              const m = (l + r) / 2;
+              if (f(m) > 0) l = m;
+              else r = m;
+            }
+            tc = r;
+            break;
+          }
+          if (tt >= end) break;
+        }
+      } else {
         while (f(hi) > 0 && hi - lo < 600) hi = lo + (hi - lo) * 2;
         for (let i = 0; i < 40; i++) {
           const m = (lo + hi) / 2;
@@ -1085,22 +1179,37 @@ details[open] summary::after{content:" －"}
       if (U.heatAt(o.b, 0, 0, t)) return { kind: "heat", b: o.b };
       return { kind: "pocket", b: o.b, V: VAC[o.b.vac] };
     };
-    function addBubble(x, y, d, t, parent) {
-      const pe = parent ? VAC[parent.vac].eps : FALSE_EPS;
-      let tot = 0;
-      for (const v of VAC) if (v.eps < pe) tot += v.w;
-      if (tot <= 0) return null;
-      let pick = rng() * tot, vac = 0;
-      for (const v of VAC) {
-        if (v.eps < pe) {
-          pick -= v.w;
-          if (pick <= 0) {
-            vac = v.i;
-            break;
+    function addBubble(x, y, d, t, parent, forced) {
+      let vac = 0, seed;
+      if (forced) {
+        vac = forced.vac;
+        seed = forced.seed;
+      } else {
+        const pe = parent ? VAC[parent.vac].eps : FALSE_EPS;
+        let tot = 0;
+        for (const v of VAC) if (v.eps < pe) tot += v.w;
+        if (tot <= 0) return null;
+        let pick = rng() * tot;
+        for (const v of VAC) {
+          if (v.eps < pe) {
+            pick -= v.w;
+            if (pick <= 0) {
+              vac = v.i;
+              break;
+            }
           }
         }
+        seed = rng();
       }
-      const V = VAC[vac], den = d - p.R0 - p.RH;
+      const V = VAC[vac], s = forced ? forced.s : 1, r0 = forced ? forced.r0 : p.R0;
+      let texit;
+      if (s > 0) {
+        const den = d - r0 - p.RH;
+        texit = den > 0 ? t + Math.log((p.RGEN + 60 - p.RH) / den) / p.H : Infinity;
+      } else {
+        const tc = r0 < p.RH ? t + Math.log(p.RH / (p.RH - r0)) / p.H : Infinity, den = d - r0 + p.RH;
+        texit = Math.min(tc, den > 0 ? t + Math.log((p.RGEN + 60 + p.RH) / den) / p.H : Infinity);
+      }
       const b = {
         id: U.nextId++,
         tn: t,
@@ -1108,14 +1217,17 @@ details[open] summary::after{content:" －"}
         y,
         d,
         vac,
-        seed: rng(),
+        seed,
         parent: parent || null,
         depth: parent ? parent.depth + 1 : 0,
+        s,
+        r0,
         crunch: V.kind === "ads",
         crunchT: V.crunchT,
         heatT: V.hdT,
-        texit: den > 0 ? t + Math.log((p.RGEN + 60 - p.RH) / den) / p.H : Infinity
+        texit
       };
+      if (forced) b.act = true;
       b.long = !(b.texit - t <= LONG);
       U.hist.push(b);
       U.live.push(b);
@@ -1148,6 +1260,52 @@ details[open] summary::after{content:" －"}
         if (b) circles.push(U.circleAt(b, t));
       }
     }
+    U.actions = [];
+    let pendingAct = 0, actSeq = 0;
+    const queueAct = (a) => {
+      a.seq = actSeq++;
+      let i = U.actions.length;
+      while (i > pendingAct && U.actions[i - 1].step > a.step) i--;
+      U.actions.splice(i, 0, a);
+      return a;
+    };
+    U.act = (a) => queueAct({ ...a, step: U.stepN + 1, t: void 0, result: void 0 });
+    U.actionLog = () => U.actions.map(({ step, type, x, y, vac, r }) => ({ step, type, x, y, vac, r }));
+    for (const a of (opts.actions || []).slice().sort((p1, p2) => p1.step - p2.step)) queueAct({ ...a, t: void 0, result: void 0 });
+    function actNucleate(a, t, k) {
+      const V = VAC[a.vac];
+      if (!V || !isFinite(a.x) || !isFinite(a.y)) return { ok: false, reason: "參數錯誤" };
+      const F = U.frame(t), circles = [];
+      for (const b2 of U.live) if (b2.texit > t) circles.push(U.circleAt(b2, t));
+      const own = Territory.ownerAt(F, circles, a.x, a.y), pe = own ? VAC[own.b.vac].eps : FALSE_EPS;
+      if (own && U.crunchedAt(own.b, a.x, a.y, t)) return { ok: false, reason: "這裡已走到大擠壓，時空已經結束" };
+      if (V.eps === pe) return { ok: false, reason: "這裡已經是這種真空" };
+      const up = V.eps > pe;
+      let r0 = p.R0;
+      if (up) {
+        r0 = a.r === void 0 ? 0.4 * p.RH : +a.r;
+        if (!(r0 >= 2 * p.R0 && r0 <= 3 * p.RH)) return { ok: false, reason: "向上穿隧區域的大小不合理" };
+      }
+      if (own && Territory.arrival(own, a.x, a.y) > -(up ? r0 + 2 : p.R0 * 2)) return { ok: false, reason: "太靠近泡壁" };
+      if (up) {
+        for (let j = 0; j < 24; j++) {
+          const th = TAU * j / 24, o = Territory.ownerAt(F, circles, a.x + Math.cos(th) * (r0 + 2), a.y + Math.sin(th) * (r0 + 2));
+          if ((o ? o.b : null) !== (own ? own.b : null)) return { ok: false, reason: "範圍跨越了其他宇宙的地盤" };
+        }
+      }
+      const b = addBubble(a.x, a.y, Math.hypot(a.x, a.y), t, own ? own.b : null, { vac: a.vac, s: up ? -1 : 1, r0, seed: hash(p.seed, a.step, k) });
+      return { ok: true, id: b.id, up };
+    }
+    function applyActions(step) {
+      let k = 0;
+      while (pendingAct < U.actions.length && U.actions[pendingAct].step <= step) {
+        const a = U.actions[pendingAct++];
+        a.t = U.tSim;
+        a.result = a.type === "nucleate" ? actNucleate(a, U.tSim, k++) : { ok: false, reason: "未知的動作" };
+        for (const fn of listeners.act) fn(a);
+      }
+    }
+    U.pendingActions = () => U.actions.slice(pendingAct);
     function retire() {
       const t = U.tSim, Rg = p.RGEN + 200;
       const live = U.live.filter((b) => b.texit > t && b.tn < t);
@@ -1191,6 +1349,7 @@ details[open] summary::after{content:" －"}
       while (U.acc >= STEP && n < 2e4) {
         U.acc -= STEP;
         U.tSim += STEP;
+        if (pendingAct < U.actions.length) applyActions(U.stepN + 1);
         nucleate();
         if (++U.stepN % 30 === 0) retire();
         n++;
@@ -1222,7 +1381,7 @@ details[open] summary::after{content:" －"}
     U.presim = (sec) => {
       for (let i = 0; i < Math.round(sec / STEP); i++) U.advance(STEP);
     };
-    U.fingerprint = (tMax) => U.hist.filter((b) => b.tn <= tMax).map((b) => `${b.id}:${b.tn.toFixed(6)}:${b.x.toFixed(4)}:${b.y.toFixed(4)}:${b.vac}:${b.parent ? b.parent.id : 0}`).join("|");
+    U.fingerprint = (tMax) => U.hist.filter((b) => b.tn <= tMax).map((b) => `${b.id}:${b.tn.toFixed(6)}:${b.x.toFixed(4)}:${b.y.toFixed(4)}:${b.vac}:${b.parent ? b.parent.id : 0}${b.act ? ":a" + b.s + ":" + b.r0 : ""}`).join("|");
     return U;
   }
 
@@ -1240,6 +1399,49 @@ details[open] summary::after{content:" －"}
       const F = U.frame(t, 1, (b) => byB.get(b) || U.circleAt(b, t));
       Territory.buildRules(cs, F);
       return { cs, F, byB };
+    }
+    function ownerMismatch(U, t, r, N, R = 2400) {
+      const { cs, F } = buildRules(U, t);
+      const order = cs.slice().sort((a, b) => Territory.drawOrder(F, a, b));
+      let mis = 0;
+      for (let i = 0; i < N; i++) {
+        const rr = R * Math.sqrt(r()), a = r() * TAU, x = Math.cos(a) * rr, y = Math.sin(a) * rr;
+        const sim = Territory.ownerAt(F, cs, x, y);
+        let disp = null;
+        for (const c of order) if (Territory.drawContains(c, x, y)) disp = c;
+        if ((sim ? sim.b : null) !== (disp ? disp.b : null)) mis++;
+      }
+      return mis;
+    }
+    function rayMismatch(cs, r, only = () => true, K2 = 24) {
+      let bad = 0, n = 0;
+      for (const c of cs) {
+        if (!c.rules.length || c.r < 5 || !only(c)) continue;
+        for (let k = 0; k < K2; k++) {
+          const a = r() * TAU, ex = Math.cos(a), ey = Math.sin(a), rho = Territory.cellRay(c, ex, ey, c.r);
+          const eps = Math.max(0.05, c.r * 1e-4);
+          const inn = rho > 2 * eps ? Territory.drawContains(c, c.cx + ex * (rho - eps), c.cy + ey * (rho - eps)) : true;
+          const out = rho < c.r - 2 * eps ? !Territory.drawContains(c, c.cx + ex * (rho + eps), c.cy + ey * (rho + eps)) : true;
+          n++;
+          if (!inn || !out) bad++;
+        }
+      }
+      return { bad, n };
+    }
+    function actionUniverse(seed, secs = 40) {
+      const U = createUniverse({ ...baseP, seed }, baseT()), r = mulberry32(seed * 7 + 1);
+      U.presim(20);
+      for (let i = 0; i < secs * 30; i++) {
+        if (i % 6 === 0) {
+          const rr = 2200 * Math.sqrt(r()), a = r() * TAU, x = Math.cos(a) * rr, y = Math.sin(a) * rr;
+          const own = U.ownerAt(x, y, U.tSim), pe = own ? U.VAC[own.b.vac].eps : 1;
+          const ups = U.VAC.filter((v) => v.eps > pe), downs = U.VAC.filter((v) => v.eps < pe);
+          const list = r() < 0.6 && ups.length ? ups : downs, V = list[r() * list.length | 0];
+          if (V) U.act({ type: "nucleate", x, y, vac: V.i, r: 40 + r() * 120 });
+        }
+        U.advance(STEP);
+      }
+      return U;
     }
     const tests = [
       { name: "可重現性", desc: "同一個種子、以不同的時間切分推進，前 25 秒的每個泡泡必須完全相同", run() {
@@ -1271,17 +1473,8 @@ details[open] summary::after{content:" －"}
           const U = createUniverse({ ...baseP, seed, typical }, baseT());
           U.presim(70);
           for (const t of [40, 55, 70]) {
-            const { cs, F } = buildRules(U, t);
-            const order = cs.slice().sort((a, b) => Territory.drawOrder(F, a, b));
-            const r = mulberry32(seed + t);
-            for (let i = 0; i < 1500; i++) {
-              const rr = 2400 * Math.sqrt(r()), a = r() * TAU, x = Math.cos(a) * rr, y = Math.sin(a) * rr;
-              const sim = Territory.ownerAt(F, cs, x, y);
-              let disp = null;
-              for (const c of order) if (Territory.drawContains(c, x, y)) disp = c;
-              n++;
-              if ((sim ? sim.b : null) !== (disp ? disp.b : null)) mis++;
-            }
+            mis += ownerMismatch(U, t, mulberry32(seed + t), 1500);
+            n += 1500;
           }
         }
         return { pass: mis / n < 2e-3, detail: `${n} 個取樣點中 ${mis} 個不一致（${(mis / n * 100).toFixed(2)}%）` };
@@ -1289,20 +1482,87 @@ details[open] summary::after{content:" －"}
       { name: "繪製邊界正確", desc: "畫面用射線算出的領域邊界，必須與逐點判斷的結果吻合", run() {
         const U = createUniverse(baseP, baseT());
         U.presim(60);
-        const { cs } = buildRules(U, 60), r = mulberry32(7);
-        let bad = 0, n = 0;
-        for (const c of cs) {
-          if (!c.rules.length || c.r < 5) continue;
-          for (let k = 0; k < 24; k++) {
-            const a = r() * TAU, ex = Math.cos(a), ey = Math.sin(a), rho = Territory.cellRay(c, ex, ey, c.r);
-            const eps = Math.max(0.05, c.r * 1e-4);
-            const inn = rho > 2 * eps ? Territory.drawContains(c, c.cx + ex * (rho - eps), c.cy + ey * (rho - eps)) : true;
-            const out = rho < c.r - 2 * eps ? !Territory.drawContains(c, c.cx + ex * (rho + eps), c.cy + ey * (rho + eps)) : true;
+        const { bad, n } = rayMismatch(buildRules(U, 60).cs, mulberry32(7));
+        return { pass: bad / n < 0.01, detail: `${n} 條射線中 ${bad} 條不吻合（${(bad / Math.max(1, n) * 100).toFixed(2)}%）` };
+      } },
+      { name: "動作紀錄可重現", desc: "同一個種子加上同一份動作紀錄（以不同的時間切分重播）必須得到完全相同的歷史與動作結果；動作之前的歷史與沒有動作時完全相同（動作不消耗主亂數）", run() {
+        const A = actionUniverse(4242), T = A.tSim;
+        const B = createUniverse(baseP, baseT(), { actions: A.actionLog() });
+        while (B.tSim < T - 1e-9) B.advance(Math.min(0.3711, T - B.tSim + 1e-9));
+        const res = (U) => U.actions.map((a) => a.result ? a.result.ok ? "ok" + a.result.id : a.result.reason : "-").join(",");
+        const same = A.fingerprint(T) === B.fingerprint(T) && res(A) === res(B);
+        const P0 = createUniverse(baseP, baseT());
+        P0.presim(25);
+        const t1 = A.actions[0].t - STEP / 2, pre = A.fingerprint(t1) === P0.fingerprint(t1) && A.fingerprint(t1).length > 0;
+        const ok = A.actions.filter((a) => a.result && a.result.ok).length;
+        return { pass: same && pre && ok > 20, detail: `${A.actions.length} 個動作（成功 ${ok}）重播${same ? "完全一致" : "不一致"}；第一個動作之前的歷史${pre ? "與無動作時相同" : "不同"}` };
+      } },
+      { name: "手動成核合法性", desc: "使用者放的泡泡：母宇宙必須是放置處的擁有者；比母宇宙高的真空必定是收縮泡泡，並在預期時刻縮成一點後消失；自然成核不會發生在向上穿隧的區域內", run() {
+        let bad = 0, upBad = 0, gone = 0, natUp = 0, crunchBad = 0, n = 0, nUp = 0, hidden = 0;
+        for (const seed of [4242, 99]) {
+          const U = actionUniverse(seed);
+          for (const b of U.hist) {
+            if (b.parent && U.VAC[b.parent.vac].kind === "up" && !b.act) natUp++;
+            if (!b.act) continue;
+            const t = b.tn, F = U.frame(t), cs = U.aliveAt(t).filter((o) => o.id < b.id).map((o) => U.circleAt(o, t));
+            const own = Territory.ownerAt(F, cs, b.x, b.y);
             n++;
-            if (!inn || !out) bad++;
+            if ((own ? own.b : null) !== b.parent) bad++;
+            const c1 = U.circleAt(b, b.tn + STEP), o1 = U.ownerAt(c1.cx, c1.cy, b.tn + STEP);
+            if (b.texit > b.tn + STEP && !(o1 && (o1.b === b || Territory.isAncestor(b, o1.b)))) hidden++;
+            const pe = b.parent ? U.VAC[b.parent.vac].eps : 1, up = U.VAC[b.vac].eps > pe;
+            if (up !== b.s < 0) upBad++;
+            if (b.s < 0 && b.r0 < U.p.RH) {
+              nUp++;
+              const tc = b.tn + Math.log(U.p.RH / (U.p.RH - b.r0)) / U.p.H;
+              if (b.texit > tc + 1e-9 || U.circleAt(b, tc).r > 1e-6 * U.p.RH || U.aliveAt(b.texit + STEP).includes(b)) gone++;
+            }
+          }
+          for (const a of U.actions) {
+            if (!a.result || a.result.ok || !/大擠壓/.test(a.result.reason)) continue;
+            const o = U.ownerAt(a.x, a.y, a.t);
+            if (!o || !U.crunchedAt(o.b, a.x, a.y, a.t)) crunchBad++;
           }
         }
-        return { pass: bad / n < 0.01, detail: `${n} 條射線中 ${bad} 條不吻合（${(bad / Math.max(1, n) * 100).toFixed(2)}%）` };
+        return {
+          pass: n > 50 && nUp > 20 && !bad && !upBad && !gone && !natUp && !crunchBad && !hidden,
+          detail: `檢查 ${n} 個使用者泡泡（收縮 ${nUp}）：歸屬不符 ${bad}、誕生後被蓋住 ${hidden}、收縮方向錯誤 ${upBad}、未如期消失 ${gone}、向上穿隧區內自然成核 ${natUp}、大擠壓判斷錯誤 ${crunchBad}`
+        };
+      } },
+      { name: "向上穿隧的歸屬一致", desc: "有向上穿隧（子泡泡比母宇宙高、輸家畫在贏家之後）時：物理與畫面歸屬一致、射線邊界與逐點判斷吻合，且這種情況確實有被測到", run() {
+        let mis = 0, n = 0, bad = 0, rays = 0, lyN = 0, sides = 0, sideBad = 0;
+        for (const seed of [4242, 99]) {
+          const U = actionUniverse(seed), r = mulberry32(seed + 3);
+          for (let t = 30; t <= U.tSim; t += 2) {
+            const { cs } = buildRules(U, t);
+            const ly = /* @__PURE__ */ new Set(), lyR = /* @__PURE__ */ new Set();
+            for (const c of cs) for (const R of c.rules) if (R.lYield) {
+              ly.add(R.L);
+              lyR.add(R);
+            }
+            lyN += ly.size;
+            for (const R of lyR) {
+              const { W, L } = R, kin = (c) => c === W || c === L || Territory.isAncestor(c.b, W.b) || Territory.isAncestor(c.b, L.b);
+              for (let k = 0; k < 60; k++) {
+                const a = r() * TAU, rr = L.r * Math.sqrt(r()), x = L.cx + Math.cos(a) * rr, y = L.cy + Math.sin(a) * rr;
+                if (Territory.arrival(W, x, y) >= 0 || cs.some((c) => !kin(c) && Territory.arrival(c, x, y) < 0)) continue;
+                const o = U.ownerAt(x, y, t), wantL = !R.cE && R.g.lSide(x, y);
+                sides++;
+                if ((o && o.b) === L.b !== wantL) sideBad++;
+              }
+            }
+            mis += ownerMismatch(U, t, r, 600);
+            n += 600;
+            const upLine = (c) => ly.has(c) || c.b.s < 0 || c.b.parent && U.VAC[c.b.vac].eps > U.VAC[c.b.parent.vac].eps;
+            const m = rayMismatch(cs, r, upLine, 16);
+            bad += m.bad;
+            rays += m.n;
+          }
+        }
+        return {
+          pass: lyN > 0 && rays > 100 && sides > 50 && mis / n < 2e-3 && bad / rays < 0.01 && !sideBad,
+          detail: `輸家後畫的情況 ${lyN} 次（疇壁兩側取樣 ${sides} 點，歸屬錯誤 ${sideBad}）；${n} 個取樣點中 ${mis} 個不一致；${rays} 條射線中 ${bad} 條不吻合（${(bad / Math.max(1, rays) * 100).toFixed(2)}%）`
+        };
       } },
       { name: "穿隧率正確", desc: "實際成核次數必須符合各區域真空的穿隧率（以隨機取樣估計預期值）", run() {
         const U = createUniverse(baseP, baseT());
@@ -1831,7 +2091,7 @@ details[open] summary::after{content:" －"}
   function buildPalettes(VAC) {
     return VAC.map((V) => {
       const wall = hsl2rgb(V.hue, 95, 74);
-      return { wall, core: hsl2rgb(V.hue, 70, 9), rim: hsl2rgb(V.hue, 58, 40), neb: V.kind === "ds" ? tintedNebula(wall) : null };
+      return { wall, core: hsl2rgb(V.hue, 70, 9), rim: hsl2rgb(V.hue, 58, 40), neb: V.kind === "ds" || V.kind === "up" ? tintedNebula(wall) : null };
     });
   }
   function init2() {
@@ -1951,7 +2211,7 @@ details[open] summary::after{content:" －"}
   function cellPath(v, cap) {
     ctx.beginPath();
     const lim = cap === void 0 ? Math.max(0.6, v.r) : Math.min(v.r, cap);
-    const constrained = v.rules && v.rules.some((R) => R.kind === "merge" || R.kind === "wall" && R.W === v || R.kind === "inherit" && R.X === v && !R.free);
+    const constrained = v.rules && v.rules.some((R) => R.kind === "merge" || R.kind === "wall" && (R.W === v || R.lYield) || R.kind === "inherit" && R.X === v && !R.free);
     const wedge = viewWedge(v.cx, v.cy);
     if (!constrained && cap === void 0 && v.full) {
       ctx.rect(-10, -10, S.vw + 20, S.vh + 20);
@@ -2407,7 +2667,7 @@ details[open] summary::after{content:" －"}
       ctx.fill();
       const cg = crunchGeo(v), gr = v.grp || v;
       const V = S.U.VAC[v.b.vac];
-      if (V.kind === "ds") {
+      if (V.kind === "ds" || V.kind === "up") {
         const tf = v.b._tf;
         if (opt.neb && K.neb > 0 && tf > 0.01) {
           const sp = 2 + 6 * Math.sqrt(V.eps), ang = V.i * 2.39996, dx = Math.cos(ang) * sp * T_R, dy = Math.sin(ang) * sp * T_R;
@@ -2459,7 +2719,7 @@ details[open] summary::after{content:" －"}
         cellPath(v);
         ctx.fill();
       }
-      if (v.age < 3.5 && V.kind !== "ds") {
+      if (v.age < 3.5 && V.kind !== "ds" && V.kind !== "up") {
         const a = Math.pow(1 - v.age / 3.5, 2) * 0.85, rr = Math.max(2, sr);
         ctx.globalCompositeOperation = "lighter";
         ctx.fillStyle = radialGrad(sx, sy, 0, rr, [[0, 255, 252, 240, a], [0.5, ...C4(pal.wall, a * 0.5)], [1, ...C4(pal.wall, 0)]]);
@@ -2683,6 +2943,10 @@ details[open] summary::after{content:" －"}
   }
   function fateText(b, v) {
     const V = S.U.VAC[b.vac];
+    if (b.s < 0) {
+      const tc = Math.log(S.RH / (S.RH - b.r0)) / S.HUB;
+      return `向上穿隧產生的區域：它的真空能比周圍高，泡壁被周圍往內推而收縮，放出的能量歸吃掉它的一方。` + (b.r0 < S.RH ? `它會在誕生後約 ${tc.toFixed(1)} 秒縮成一點、消失。` : "它比哈伯半徑還大，收縮追不上空間的膨脹，永遠縮不掉 —— 這正是永恆暴脹的原理。");
+    }
     if (V.dims !== 3) return `這裡的空間有 ${V.dims} 個維度。行星軌道與原子都難以穩定，我們熟悉的化學不會出現。`;
     if (b.crunch) {
       const cg = v && crunchGeo(v);
@@ -2714,7 +2978,7 @@ details[open] summary::after{content:" －"}
     if (S.tView < b.tn) state = `<dt>狀態</dt><dd>尚未誕生（${(b.tn - S.tView).toFixed(1)} 秒後）</dd>`;
     else if (S.tView >= b.texit) state = `<dt>狀態</dt><dd>已流出觀測範圍</dd>`;
     else {
-      const E = S.U.E(b, S.tView), r = S.R0 * E + S.RH * (E - 1);
+      const E = S.U.E(b, S.tView), r = S.U.circleAt(b, S.tView).r;
       state = `<dt>年齡</dt><dd>${(S.tView - b.tn).toFixed(1)} s</dd><dt>物理半徑</dt><dd>${(r / S.RH).toFixed(2)} R<sub>H</sub></dd><dt>與觀測者距離</dt><dd>${(b.d * E / S.RH).toFixed(2)} R<sub>H</sub></dd>`;
     }
     $("cFate").textContent = fateText(b, v);
@@ -2722,8 +2986,8 @@ details[open] summary::after{content:" －"}
     $("cJump").disabled = gone;
     $("cJump").textContent = gone ? "誕生時刻已超出回放保留範圍" : "回到它誕生的時刻";
     const V = S.U.VAC[b.vac];
-    const origin = b.parent ? `第 ${b.depth + 1} 層，誕生於 #${b.parent.id}（${S.U.VAC[b.parent.vac].name}）內部` : "第 1 層，誕生於暴脹假真空";
-    const fate = V.kind === "ads" ? `<dt>大擠壓時間</dt><dd>誕生後 ${V.crunchT.toFixed(1)} s</dd>` : V.kind === "tiny" ? `<dt>熱寂時間</dt><dd>誕生後 ${V.hdT.toFixed(0)} s</dd>` : `<dt>內部穿隧率</dt><dd>${(V.grel * tune.innerMul).toFixed(2)} Γ</dd>`;
+    const origin = (b.parent ? `第 ${b.depth + 1} 層，誕生於 #${b.parent.id}（${S.U.VAC[b.parent.vac].name}）內部` : "第 1 層，誕生於暴脹假真空") + (b.act ? "（由使用者放置）" : "");
+    const fate = b.s < 0 ? `<dt>塌縮時間</dt><dd>${b.r0 < S.RH ? `誕生後 ${(Math.log(S.RH / (S.RH - b.r0)) / S.HUB).toFixed(1)} s` : "永遠縮不掉"}</dd>` : V.kind === "ads" ? `<dt>大擠壓時間</dt><dd>誕生後 ${V.crunchT.toFixed(1)} s</dd>` : V.kind === "tiny" ? `<dt>熱寂時間</dt><dd>誕生後 ${V.hdT.toFixed(0)} s</dd>` : `<dt>內部穿隧率</dt><dd>${(V.grel * tune.innerMul).toFixed(2)} Γ</dd>`;
     $("cList").innerHTML = `<dt>來源</dt><dd>${origin}</dd><dt>誕生時刻</dt><dd>t = ${b.tn.toFixed(1)} s（N = ${(S.HUB * b.tn).toFixed(2)}）</dd>` + state + `<dt>真空能量密度 Λ</dt><dd>${lamStr(V)}</dd>` + fate + `<dt>空間維度</dt><dd>${V.dims}</dd><dt>精細結構常數</dt><dd>1 / ${V.ainv.toFixed(1)}</dd><dt>質子／電子質量比</dt><dd>${Math.round(V.mratio).toLocaleString("zh-TW")}</dd>`;
   }
   function init3() {
@@ -2980,7 +3244,7 @@ details[open] summary::after{content:" －"}
   function landHTML() {
     return S.U.VAC.map((V) => {
       const p = S.PAL[V.i];
-      const tag = V.kind === "ads" ? `Λ<0，${V.crunchT.toFixed(1)} s 後大擠壓` : V.kind === "tiny" ? `Λ≈0，不再暴脹，${V.hdT.toFixed(0)} s 後熱寂` : `Λ>0，仍在暴脹，內部穿隧 ${V.grel.toFixed(2)}Γ`;
+      const tag = V.kind === "up" ? "比假真空更高，只能由向上穿隧產生，會被周圍吃掉" : V.kind === "ads" ? `Λ<0，${V.crunchT.toFixed(1)} s 後大擠壓` : V.kind === "tiny" ? `Λ≈0，不再暴脹，${V.hdT.toFixed(0)} s 後熱寂` : `Λ>0，仍在暴脹，內部穿隧 ${V.grel.toFixed(2)}Γ`;
       const hab = isHab({ vac: V.i }) ? " ✦" : "";
       return `<div class="vr"><i style="background:radial-gradient(circle,${rgba(p.core, 1)} 40%,${rgba(p.rim, 1)} 75%,${rgba(p.wall, 1)} 100%)"></i><span><b>${V.name}${hab}</b>　${tag}${V.dims !== 3 ? `，${V.dims} 維` : ""}</span><em id="vc${V.i}">0</em></div>`;
     }).join("");
@@ -2991,7 +3255,7 @@ details[open] summary::after{content:" －"}
       if (el) el.textContent = S.U.vacCount[V.i].toLocaleString("zh-TW");
     }
   }
-  function restart() {
+  function restart(opts = {}) {
     const seed = parseSeed($("seedIn").value);
     $("seedIn").value = seed;
     S.PRESIM = uniVal.presim;
@@ -3005,7 +3269,7 @@ details[open] summary::after{content:" －"}
       vacN: uniVal.vacN,
       crunchP: uniVal.crunchP,
       oddDimP: uniVal.oddDimP
-    }, tune);
+    }, tune, { actions: opts.actions });
     S.U.window = S.HIST;
     S.HUB = S.U.p.H;
     S.RH = S.U.p.RH;
@@ -3053,7 +3317,7 @@ details[open] summary::after{content:" －"}
     }
     uniReady = true;
     refreshDerived();
-    $("applyBtn").addEventListener("click", restart);
+    $("applyBtn").addEventListener("click", () => restart());
     $("seedIn").addEventListener("input", refreshDerived);
     $("obsSel").addEventListener("change", refreshDerived);
     $("seedRnd").addEventListener("click", () => {
@@ -3249,8 +3513,19 @@ details[open] summary::after{content:" －"}
       resetTemporal,
       // 時間軸
       time: { seek, goLive, togglePlay },
-      restart,
+      restart: (opts) => restart(opts),
       openCard,
+      /* 會影響演化的操作一律經由動作紀錄（見 docs/ROADMAP.md）：在下一個模擬步套用，結果寫在回傳物件的 result */
+      act: (a) => S.U.act(a),
+      get actions() {
+        return S.U.actions;
+      },
+      /* 暫停／繼續演化（模擬本身停止） */
+      sim: { get paused() {
+        return S.simPaused;
+      }, setPaused(v) {
+        S.simPaused = !!v;
+      } },
       // 介面
       $,
       store,
@@ -3905,8 +4180,8 @@ details[open] summary::after{content:" －"}
   var spT = 0;
   var pfT = 0;
   function stepWorld(dtR, draw) {
-    const dt = dtR * S.speed;
-    S.U.advance(dt);
+    const dt = S.simPaused ? 0 : dtR * S.speed;
+    if (dt > 0) S.U.advance(dt);
     emit("frame", { dtR, dt, draw });
     if (S.isLive) S.tView = S.U.tLive;
     else if (S.playing && !S.scrubbing) {

@@ -14,8 +14,8 @@ export let uiT = 0, spT = 0, pfT = 0;
 
 // 推進模擬一步；draw 為 false 時（背景運行）只計算不繪製
 export function stepWorld(dtR, draw){
-  const dt = dtR*S.speed;
-  S.U.advance(dt);
+  const dt = S.simPaused ? 0 : dtR*S.speed;
+  if(dt > 0) S.U.advance(dt);
   emit('frame', { dtR, dt, draw });
   if(S.isLive) S.tView = S.U.tLive;
   else if(S.playing && !S.scrubbing){ S.tView += dt; if(S.tView >= S.U.tLive){ goLive(); } }

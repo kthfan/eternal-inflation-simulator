@@ -96,7 +96,7 @@ export function parseSeed(str){
 export function landHTML(){
   return S.U.VAC.map(V => {
     const p = S.PAL[V.i];
-    const tag = V.kind === 'ads' ? `Λ<0，${V.crunchT.toFixed(1)} s 後大擠壓` : V.kind === 'tiny' ? `Λ≈0，不再暴脹，${V.hdT.toFixed(0)} s 後熱寂` : `Λ>0，仍在暴脹，內部穿隧 ${V.grel.toFixed(2)}Γ`;
+    const tag = V.kind === 'up' ? '比假真空更高，只能由向上穿隧產生，會被周圍吃掉' : V.kind === 'ads' ? `Λ<0，${V.crunchT.toFixed(1)} s 後大擠壓` : V.kind === 'tiny' ? `Λ≈0，不再暴脹，${V.hdT.toFixed(0)} s 後熱寂` : `Λ>0，仍在暴脹，內部穿隧 ${V.grel.toFixed(2)}Γ`;
     const hab = isHab({ vac: V.i }) ? ' ✦' : '';
     return `<div class="vr"><i style="background:radial-gradient(circle,${rgba(p.core,1)} 40%,${rgba(p.rim,1)} 75%,${rgba(p.wall,1)} 100%)"></i>`+
       `<span><b>${V.name}${hab}</b>　${tag}${V.dims !== 3 ? `，${V.dims} 維` : ''}</span><em id="vc${V.i}">0</em></div>`;
@@ -105,13 +105,13 @@ export function landHTML(){
 
 export function updateLandCounts(){ for(const V of S.U.VAC){ const el = document.getElementById('vc' + V.i); if(el) el.textContent = S.U.vacCount[V.i].toLocaleString('zh-TW'); } }
 
-/* 重新開始：用目前的參數建立一個全新的宇宙（舊的直接丟棄） */
-export function restart(){
+/* 重新開始：用目前的參數建立一個全新的宇宙（舊的直接丟棄）。opts.actions：要重播的動作紀錄 */
+export function restart(opts = {}){
   const seed = parseSeed($('seedIn').value);
   $('seedIn').value = seed;
   S.PRESIM = uniVal.presim;
   S.U = createUniverse({ seed, H: uniVal.hub, RH: uniVal.rh, R0: uniVal.r0, RGEN: uniVal.rgen, typical: $('obsSel').value === 'typical',
-    vacN: uniVal.vacN, crunchP: uniVal.crunchP, oddDimP: uniVal.oddDimP }, tune);
+    vacN: uniVal.vacN, crunchP: uniVal.crunchP, oddDimP: uniVal.oddDimP }, tune, { actions: opts.actions });
   S.U.window = S.HIST;
   S.HUB = S.U.p.H; S.RH = S.U.p.RH; S.R0 = S.U.p.R0; S.RGEN = S.U.p.RGEN;
   S.PAL = buildPalettes(S.U.VAC);
@@ -140,7 +140,7 @@ export function init(){
   }
   uniReady = true;
   refreshDerived();
-  $('applyBtn').addEventListener('click', restart);
+  $('applyBtn').addEventListener('click', () => restart());
   $('seedIn').addEventListener('input', refreshDerived);
   $('obsSel').addEventListener('change', refreshDerived);
   $('seedRnd').addEventListener('click', () => { $('seedIn').value = (Math.random()*1e9) >>> 0; refreshDerived(); });

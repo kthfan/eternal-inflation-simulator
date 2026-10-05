@@ -16,6 +16,7 @@ export const S = {
   tView: 0,
   isLive: true,
   playing: true,
+  simPaused: false,   // 暫停演化（模擬本身停止；與只暫停畫面的「播放／暫停」不同）
   speed: 1,
   scrubbing: false,
   selected: null,

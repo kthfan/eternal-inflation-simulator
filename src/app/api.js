@@ -38,7 +38,12 @@ export function createApi(){
     ctx, render, rgba, mix, resetTemporal,
     // 時間軸
     time: { seek, goLive, togglePlay },
-    restart, openCard,
+    restart: opts => restart(opts), openCard,
+    /* 會影響演化的操作一律經由動作紀錄（見 docs/ROADMAP.md）：在下一個模擬步套用，結果寫在回傳物件的 result */
+    act: a => S.U.act(a),
+    get actions(){ return S.U.actions; },
+    /* 暫停／繼續演化（模擬本身停止） */
+    sim: { get paused(){ return S.simPaused; }, setPaused(v){ S.simPaused = !!v; } },
     // 介面
     $, store,
     /* 在設定面板加入一個可摺疊區塊，回傳內容容器 */

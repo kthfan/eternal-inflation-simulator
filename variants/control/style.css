@@ -1,0 +1,5 @@
+/* 控制版：控制面板的文字框與訊息 */
+.plugin-panel .btns{margin:6px 0}
+.plugin-panel textarea{width:100%;box-sizing:border-box;margin-top:4px;background:var(--btn);border:1px solid var(--panel-line);border-radius:8px;padding:5px 7px;color:var(--ink);font:11px/1.4 ui-monospace,monospace;resize:vertical}
+.ctl-msg{min-height:1.6em}
+.ctl-msg.bad{color:#ff9aa6}

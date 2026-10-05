@@ -1,7 +1,7 @@
 /* 核心｜模擬：真空地景、泡泡的誕生與演化、疇壁位移、退場、歷史保留。
    createUniverse(p, tune) 建立一個獨立、可用種子重現的宇宙實例。純計算，不依賴瀏覽器。
    所有泡泡幾何都必須經過 U.circleAt —— 這是日後加入「移動泡泡」的唯一修改點（見 docs/ROADMAP.md）。 */
-import { TAU, mulberry32, poisson } from './math.js';
+import { TAU, mulberry32, poisson, hash } from './math.js';
 import { Territory } from './territory.js';
 
 /* ---------- 3. 模擬核心 ---------- */
@@ -14,6 +14,7 @@ export const EMAX = 1e13;   // 單一泡泡的膨脹倍數上限（只是最後�
 export const LONG = 90;   // 壽命超過此值（含永遠不會流出者）的泡泡另外保存，回放時一律納入
 
 export const BUCKET = 0.5, MAXB = 160000, FALSE_EPS = 1;
+export const UP_EPS = 1.6;   // 激發態假真空：比假真空更高，只能由向上穿隧（使用者動作）產生，見 docs/ROADMAP.md D5、D6
 
 export const VNAMES = '子丑寅卯辰巳午未申酉戌亥甲乙丙丁';
 
@@ -45,26 +46,34 @@ export function makeLandscape(r, p){
       // 熱寂：真空能近乎為零的宇宙會一直膨脹、冷卻，恆星燃盡、星系彼此遠離到視界之外。Λ 越小越慢（時間尺度 ∝ 1/√Λ，這裡以指數 lexp 示意）
       hdT: kind === 'tiny' ? (30 + (lexp - 100)*2)*(.25/p.H) : Infinity });
   }
+  /* 激發態假真空：放在地景最後，以獨立的亂數產生（不消耗 r），既有種子的地景與演化完全不變。
+     權重 w = 0、穿隧率 grel = 0：自然成核永遠不會產生它，它內部也不會再成核（它很快就會被周圍吃掉） */
+  const r2 = mulberry32((p.seed ^ 0x5bd1e995) >>> 0);
+  { const val = UP_EPS*1e-10, lexp = Math.ceil(-Math.log10(val));
+    VAC.push({ i: n, name: '激發態假真空', kind: 'up', eps: UP_EPS, lexp, lman: val*Math.pow(10, lexp), lsign: 1, dims: 3,
+      ainv: 60 + r2()*190, mratio: 300 + r2()*3600, grel: 0, hue: 40 + r2()*20, w: 0, crunchT: Infinity, hdT: Infinity }); }
   return VAC;
 }
 
 /* p：建立後不可變的宇宙參數 { seed, H, RH, R0, RGEN, typical, vacN, crunchP, oddDimP }
-   tune：執行中可調整、會影響之後演化的參數 { gamma, innerMul, wallK } */
-export function createUniverse(p, tune){
+   tune：執行中可調整、會影響之後演化的參數 { gamma, innerMul, wallK }
+   opts.actions：要重播的動作紀錄（U.actions 的內容），相同種子 + 相同動作紀錄 → 相同歷史 */
+export function createUniverse(p, tune, opts = {}){
   const rng = mulberry32(p.seed);
   const VAC = makeLandscape(rng, p);
   const maxInner = Math.max(0, ...VAC.map(v => v.grel));
   const U = { p, tune, VAC, tSim: 0, acc: 0, tStart: 0, trimmed: 0, hist: [], longs: [], live: [],
     buckets: [], bucketBase: 0, vacCount: VAC.map(() => 0), window: 1200, nextId: 1, stepN: 0 };
   Object.defineProperty(U, 'tLive', { get: () => U.tSim + U.acc });
-  /* 事件：'born'（新泡泡誕生）、'retire'（永久泡泡退場）。只通知、不影響演化，所以不破壞可重現性 */
-  const listeners = { born: [], retire: [] };
+  /* 事件：'born'（新泡泡誕生）、'retire'（永久泡泡退場）、'act'（動作已套用）。只通知、不影響演化，所以不破壞可重現性 */
+  const listeners = { born: [], retire: [], act: [] };
   U.on = (name, fn) => { listeners[name].push(fn); return () => { const a = listeners[name], i = a.indexOf(fn); if(i >= 0) a.splice(i, 1); }; };
   const notify = (name, b) => { for(const fn of listeners[name]) fn(b); };
 
   const E = (b, t) => Math.min(EMAX, Math.exp(p.H*(t - b.tn)));
   U.E = E;
-  U.circleAt = (b, t) => { const e = E(b, t); return { b, cx: b.x*e, cy: b.y*e, r: p.R0*e + p.RH*(e - 1) }; };
+  /* 泡壁以光速擴張：r = R0·E + RH·(E−1)；收縮泡泡（s = −1，內部真空能比周圍高）：r = r0·E − RH·(E−1)，縮到 0 為止 */
+  U.circleAt = (b, t) => { const e = E(b, t); return { b, cx: b.x*e, cy: b.y*e, r: b.s < 0 ? Math.max(0, b.r0*e - p.RH*(e - 1)) : p.R0*e + p.RH*(e - 1) }; };
   U.eps = b => VAC[b.vac].eps;
 
   /* 兩泡泡第一次相撞的時刻（二分法，快取；只取決於兩個泡泡本身） */
@@ -75,6 +84,16 @@ export function createUniverse(p, tune){
     const f = t => { const A = U.circleAt(a, t), B = U.circleAt(b, t); return Math.hypot(A.cx - B.cx, A.cy - B.cy) - A.r - B.r; };
     let lo = Math.max(a.tn, b.tn), hi = lo + .5;
     if(f(lo) <= 0) tc = lo;
+    else if(a.s < 0 || b.s < 0){
+      // 收縮泡泡：間距不是單調的（可能先靠近、再縮走），相撞必須發生在塌縮之前。逐步掃描找第一次接觸，找不到就是永不相撞
+      const end = Math.min(a.texit, b.texit, lo + 600), h = .05;
+      tc = Infinity;
+      for(let t = lo + h; t < end + h; t += h){
+        const tt = Math.min(t, end);
+        if(f(tt) <= 0){ let l = tt - h, r = tt; for(let i=0;i<30;i++){ const m = (l + r)/2; if(f(m) > 0) l = m; else r = m; } tc = r; break; }
+        if(tt >= end) break;
+      }
+    }
     else { while(f(hi) > 0 && hi - lo < 600) hi = lo + (hi - lo)*2; for(let i=0;i<40;i++){ const m = (lo + hi)/2; if(f(m) > 0) lo = m; else hi = m; } tc = hi; }
     if(tcCache.size > 40000) tcCache.clear();
     tcCache.set(key, tc); return tc;
@@ -117,16 +136,29 @@ export function createUniverse(p, tune){
     return { kind:'pocket', b:o.b, V:VAC[o.b.vac] };
   };
 
-  function addBubble(x, y, d, t, parent){
-    const pe = parent ? VAC[parent.vac].eps : FALSE_EPS;
-    let tot = 0; for(const v of VAC) if(v.eps < pe) tot += v.w;
-    if(tot <= 0) return null;
-    let pick = rng()*tot, vac = 0;
-    for(const v of VAC){ if(v.eps < pe){ pick -= v.w; if(pick <= 0){ vac = v.i; break; } } }
-    const V = VAC[vac], den = d - p.R0 - p.RH;
-    const b = { id: U.nextId++, tn: t, x, y, d, vac, seed: rng(), parent: parent || null, depth: parent ? parent.depth + 1 : 0,
-      crunch: V.kind === 'ads', crunchT: V.crunchT, heatT: V.hdT,
-      texit: den > 0 ? t + Math.log((p.RGEN + 60 - p.RH)/den)/p.H : Infinity };   // 會吞沒觀測者的泡泡永遠不會流出
+  /* forced（使用者動作）：{ vac, s, r0, seed }，直接指定真空與幾何，不消耗主亂數序列 */
+  function addBubble(x, y, d, t, parent, forced){
+    let vac = 0, seed;
+    if(forced){ vac = forced.vac; seed = forced.seed; }
+    else {
+      const pe = parent ? VAC[parent.vac].eps : FALSE_EPS;
+      let tot = 0; for(const v of VAC) if(v.eps < pe) tot += v.w;
+      if(tot <= 0) return null;
+      let pick = rng()*tot;
+      for(const v of VAC){ if(v.eps < pe){ pick -= v.w; if(pick <= 0){ vac = v.i; break; } } }
+      seed = rng();
+    }
+    const V = VAC[vac], s = forced ? forced.s : 1, r0 = forced ? forced.r0 : p.R0;
+    let texit;
+    if(s > 0){ const den = d - r0 - p.RH; texit = den > 0 ? t + Math.log((p.RGEN + 60 - p.RH)/den)/p.H : Infinity; }   // 會吞沒觀測者的泡泡永遠不會流出
+    else {
+      // 收縮泡泡：r0 < RH 時在 (1/H)·ln(RH/(RH−r0)) 後縮成一點；否則永遠縮不掉，只會隨膨脹流出（近側邊緣 = E·(d − r0 + RH) − RH）
+      const tc = r0 < p.RH ? t + Math.log(p.RH/(p.RH - r0))/p.H : Infinity, den = d - r0 + p.RH;
+      texit = Math.min(tc, den > 0 ? t + Math.log((p.RGEN + 60 + p.RH)/den)/p.H : Infinity);
+    }
+    const b = { id: U.nextId++, tn: t, x, y, d, vac, seed, parent: parent || null, depth: parent ? parent.depth + 1 : 0, s, r0,
+      crunch: V.kind === 'ads', crunchT: V.crunchT, heatT: V.hdT, texit };
+    if(forced) b.act = true;
     b.long = !(b.texit - t <= LONG);
     U.hist.push(b); U.live.push(b); if(b.long) U.longs.push(b);
     U.vacCount[vac]++;
@@ -156,6 +188,62 @@ export function createUniverse(p, tune){
       if(b) circles.push(U.circleAt(b, t));
     }
   }
+  /* ---------- 動作紀錄（使用者介入）----------
+     U.act(a) 把動作排進「下一步」的開頭套用（固定步長邊界），並記錄在 U.actions。
+     動作本身不消耗主亂數序列（需要亂數時用 hash(種子, 步數, 序號)），所以沒有動作時的歷史與原本逐位元相同；
+     相同種子 + 相同動作紀錄（含步數）→ 相同歷史。被拒絕的動作也留在紀錄裡，重播時會得到相同的拒絕結果。
+     目前的動作：
+     · nucleate { x, y, vac, r }：在物理座標 (x, y) 穿隧成真空 vac。擁有者一律由 Territory.ownerAt 決定。
+       目標真空比所在處低 → 一般泡泡（初始半徑 R0）；比所在處高 → 向上穿隧的收縮泡泡（初始半徑 r）。 */
+  U.actions = [];
+  let pendingAct = 0, actSeq = 0;
+  const queueAct = a => {
+    a.seq = actSeq++;
+    let i = U.actions.length; while(i > pendingAct && U.actions[i-1].step > a.step) i--;
+    U.actions.splice(i, 0, a);
+    return a;
+  };
+  U.act = a => queueAct({ ...a, step: U.stepN + 1, t: undefined, result: undefined });
+  /* 可序列化的動作紀錄（重播、匯出用） */
+  U.actionLog = () => U.actions.map(({ step, type, x, y, vac, r }) => ({ step, type, x, y, vac, r }));
+  for(const a of (opts.actions || []).slice().sort((p1, p2) => p1.step - p2.step)) queueAct({ ...a, t: undefined, result: undefined });
+
+  function actNucleate(a, t, k){
+    const V = VAC[a.vac];
+    if(!V || !isFinite(a.x) || !isFinite(a.y)) return { ok: false, reason: '參數錯誤' };
+    const F = U.frame(t), circles = [];
+    for(const b of U.live) if(b.texit > t) circles.push(U.circleAt(b, t));
+    const own = Territory.ownerAt(F, circles, a.x, a.y), pe = own ? VAC[own.b.vac].eps : FALSE_EPS;
+    if(own && U.crunchedAt(own.b, a.x, a.y, t)) return { ok: false, reason: '這裡已走到大擠壓，時空已經結束' };
+    if(V.eps === pe) return { ok: false, reason: '這裡已經是這種真空' };
+    const up = V.eps > pe;
+    let r0 = p.R0;
+    if(up){
+      r0 = a.r === undefined ? .4*p.RH : +a.r;
+      if(!(r0 >= 2*p.R0 && r0 <= 3*p.RH)) return { ok: false, reason: '向上穿隧區域的大小不合理' };
+    }
+    // 整個新泡泡必須落在同一個宇宙的地盤內（向上穿隧區域較大，要檢查一圈）；一般泡泡則與自然成核相同：不能太貼近泡壁
+    if(own && Territory.arrival(own, a.x, a.y) > -(up ? r0 + 2 : p.R0*2)) return { ok: false, reason: '太靠近泡壁' };
+    if(up){
+      for(let j=0;j<24;j++){
+        const th = TAU*j/24, o = Territory.ownerAt(F, circles, a.x + Math.cos(th)*(r0 + 2), a.y + Math.sin(th)*(r0 + 2));
+        if((o ? o.b : null) !== (own ? own.b : null)) return { ok: false, reason: '範圍跨越了其他宇宙的地盤' };
+      }
+    }
+    const b = addBubble(a.x, a.y, Math.hypot(a.x, a.y), t, own ? own.b : null, { vac: a.vac, s: up ? -1 : 1, r0, seed: hash(p.seed, a.step, k) });
+    return { ok: true, id: b.id, up };
+  }
+  function applyActions(step){
+    let k = 0;
+    while(pendingAct < U.actions.length && U.actions[pendingAct].step <= step){
+      const a = U.actions[pendingAct++];
+      a.t = U.tSim;
+      a.result = a.type === 'nucleate' ? actNucleate(a, U.tSim, k++) : { ok: false, reason: '未知的動作' };
+      for(const fn of listeners.act) fn(a);
+    }
+  }
+  U.pendingActions = () => U.actions.slice(pendingAct);
+
   /* 退場：永遠不會流出模擬範圍的巨大泡泡（吞沒了觀測者的那些），一旦在整個模擬範圍內已經不可能再擁有任何地盤，就讓它退場。
      否則它們會一層層累積、半徑無限增長，彼此之間的幾何計算終究會失去精度，造成歸屬來回跳動與繪製變慢。
      判斷條件（三者任一）：被自己的子孫完整覆蓋；被一個勝過它的宇宙以疇壁完整佔據；或與同種真空的另一個泡泡都已覆蓋整個範圍（保留較早誕生者）。 */
@@ -194,7 +282,7 @@ export function createUniverse(p, tune){
   U.advance = dt => {
     U.acc += dt;
     let n = 0;
-    while(U.acc >= STEP && n < 20000){ U.acc -= STEP; U.tSim += STEP; nucleate(); if(++U.stepN % 30 === 0) retire(); n++; }
+    while(U.acc >= STEP && n < 20000){ U.acc -= STEP; U.tSim += STEP; if(pendingAct < U.actions.length) applyActions(U.stepN + 1); nucleate(); if(++U.stepN % 30 === 0) retire(); n++; }
     if(U.live.some(b => b.texit <= U.tSim)) U.live = U.live.filter(b => b.texit > U.tSim);
     const k = Math.floor(U.tLive/BUCKET) - U.bucketBase; while(U.buckets.length <= k) U.buckets.push(0);
     U.trim();
@@ -214,6 +302,6 @@ export function createUniverse(p, tune){
     if(kb > 0){ U.buckets.splice(0, kb); U.bucketBase += kb; }
   };
   U.presim = sec => { for(let i=0;i<Math.round(sec/STEP);i++) U.advance(STEP); };
-  U.fingerprint = tMax => U.hist.filter(b => b.tn <= tMax).map(b => `${b.id}:${b.tn.toFixed(6)}:${b.x.toFixed(4)}:${b.y.toFixed(4)}:${b.vac}:${b.parent ? b.parent.id : 0}`).join('|');
+  U.fingerprint = tMax => U.hist.filter(b => b.tn <= tMax).map(b => `${b.id}:${b.tn.toFixed(6)}:${b.x.toFixed(4)}:${b.y.toFixed(4)}:${b.vac}:${b.parent ? b.parent.id : 0}${b.act ? ':a' + b.s + ':' + b.r0 : ''}`).join('|');
   return U;
 }

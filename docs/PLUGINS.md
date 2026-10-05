@@ -46,7 +46,7 @@ export function myPlugin(options){
 | `select` | 泡泡或 `null` | 點選泡泡或取消 | |
 
 可攔截的事件：處理函式回傳 `true`，核心就不再處理（例如拖曳泡泡時不要同時平移畫面）。
-`api.on` 回傳一個取消訂閱的函式。宇宙本身另有事件：`U.on('born', b => …)`、`U.on('retire', b => …)`。
+`api.on` 回傳一個取消訂閱的函式。宇宙本身另有事件：`U.on('born', b => …)`、`U.on('retire', b => …)`、`U.on('act', a => …)`（動作已套用，結果在 `a.result`）。
 
 ## api 一覽
 
@@ -59,17 +59,34 @@ export function myPlugin(options){
 | `camera.set(x, y, Z)`、`camera.zoomAbout`、`camera.animateZoom`、`camera.P`、`camera.Z`、`camera.cv` | 攝影機 |
 | `ctx`、`render(t)`、`rgba`、`mix`、`resetTemporal()` | 繪製 |
 | `time.seek(t)`、`time.goLive()`、`time.togglePlay()` | 時間軸 |
-| `restart()`、`openCard(b)` | 重新開始、開啟資訊卡 |
+| `restart({ actions })`、`openCard(b)` | 重新開始（可帶入要重播的動作紀錄）、開啟資訊卡 |
+| `act(a)`、`actions` | 送出會影響演化的動作（見下方）、目前宇宙的動作紀錄 |
+| `sim.paused`、`sim.setPaused(v)` | 暫停／繼續演化（模擬本身停止） |
 | `$`、`store` | DOM 取元素、本機設定儲存 |
 | `addPanel({ title, html, open })` | 在設定面板加一個區塊，回傳內容容器 |
 | `addCheck({ name, desc, run })` | 加入自我檢查項目，`run()` 回傳 `{ pass, detail }` |
 
+## 會影響演化的操作：動作紀錄
+
+**一律經由 `api.act(a)`**，不要直接改 `U` 的內部資料（會破壞可重現性與回放）。
+
+```js
+const a = api.act({ type: 'nucleate', x, y, vac, r });   // 物理座標；r 只用於向上穿隧
+// 下一個模擬步套用後：a.result = { ok: true, id, up } 或 { ok: false, reason }
+api.restart({ actions: api.U.actionLog() });               // 以相同種子重播
+```
+
+- 動作在下一個固定步長的開頭套用，並記錄步數；相同種子 + 相同動作紀錄 → 相同歷史。
+- `nucleate`：擁有者由核心決定。目標真空比所在處低 → 一般泡泡；比所在處高 → 收縮泡泡（初始半徑 `r`）。
+  大擠壓區、太靠近泡壁、範圍跨越其他宇宙地盤、同種真空都會被拒絕（拒絕也會記錄，重播時結果相同）。
+- 回看過去時（`api.S.isLive` 為 false）不應送出動作：動作一律在直播時刻套用。
+- 需要新的動作類型時，在 `src/core/universe.js` 的動作紀錄區加入（所有版本共用），並補上自我檢查。
+
 ## 範例
 
-`plugins/inspector/index.js`（版本 `variants/inspector`）示範了：overlay 繪製、宇宙事件、面板、攔截按鍵、自我檢查。
+- `plugins/inspector/index.js`（版本 `variants/inspector`）：overlay 繪製、宇宙事件、面板、攔截按鍵、自我檢查。
+- `plugins/control/index.js`（版本 `variants/control`）：動作紀錄（放置泡泡、重播、匯出匯入）、攔截滑鼠、暫停演化。
 
 ## 注意
 
-- 會影響演化的操作（例如手動放泡泡、移動泡泡）**目前還沒有正式 API**。直接改 `U` 的內部資料會破壞可重現性與回放。
-  請先依 docs/ROADMAP.md 的「動作紀錄」設計在核心加入正式介面。
 - 外掛的錯誤會被攔下並印在主控台，不會中斷模擬。

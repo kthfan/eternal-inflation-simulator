@@ -12,7 +12,9 @@ import { TAU } from './math.js';
    · inherit 一個泡泡 X 的光錐整個落在另一個 Y 之內（X 誕生在正被 Y 入侵的宇宙裡）：
              若 X 的真空能比 Y 低，X 不受 Y 限制（低能量真空以光速推進）；
              否則 X 與 Y 的交界沿用 Y 與「X 最近一個不在 Y 光錐內的祖先 D」之間的疇壁。
-   有親緣關係的泡泡之間沒有規則：子泡泡永遠蓋在母泡泡之上。 */
+   有親緣關係的泡泡之間沒有規則：子泡泡永遠蓋在母泡泡之上。
+   向上穿隧（使用者動作）會產生真空能比母宇宙「高」的子泡泡；繪製順序因此改用「繪製鍵」（見 drawOrder），
+   當輸家因而畫在贏家之後，輸家要明確讓出贏家那一側（R.lYield）。沒有向上穿隧時，行為與原本完全相同。 */
 export const Territory = (() => {
   const isAncestor = (a, b) => { for(let p = b.parent; p; p = p.parent) if(p === a) return true; return false; };
   const related = (a, b) => isAncestor(a, b) || isAncestor(b, a);
@@ -40,6 +42,11 @@ export const Territory = (() => {
     return g;
   }
   const beats = (F, a, b) => { const ea = F.eps(a), eb = F.eps(b); return ea < eb || (ea === eb && a.tn > b.tn); };
+  /* 繪製鍵：自己與所有祖先的真空能最小值。一般的家族中子孫的真空能一定較低，所以就等於自己的真空能；
+     向上穿隧的子泡泡（比母宇宙高）則沿用母宇宙的鍵，同鍵時較晚誕生者後畫 → 仍然畫在母宇宙之上 */
+  const dkey = (F, b) => { let e = F.eps(b); for(let q = b.parent; q; q = q.parent){ const x = F.eps(q); if(x < e) e = x; } return e; };
+  /* 繪製順序：繪製鍵高的先畫；相同時較早誕生的先畫 */
+  const drawOrder = (F, a, b) => (dkey(F, b.b) - dkey(F, a.b)) || (a.b.tn - b.b.tn);
 
   function rule(F, A, B){
     const d = Math.hypot(B.cx - A.cx, B.cy - A.cy);
@@ -59,7 +66,12 @@ export const Territory = (() => {
     if(A.b.vac === B.b.vac) return { kind:'merge', A, B };
     const [W, L] = beats(F, A.b, B.b) ? [A, B] : [B, A];
     const g = wallGeom(W.cx, W.cy, W.r, L.cx, L.cy, L.r, F.shift(W.b, L.b));
-    return g ? { kind:'wall', W, L, g } : null;
+    if(!g) return null;
+    const R = { kind:'wall', W, L, g };
+    // 輸家畫在贏家之後（只發生在向上穿隧的家族）：輸家不能再「整圓畫下、讓贏家蓋掉」，必須自己讓出贏家側。
+    // 疇壁若已越過輸家中心，輸家剩下的部分不再對中心呈星形，視為整個被吃掉（cE）
+    if(drawOrder(F, L, W) > 0){ R.lYield = true; R.cE = arrival(W, L.cx, L.cy) < 0 && !g.lSide(L.cx, L.cy); }
+    return R;
   }
   const otherOf = (R, v) => R.kind === 'merge' ? (R.A === v ? R.B : R.A) : R.kind === 'wall' ? (R.W === v ? R.L : R.W) : (R.X === v ? R.Y : R.X);
   /* 規則下，兩者重疊處的點 (x,y) 屬於誰 */
@@ -73,14 +85,16 @@ export const Territory = (() => {
   const takes = (R, v, x, y) => ownerIn(R, x, y) !== v;
 
   /* 繪製領域：v 畫出來時實際蓋住的範圍。
-     贏家只需讓出輸家側；輸家畫完整的圓（被贏家蓋住的部分自然消失）；同種真空互相平分；X 讓出 Y 側。
-     繪製順序：真空能高的先畫（子泡泡能量一定較低，所以一定在上層）；相同時較早誕生的先畫。 */
-  const drawOrder = (F, a, b) => (F.eps(b.b) - F.eps(a.b)) || (a.b.tn - b.b.tn);
+     贏家只需讓出輸家側；輸家畫完整的圓（被贏家蓋住的部分自然消失；若輸家反而後畫，則自己讓出贏家側）；
+     同種真空互相平分；X 讓出 Y 側。繪製順序見 drawOrder。 */
   function drawContains(v, x, y){
     if(arrival(v, x, y) >= 0) return false;
     for(const R of v.rules || []){
       if(R.kind === 'merge'){ if(arrival(otherOf(R, v), x, y) < arrival(v, x, y)) return false; }
-      else if(R.kind === 'wall'){ if(R.W === v && arrival(R.L, x, y) < 0 && R.g.lSide(x, y)) return false; }
+      else if(R.kind === 'wall'){
+        if(R.W === v){ if(arrival(R.L, x, y) < 0 && R.g.lSide(x, y)) return false; }
+        else if(R.lYield){ if(R.cE || (arrival(R.W, x, y) < 0 && !R.g.lSide(x, y))) return false; }
+      }
       else if(R.X === v && !R.free){ if(!R.g || !R.g.lSide(x, y)) return false; }
     }
     return true;
@@ -119,7 +133,32 @@ export const Territory = (() => {
         const o = otherOf(R, v), wx = o.cx - v.cx, wy = o.cy - v.cy, w2 = wx*wx + wy*wy, kk = v.r - o.r, den = 2*(ex*wx + ey*wy - kk);
         if(den > 0){ const r = (w2 - kk*kk)/den; if(r < rho) rho = r; }
       } else if(R.kind === 'wall'){
-        if(R.W !== v) continue;
+        if(R.W !== v){
+          if(!R.lYield) continue;
+          // 輸家後畫：讓出「在贏家圓內、且在贏家側」的部分（與贏家的情況互為鏡像）
+          if(R.cE){ rho = 0; break; }
+          const o = R.W, g = R.g;
+          const fx = v.cx - o.cx, fy = v.cy - o.cy, bq = ex*fx + ey*fy, disc = bq*bq - (fx*fx + fy*fy - o.r*o.r);
+          if(disc <= 0) continue;
+          const sq = Math.sqrt(disc), r1 = Math.max(0, -bq - sq), r2 = -bq + sq;
+          if(r2 <= 0 || r1 >= rho) continue;
+          let rs = Infinity;
+          if(g.line){
+            const eu = ex*g.ux + ey*g.uy, x0 = (v.cx - g.wx)*g.ux + (v.cy - g.wy)*g.uy;
+            if(x0 + r1*eu <= g.xc) rs = r1; else if(eu < -1e-12){ const t = (g.xc - x0)/eu; if(t < r2) rs = Math.max(r1, t); }
+          } else {
+            const gx = v.cx - g.cx, gy = v.cy - g.cy, bb = ex*gx + ey*gy, dd = bb*bb - (gx*gx + gy*gy - g.R*g.R);
+            if(g.sig < 0){
+              if(dd <= 0) rs = r1;
+              else { const t1 = -bb - Math.sqrt(dd), t2 = -bb + Math.sqrt(dd); if(r1 < t1 || r1 > t2) rs = r1; else if(t2 < r2) rs = t2; }
+            } else if(dd > 0){
+              const t1 = -bb - Math.sqrt(dd), t2 = -bb + Math.sqrt(dd), lo = Math.max(r1, t1), hi = Math.min(r2, t2);
+              if(lo < hi) rs = lo;
+            }
+          }
+          if(rs < rho) rho = rs;
+          continue;
+        }
         const o = R.L, g = R.g;
         const fx = v.cx - o.cx, fy = v.cy - o.cy, bq = ex*fx + ey*fy, disc = bq*bq - (fx*fx + fy*fy - o.r*o.r);
         if(disc <= 0) continue;

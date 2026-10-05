@@ -44,6 +44,23 @@ await page.waitForTimeout(2500);
 check((await page.textContent('#sO')) !== '假真空（暴脹中）', '典型觀測者模式：觀測者會被泡泡吞沒');
 check(!errors.length, '操作過程沒有錯誤' + (errors.length ? '：' + errors[0] : ''));
 
+// 4. 控制版：放置模式點擊放下泡泡（向上與向下穿隧），動作會記錄並套用；回看時不能放置
+errors.length = 0;
+await page.goto(url('control') + '#seed=4242'); await page.waitForTimeout(1200);
+await page.keyboard.press('p');
+const nVac = await page.$$eval('#ctlVac option', o => o.length);
+for(const [vac, pts] of [[nVac - 1, [[560, 330], [860, 520], [480, 600]]], [2, [[640, 420], [820, 380]]]]){
+  await page.selectOption('#ctlVac', String(vac));
+  for(const [x, y] of pts){ await page.mouse.click(x, y); await page.waitForTimeout(80); }
+}
+await page.waitForTimeout(400);
+const cnt = await page.textContent('#ctlCount');
+check(/^5 個（成功 [1-5]）/.test(cnt), `控制版：放置的動作會記錄並套用（${cnt}）`);
+await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(150); await page.mouse.click(700, 600); await page.waitForTimeout(150);
+check(/回看中無法操作/.test(await page.textContent('#ctlMsg')), '控制版：回看時不能放置');
+await page.keyboard.press('l');
+check(!errors.length, '控制版操作過程沒有錯誤' + (errors.length ? '：' + errors[0] : ''));
+
 await browser.close();
 console.log(failed ? `\n${failed} 項失敗` : '\n全部通過');
 process.exit(failed ? 1 : 0);

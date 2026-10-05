@@ -14,6 +14,11 @@ export function lamStr(V){ return `${V.lsign < 0 ? '−' : '+'}${V.lman.toFixed(
 
 export function fateText(b, v){
   const V = S.U.VAC[b.vac];
+  if(b.s < 0){
+    const tc = Math.log(S.RH/(S.RH - b.r0))/S.HUB;
+    return `向上穿隧產生的區域：它的真空能比周圍高，泡壁被周圍往內推而收縮，放出的能量歸吃掉它的一方。` +
+      (b.r0 < S.RH ? `它會在誕生後約 ${tc.toFixed(1)} 秒縮成一點、消失。` : '它比哈伯半徑還大，收縮追不上空間的膨脹，永遠縮不掉 —— 這正是永恆暴脹的原理。');
+  }
   if(V.dims !== 3) return `這裡的空間有 ${V.dims} 個維度。行星軌道與原子都難以穩定，我們熟悉的化學不會出現。`;
   if(b.crunch){
     const cg = v && crunchGeo(v);
@@ -48,7 +53,7 @@ export function updateCard(){
   if(S.tView < b.tn) state = `<dt>狀態</dt><dd>尚未誕生（${(b.tn - S.tView).toFixed(1)} 秒後）</dd>`;
   else if(S.tView >= b.texit) state = `<dt>狀態</dt><dd>已流出觀測範圍</dd>`;
   else {
-    const E = S.U.E(b, S.tView), r = S.R0*E + S.RH*(E-1);
+    const E = S.U.E(b, S.tView), r = S.U.circleAt(b, S.tView).r;
     state = `<dt>年齡</dt><dd>${(S.tView-b.tn).toFixed(1)} s</dd><dt>物理半徑</dt><dd>${(r/S.RH).toFixed(2)} R<sub>H</sub></dd><dt>與觀測者距離</dt><dd>${(b.d*E/S.RH).toFixed(2)} R<sub>H</sub></dd>`;
   }
   $('cFate').textContent = fateText(b, v);
@@ -56,8 +61,9 @@ export function updateCard(){
   $('cJump').disabled = gone;
   $('cJump').textContent = gone ? '誕生時刻已超出回放保留範圍' : '回到它誕生的時刻';
   const V = S.U.VAC[b.vac];
-  const origin = b.parent ? `第 ${b.depth + 1} 層，誕生於 #${b.parent.id}（${S.U.VAC[b.parent.vac].name}）內部` : '第 1 層，誕生於暴脹假真空';
-  const fate = V.kind === 'ads' ? `<dt>大擠壓時間</dt><dd>誕生後 ${V.crunchT.toFixed(1)} s</dd>`
+  const origin = (b.parent ? `第 ${b.depth + 1} 層，誕生於 #${b.parent.id}（${S.U.VAC[b.parent.vac].name}）內部` : '第 1 層，誕生於暴脹假真空') + (b.act ? '（由使用者放置）' : '');
+  const fate = b.s < 0 ? `<dt>塌縮時間</dt><dd>${b.r0 < S.RH ? `誕生後 ${(Math.log(S.RH/(S.RH - b.r0))/S.HUB).toFixed(1)} s` : '永遠縮不掉'}</dd>`
+    : V.kind === 'ads' ? `<dt>大擠壓時間</dt><dd>誕生後 ${V.crunchT.toFixed(1)} s</dd>`
     : V.kind === 'tiny' ? `<dt>熱寂時間</dt><dd>誕生後 ${V.hdT.toFixed(0)} s</dd>` : `<dt>內部穿隧率</dt><dd>${(V.grel*tune.innerMul).toFixed(2)} Γ</dd>`;
   $('cList').innerHTML =
     `<dt>來源</dt><dd>${origin}</dd>` +

@@ -11,6 +11,7 @@
 | 檔案 | 內容 |
 |---|---|
 | `dist/base.html` | 基礎版（第三版模擬器本體） |
+| `dist/control.html` | 控制版：點擊放下泡泡（向下／向上穿隧）、暫停演化、動作紀錄重播（P：放置模式、K：暫停演化） |
 | `dist/inspector.html` | 範例：基礎版 + 「檢視器」外掛（示範外掛 API） |
 | `dist/harness.html` | 自動化測試用（基礎版 + `window.__ei`），不要加功能 |
 
@@ -45,7 +46,7 @@ src/
   app/         組裝：共用狀態 S、設定、主迴圈、擴充點 hooks、外掛 API、進入點 startApp
   styles/      CSS
   template.html  HTML 外殼（建置時把 CSS 與 JS 內嵌進去）
-plugins/       可重複使用的外掛（例：inspector）
+plugins/       可重複使用的外掛（例：inspector、control）
 variants/      各版本 = 核心 + 選用的外掛（每個資料夾輸出一個 dist/<名稱>.html）
 test/          npm test（核心）與 e2e（瀏覽器）
 docs/          架構、外掛指南、開發歷程、路線圖
@@ -56,5 +57,5 @@ docs/          架構、外掛指南、開發歷程、路線圖
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)：架構、資料流、共用狀態、不變式
 - [docs/PLUGINS.md](docs/PLUGINS.md)：如何建立新版本與撰寫外掛
 - [docs/DEVELOPMENT_LOG.md](docs/DEVELOPMENT_LOG.md)：開發歷程、重要決策與踩過的坑
-- [docs/ROADMAP.md](docs/ROADMAP.md)：後續規劃（大範圍視角、移動泡泡、控制版與遊戲版）
+- [docs/ROADMAP.md](docs/ROADMAP.md)：後續規劃（大範圍視角、移動泡泡、控制版與遊戲版；D 節為遊戲版的物理設計與實作 TODO）
 - [CLAUDE.md](CLAUDE.md)：給 Claude Code 的開發守則

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>永恆暴脹（檢視器範例）</title>
+<title>永恆暴脹：控制版</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@500;700;900&display=swap" rel="stylesheet">
@@ -238,6 +238,12 @@ details[open] summary::after{content:" －"}
   .live.on .dot{animation:none}
   .skip.music .music-eq i{animation:none !important}
 }
+
+/* 控制版：控制面板的文字框與訊息 */
+.plugin-panel .btns{margin:6px 0}
+.plugin-panel textarea{width:100%;box-sizing:border-box;margin-top:4px;background:var(--btn);border:1px solid var(--panel-line);border-radius:8px;padding:5px 7px;color:var(--ink);font:11px/1.4 ui-monospace,monospace;resize:vertical}
+.ctl-msg{min-height:1.6em}
+.ctl-msg.bad{color:#ff9aa6}
 
 </style>
 
@@ -4341,71 +4347,221 @@ details[open] summary::after{content:" －"}
     return api;
   }
 
-  // plugins/inspector/index.js
-  function inspector() {
-    let on2 = true, mx = -1, my = -1, born = 0, rate = 0, acc = 0, off = null;
+  // plugins/control/index.js
+  function control() {
+    let api, panel, placing = false, mx = -1, my = -1, down2 = null;
+    const flashes = [];
+    const $p = (id) => panel.querySelector("#" + id);
+    const say = (msg, bad) => {
+      const el = $p("ctlMsg");
+      el.textContent = msg;
+      el.classList.toggle("bad", !!bad);
+    };
+    const vacSel = () => +$p("ctlVac").value;
+    const upR = () => +$p("ctlR").value * api.S.RH;
+    function preview(px, py, vac = vacSel()) {
+      const U = api.U, V = U.VAC[vac], own = U.ownerAt(px, py, api.tView), pe = own ? U.VAC[own.b.vac].eps : 1;
+      return { V, own, same: V.eps === pe, up: V.eps > pe };
+    }
+    function place(sx, sy) {
+      if (!api.S.isLive) return "回看中無法操作：請先回到直播";
+      const [x, y] = api.camera.toPhysical(sx, sy);
+      const a = api.act({ type: "nucleate", x, y, vac: vacSel(), r: upR() });
+      say(api.sim.paused ? "已排入：繼續演化後套用" : "已排入，下一步套用");
+      return a;
+    }
+    function setPlacing(v) {
+      placing = v;
+      $p("ctlPlace").checked = v;
+      api.camera.cv.style.cursor = v ? "crosshair" : "";
+    }
+    function setPaused(v) {
+      api.sim.setPaused(v);
+      $p("ctlPause").textContent = v ? "繼續演化（K）" : "暫停演化（K）";
+    }
+    function refreshLog() {
+      const acts = api.actions, ok = acts.filter((a) => a.result && a.result.ok).length, pend = acts.filter((a) => !a.result).length;
+      $p("ctlCount").textContent = `${acts.length} 個（成功 ${ok}${pend ? `、待套用 ${pend}` : ""}）`;
+    }
+    function fillVacuums(U) {
+      $p("ctlVac").innerHTML = U.VAC.map((V) => `<option value="${V.i}">${V.name}（${V.kind === "up" ? "比假真空高" : V.kind === "ads" ? "Λ<0" : V.kind === "tiny" ? "Λ≈0" : "Λ>0"}）</option>`).join("");
+    }
     return {
-      name: "inspector",
-      setup(api) {
-        const panel = api.addPanel({ title: "檢視器（範例外掛）", open: true, html: `
-        <label class="tog"><input type="checkbox" id="inspOn" checked><span>顯示游標資訊（I）</span></label>
-        <p class="note">每秒誕生泡泡：<b id="inspRate">0</b></p>` });
-        panel.querySelector("#inspOn").addEventListener("change", (e) => {
-          on2 = e.target.checked;
+      name: "control",
+      setup(a) {
+        api = a;
+        panel = api.addPanel({ title: "控制（介入演化）", open: true, html: `
+        <label class="tog"><input type="checkbox" id="ctlPlace"><span>放置模式（P）：點擊畫面放下泡泡</span></label>
+        <div class="sl"><label for="ctlVac"><span>真空</span></label><select id="ctlVac"></select></div>
+        <div class="sl"><label for="ctlR"><span>向上穿隧區域半徑</span><output id="ctlRo"></output></label>
+          <input type="range" id="ctlR" min=".1" max="1.5" step=".05" value=".4">
+          <p class="note">比所在處低的真空是一般的泡泡（向下穿隧）。比所在處高的真空（向上穿隧）會被周圍往內推而收縮；小於哈伯半徑時會縮成一點消失，大於哈伯半徑則永遠縮不掉。</p></div>
+        <div class="btns"><button id="ctlPause">暫停演化（K）</button></div>
+        <p class="note ctl-msg" id="ctlMsg">只能在直播時操作。</p>
+        <p class="note">動作紀錄：<b id="ctlCount">0 個</b></p>
+        <div class="btns"><button id="ctlReplay">以相同種子重播</button><button id="ctlCopy">複製</button></div>
+        <textarea id="ctlLog" rows="3" placeholder="貼上動作紀錄（JSON）後按「匯入並重播」"></textarea>
+        <div class="btns"><button id="ctlImport">匯入並重播</button></div>` });
+        $p("ctlPlace").addEventListener("change", (e) => setPlacing(e.target.checked));
+        $p("ctlPause").addEventListener("click", () => setPaused(!api.sim.paused));
+        const rOut = () => {
+          $p("ctlRo").textContent = `${(+$p("ctlR").value).toFixed(2)} R_H`;
+        };
+        $p("ctlR").addEventListener("input", rOut);
+        rOut();
+        $p("ctlReplay").addEventListener("click", () => {
+          const log = api.U.actionLog();
+          api.restart({ actions: log });
+          say(`已用相同種子重播 ${log.length} 個動作`);
+        });
+        $p("ctlCopy").addEventListener("click", () => {
+          const txt = JSON.stringify(api.U.actionLog());
+          $p("ctlLog").value = txt;
+          try {
+            navigator.clipboard.writeText(txt).then(() => say("已複製到剪貼簿"), () => say("已放到下方文字框"));
+          } catch (e) {
+            say("已放到下方文字框");
+          }
+        });
+        $p("ctlImport").addEventListener("click", () => {
+          let log;
+          try {
+            log = JSON.parse($p("ctlLog").value);
+          } catch (e) {
+            say("動作紀錄格式錯誤", true);
+            return;
+          }
+          if (!Array.isArray(log) || log.some((a2) => !a2 || typeof a2.step !== "number" || typeof a2.type !== "string")) {
+            say("動作紀錄格式錯誤", true);
+            return;
+          }
+          api.restart({ actions: log });
+          say(`已匯入並重播 ${log.length} 個動作（使用目前的種子與參數）`);
+        });
+        api.on("universe", (U) => {
+          fillVacuums(U);
+          refreshLog();
+          flashes.length = 0;
+          U.on("act", (a2) => {
+            flashes.push({ a: a2, until: performance.now() + 1800 });
+            refreshLog();
+            if (a2.result.ok) say(`✓ #${a2.result.id}：${a2.result.up ? "向上穿隧，區域會收縮" : "向下穿隧，新的口袋宇宙"}`);
+            else say(`✗ ${a2.result.reason}`, true);
+          });
         });
         api.camera.cv.addEventListener("pointermove", (e) => {
           mx = e.clientX;
           my = e.clientY;
         });
-        api.on("universe", (U) => {
-          if (off) off();
-          born = 0;
-          off = U.on("born", () => born++);
+        api.camera.cv.addEventListener("pointerleave", () => {
+          mx = -1;
         });
-        api.on("frame", ({ dtR }) => {
-          acc += dtR;
-          if (acc >= 1) {
-            rate = born / acc;
-            born = 0;
-            acc = 0;
-            const el = document.getElementById("inspRate");
-            if (el) el.textContent = rate.toFixed(1);
-          }
-        });
-        api.on("keydown", (e) => {
-          if (e.key !== "i" && e.key !== "I") return false;
-          on2 = !on2;
-          panel.querySelector("#inspOn").checked = on2;
+        api.on("pointerdown", (e) => {
+          if (!placing || e.button !== 0) return false;
+          down2 = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, moved: false, id: e.pointerId };
+          api.camera.cv.setPointerCapture(e.pointerId);
           return true;
         });
+        api.on("pointermove", (e) => {
+          if (!down2 || e.pointerId !== down2.id) return false;
+          if (Math.hypot(e.clientX - down2.x, e.clientY - down2.y) > 5) down2.moved = true;
+          if (down2.moved) {
+            const P2 = api.camera.P, Z = api.camera.Z;
+            api.camera.set(P2.x - (e.clientX - down2.lx) / Z, P2.y - (e.clientY - down2.ly) / Z);
+          }
+          down2.lx = e.clientX;
+          down2.ly = e.clientY;
+          return true;
+        });
+        api.on("pointerup", (e) => {
+          if (!down2 || e.pointerId !== down2.id) return false;
+          const d = down2;
+          down2 = null;
+          if (!d.moved) {
+            const r = place(e.clientX, e.clientY);
+            if (typeof r === "string") say(r, true);
+          }
+          return true;
+        });
+        api.on("keydown", (e) => {
+          if (e.key === "p" || e.key === "P") {
+            setPlacing(!placing);
+            return true;
+          }
+          if (e.key === "k" || e.key === "K") {
+            setPaused(!api.sim.paused);
+            return true;
+          }
+          return false;
+        });
+        api.on("frame", () => {
+          if (api.actions.some((a2) => !a2.result)) refreshLog();
+        });
         api.on("render:overlay", ({ ctx: ctx2 }) => {
-          if (!on2 || mx < 0) return;
-          const [px, py] = api.camera.toPhysical(mx, my);
-          const own = api.U.ownerAt(px, py, api.tView);
-          const txt = `(${px.toFixed(0)}, ${py.toFixed(0)})  ${own ? "#" + own.b.id + " " + api.U.VAC[own.b.vac].name : "假真空"}`;
+          const now = performance.now(), S2 = api.S, Z = api.camera.Z;
           ctx2.save();
+          for (const a2 of api.U.pendingActions()) {
+            const [sx, sy] = api.camera.toScreen(a2.x, a2.y);
+            ctx2.setLineDash([4, 5]);
+            ctx2.lineWidth = 1.4;
+            ctx2.strokeStyle = "rgba(255,240,200,.85)";
+            const rr = preview(a2.x, a2.y, a2.vac).up ? Math.max(6, (a2.r || 0) * Z) : 6;
+            ctx2.beginPath();
+            ctx2.arc(sx, sy, rr, 0, Math.PI * 2);
+            ctx2.stroke();
+          }
+          ctx2.setLineDash([]);
           ctx2.font = '12px "Noto Sans TC", sans-serif';
-          ctx2.textBaseline = "top";
-          const w = ctx2.measureText(txt).width + 12;
-          ctx2.fillStyle = "rgba(10,6,24,.75)";
-          ctx2.fillRect(mx + 14, my + 14, w, 22);
-          ctx2.fillStyle = "#ede7ff";
-          ctx2.fillText(txt, mx + 20, my + 19);
+          ctx2.textAlign = "left";
+          ctx2.textBaseline = "middle";
+          for (let i = flashes.length - 1; i >= 0; i--) {
+            const f = flashes[i];
+            if (now > f.until) {
+              flashes.splice(i, 1);
+              continue;
+            }
+            const al = Math.min(1, (f.until - now) / 600), [sx, sy] = api.camera.toScreen(f.a.x, f.a.y), ok = f.a.result.ok;
+            const txt = ok ? `#${f.a.result.id}` : f.a.result.reason;
+            ctx2.fillStyle = ok ? `rgba(190,255,210,${al})` : `rgba(255,150,160,${al})`;
+            ctx2.fillText((ok ? "✓ " : "✗ ") + txt, sx + 12, sy - 12);
+          }
+          if (placing && mx >= 0 && !down2) {
+            const [px, py] = api.camera.toPhysical(mx, my), pv = preview(px, py);
+            const live = S2.isLive, col = pv.same || !live ? "255,150,160" : pv.up ? "255,214,120" : "170,220,255";
+            ctx2.strokeStyle = `rgba(${col},.9)`;
+            ctx2.lineWidth = 1.5;
+            ctx2.beginPath();
+            ctx2.arc(mx, my, pv.up ? Math.max(4, upR() * Z) : 5, 0, Math.PI * 2);
+            ctx2.stroke();
+            const tip2 = !live ? "回看中無法操作" : pv.same ? "這裡已經是這種真空" : `${pv.V.name}：${pv.up ? "向上穿隧（會收縮）" : "向下穿隧"}`;
+            const w = ctx2.measureText(tip2).width + 12;
+            ctx2.fillStyle = "rgba(10,6,24,.75)";
+            ctx2.fillRect(mx + 14, my + 10, w, 22);
+            ctx2.fillStyle = `rgba(${col},1)`;
+            ctx2.fillText(tip2, mx + 20, my + 21);
+          }
           ctx2.restore();
         });
-        api.addCheck({ name: "外掛：檢視器", desc: "外掛 API 的事件（universe、frame、render:overlay）都必須確實被呼叫", run() {
-          let n = 0;
-          const stop = api.on("render:overlay", () => n++);
-          api.render(api.tView);
-          stop();
-          return { pass: n === 1 && !!api.U, detail: `render:overlay 呼叫 ${n} 次` };
+        api.addCheck({ name: "外掛：控制版", desc: "回看時不能放置；直播時放置會排入動作紀錄並在下一步套用；相同種子與動作紀錄重播後結果相同", run() {
+          const S2 = api.S, keepLive = S2.isLive;
+          S2.isLive = false;
+          const r1 = place(S2.vw / 2, S2.vh / 2);
+          S2.isLive = keepLive;
+          const p = { ...api.U.p }, T = api.createUniverse(p, { ...api.tune });
+          T.presim(5);
+          const a2 = T.act({ type: "nucleate", x: 900, y: 300, vac: T.VAC.length - 1, r: 60 });
+          T.advance(api.STEP * 2);
+          const R = api.createUniverse(p, { ...api.tune }, { actions: T.actionLog() });
+          R.presim(5 + api.STEP * 2);
+          const same = !!a2.result && JSON.stringify(R.actions[0].result) === JSON.stringify(a2.result) && R.fingerprint(T.tSim) === T.fingerprint(T.tSim);
+          return { pass: typeof r1 === "string" && same, detail: `回看時放置：${typeof r1 === "string" ? "已拒絕" : "未拒絕"}；新動作結果：${a2.result ? a2.result.ok ? "成功" : a2.result.reason : "未套用"}；重播${same ? "一致" : "不一致"}` };
         } });
       }
     };
   }
 
-  // variants/inspector/main.js
-  startApp({ plugins: [inspector()] });
+  // variants/control/main.js
+  startApp({ plugins: [control()] });
 })();
 
 </script>

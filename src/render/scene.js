@@ -96,7 +96,7 @@ export const C4 = (c, a) => [c[0], c[1], c[2], a];
 export function cellPath(v, cap){
   ctx.beginPath();
   const lim = cap === undefined ? Math.max(.6, v.r) : Math.min(v.r, cap);
-  const constrained = v.rules && v.rules.some(R => R.kind === 'merge' || (R.kind === 'wall' && R.W === v) || (R.kind === 'inherit' && R.X === v && !R.free));
+  const constrained = v.rules && v.rules.some(R => R.kind === 'merge' || (R.kind === 'wall' && (R.W === v || R.lYield)) || (R.kind === 'inherit' && R.X === v && !R.free));
   const wedge = viewWedge(v.cx, v.cy);
   if(!constrained && cap === undefined && v.full){ ctx.rect(-10, -10, S.vw + 20, S.vh + 20); return; }
   if(!constrained && !wedge && lim < BIG){ ctx.arc(v.cx, v.cy, lim, 0, TAU); return; }
@@ -452,8 +452,8 @@ export function drawBubbles(F){
     const V = S.U.VAC[v.b.vac];
     /* 泡泡內部的紋理和背景一樣「畫在空間上」：以觀測者為中心、隨哈伯流向外流動（雙層交叉淡入的無限縮放）。
        同種真空的泡泡共用同一片紋理，融合時天衣無縫；流動速度只取決於離觀測者多遠，和泡泡大小無關，也不會突然轉向。 */
-    if(V.kind === 'ds'){
-      // 正真空能：內部仍在暴脹，物質被稀釋，看不到星系，只有能量雲
+    if(V.kind === 'ds' || V.kind === 'up'){
+      // 正真空能：內部仍在暴脹，物質被稀釋，看不到星系，只有能量雲（激發態假真空暴脹得比外面還快）
       const tf = v.b._tf;
       if(opt.neb && K.neb > 0 && tf > .01){
         // 能量越高，雲在內部翻湧得越快（固定方向、固定速度的緩慢漂移）
@@ -501,7 +501,7 @@ export function drawBubbles(F){
       hs.push([Math.max(x1, mid), 26,10,16, .55*prog], [Math.max(x1, mid, x0), 30,12,18, 0]);
       ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = radialGrad(sx, sy, 0, sr, hs); cellPath(v); ctx.fill();
     }
-    if(v.age < 3.5 && V.kind !== 'ds'){
+    if(v.age < 3.5 && V.kind !== 'ds' && V.kind !== 'up'){
       const a = Math.pow(1 - v.age/3.5, 2)*.85, rr = Math.max(2, sr);
       ctx.globalCompositeOperation = 'lighter';
       ctx.fillStyle = radialGrad(sx, sy, 0, rr, [[0, 255,252,240, a], [.5, ...C4(pal.wall, a*.5)], [1, ...C4(pal.wall, 0)]]);
