@@ -1,0 +1,17 @@
+{
+  "name": "eternal-inflation",
+  "version": "3.1.0",
+  "private": true,
+  "description": "永恆暴脹模擬器：以 Canvas 繪製的永恆暴脹、口袋宇宙、疇壁與大擠壓／熱寂模擬。各版本共用同一個核心，以外掛擴充。",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "test": "node --test test/*.test.mjs",
+    "test:e2e": "node build.mjs && node test/e2e.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.0",
+    "playwright": "^1.63.0"
+  }
+}

@@ -1,0 +1,4075 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>永恆暴脹 III：口袋宇宙觀測站</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0c0820;
+  --panel:rgba(250,247,255,.9);
+  --panel-line:rgba(60,30,120,.16);
+  --panel-solid:#f6f3ff;
+  --ink:#1f1740;
+  --ink-soft:#5b5285;
+  --accent:#b02c86;
+  --accent-2:#2a7fb8;
+  --gold:#8a5f12;
+  --track:rgba(60,30,120,.16);
+  --live:#d8303f;
+  --btn:rgba(60,30,120,.07);
+  --btn-hover:rgba(60,30,120,.15);
+  --serif:"Noto Serif TC","Songti TC","PMingLiU",serif;
+  --sans:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --panel:rgba(20,13,44,.66);
+    --panel-line:rgba(200,180,255,.14);
+    --panel-solid:#1b1338;
+    --ink:#ede7ff;
+    --ink-soft:#a99fd2;
+    --accent:#ff6fcf;
+    --accent-2:#6fd3ff;
+    --gold:#f2c46d;
+    --track:rgba(220,200,255,.16);
+    --live:#ff4d5e;
+    --btn:rgba(220,200,255,.08);
+    --btn-hover:rgba(220,200,255,.16);
+  }
+}
+:root[data-theme="dark"]{
+  --panel:rgba(20,13,44,.66);
+  --panel-line:rgba(200,180,255,.14);
+  --panel-solid:#1b1338;
+  --ink:#ede7ff;
+  --ink-soft:#a99fd2;
+  --accent:#ff6fcf;
+  --accent-2:#6fd3ff;
+  --gold:#f2c46d;
+  --track:rgba(220,200,255,.16);
+  --live:#ff4d5e;
+  --btn:rgba(220,200,255,.08);
+  --btn-hover:rgba(220,200,255,.16);
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px);height:100%}
+body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);overflow:hidden;-webkit-font-smoothing:antialiased}
+button,select,input{font:inherit;color:inherit}
+button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible,.scrub:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+#sky{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#sky.dragging{cursor:grabbing}
+
+.panel{background:var(--panel);border:1px solid var(--panel-line);backdrop-filter:blur(14px) saturate(1.25);-webkit-backdrop-filter:blur(14px) saturate(1.25);box-shadow:0 12px 40px rgba(4,0,16,.35)}
+
+/* 直排標題：像一張星圖的題簽 */
+.title{position:fixed;left:calc(20px + env(safe-area-inset-left,0px));top:calc(18px + env(safe-area-inset-top,0px));margin:0;writing-mode:vertical-rl;font-family:var(--serif);font-weight:900;font-size:46px;letter-spacing:.24em;line-height:1.05;color:#f4e2b0;text-shadow:0 0 22px rgba(255,180,100,.35),0 1px 2px rgba(0,0,0,.7);pointer-events:none;user-select:none}
+.title small{font-weight:500;font-size:13px;letter-spacing:.42em;color:rgba(244,226,176,.72);margin-right:12px;padding-top:6px}
+
+.plate{position:fixed;left:calc(104px + env(safe-area-inset-left,0px));top:calc(20px + env(safe-area-inset-top,0px));width:290px;border-radius:12px;padding:14px 16px 12px}
+.lede{margin:0 0 12px;font-family:var(--serif);font-size:13.5px;line-height:1.75;color:var(--ink-soft)}
+.stats{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;margin:0;font-size:13px}
+.stats dt{color:var(--ink-soft)}
+.stats dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;font-weight:500}
+.stats sup{font-size:.72em}
+
+.controls{position:fixed;right:calc(16px + env(safe-area-inset-right,0px));top:calc(18px + env(safe-area-inset-top,0px));width:272px;max-height:calc(100% - 200px);overflow:auto;border-radius:12px;padding:6px 14px 10px;font-size:13px}
+.ctl-head{display:flex;align-items:center;gap:6px;padding:8px 0 8px;border-bottom:1px solid var(--panel-line);position:sticky;top:-6px;margin:0 -14px;padding-left:14px;padding-right:14px;background:var(--panel-solid);border-radius:12px 12px 0 0;z-index:1}
+.ctl-head h2{flex:1;margin:0;font-family:var(--serif);font-size:15px;font-weight:700}
+.mini{border:1px solid var(--panel-line);background:var(--btn);border-radius:999px;padding:3px 10px;font-size:12px;cursor:pointer;color:var(--ink)}
+.mini:hover{background:var(--btn-hover)}
+.controls details{border-bottom:1px solid var(--panel-line);padding:10px 0}
+.controls details:last-child{border-bottom:0}
+.controls summary{margin-bottom:2px}
+.controls details[open] summary{margin-bottom:8px}
+.controls output{font-weight:500;color:var(--accent);font-variant-numeric:tabular-nums}
+.sl{margin:4px 0 12px}
+.sl label{display:flex;justify-content:space-between;gap:8px;font-size:12.5px;margin-bottom:1px}
+.sl input{display:block;margin:2px 0 0}
+.sl .note{margin-top:2px}
+.derived{margin:2px 0 10px;padding:8px 10px;border-radius:8px;background:var(--btn);font-size:12px;line-height:1.7;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+.derived b{color:var(--ink);font-weight:500}
+.apply{width:100%;border:1px solid var(--panel-line);background:var(--btn);border-radius:10px;padding:8px;cursor:pointer;font-weight:700}
+.apply:hover{background:var(--btn-hover)}
+.apply.dirty{background:var(--accent);border-color:transparent;color:#fff}
+.tog-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 8px}
+.tog-grid .tog{font-size:12.5px}
+body.no-notes .note{display:none}
+.controls select{width:100%;background:var(--btn);border:1px solid var(--panel-line);border-radius:8px;padding:5px 6px;color:var(--ink);margin-top:3px}
+.controls select option{color:#1f1740}
+.skip.music{display:inline-flex;align-items:center;gap:5px}
+.skip.music svg{width:15px;height:15px;fill:currentColor}
+.skip.music[aria-pressed="true"]{color:var(--accent);font-weight:700}
+.music-eq{display:inline-flex;gap:2px;align-items:flex-end;height:12px}
+.music-eq i{width:2px;height:4px;background:currentColor;border-radius:1px}
+.skip.music[aria-pressed="true"] .music-eq i{animation:eq 1.1s ease-in-out infinite}
+.skip.music[aria-pressed="true"] .music-eq i:nth-child(2){animation-delay:-.4s}
+.skip.music[aria-pressed="true"] .music-eq i:nth-child(3){animation-delay:-.75s}
+@keyframes eq{50%{height:12px}}
+.plate-foot{display:flex;justify-content:flex-end;gap:6px;margin-top:8px}
+#reseedBtn{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,transparent)}
+#reseedBtn[hidden]{display:none}
+.plate.compact .lede{display:none}
+body.ctl-closed .controls{display:none}
+body.ctl-closed .panel-toggle{display:block}
+body.ui-hidden .title,body.ui-hidden .plate,body.ui-hidden .controls,body.ui-hidden .panel-toggle,body.ui-hidden .card{display:none !important}
+.tog{display:flex;align-items:center;gap:10px;padding:4px 0;cursor:pointer}
+.tog input{appearance:none;-webkit-appearance:none;width:30px;height:17px;border-radius:999px;background:var(--track);position:relative;margin:0;cursor:pointer;transition:background .2s}
+.tog input::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:var(--ink-soft);transition:transform .2s,background .2s}
+.tog input:checked{background:color-mix(in srgb,var(--accent) 35%,transparent)}
+.tog input:checked::after{transform:translateX(13px);background:var(--accent)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.note{margin:6px 0 0;color:var(--ink-soft);font-size:12px;line-height:1.6}
+.btns{display:flex;gap:6px}
+.btns button{flex:1;border:1px solid var(--panel-line);background:var(--btn);border-radius:8px;padding:6px 0;cursor:pointer}
+.btns button:hover{background:var(--btn-hover)}
+summary{cursor:pointer;font-size:12.5px;font-weight:700;list-style:none}
+summary::-webkit-details-marker{display:none}
+summary::after{content:" ＋";color:var(--ink-soft);font-weight:400}
+details[open] summary::after{content:" －"}
+.legend{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:9px}
+.legend li{display:grid;grid-template-columns:22px 1fr;gap:10px;align-items:start;line-height:1.55;color:var(--ink-soft);font-size:12px}
+.legend b{color:var(--ink);font-weight:500;display:block}
+.sw{width:22px;height:22px;border-radius:50%;margin-top:2px}
+.sw.fv{border-radius:5px;background:radial-gradient(circle at 30% 30%,#c24fa8,transparent 60%),radial-gradient(circle at 70% 70%,#3d7fd0,transparent 60%),#1a1036}
+.sw.pk{background:radial-gradient(circle,#0a2d3a 55%,#35a3ad 88%,#8fffe9 100%)}
+.sw.col{background:radial-gradient(circle,#fff 0,#ffd9f3 18%,transparent 55%),#1a1036;border-radius:5px}
+.sw.hz{border:2px dashed #f2c46d;background:transparent}
+.sw.q{background:transparent;border:2px solid #ff86dc;box-shadow:inset 0 0 0 4px transparent,0 0 0 3px rgba(255,210,140,.5)}
+.sw.hd{background:radial-gradient(circle,#040309 40%,#1a0a10 62%,#3a2a40 80%,#c9b7ff 100%)}
+.sw.cr{background:radial-gradient(circle,#000 38%,#fff6ea 44%,#a8c2ff 62%,#1a2a5a 86%,#7fe9ff 100%)}
+
+.seed-row{display:flex;gap:6px;margin-top:3px}
+.seed-row input{flex:1;min-width:0;background:var(--btn);border:1px solid var(--panel-line);border-radius:8px;padding:5px 8px;font-variant-numeric:tabular-nums}
+.land{display:grid;gap:5px;font-size:12px}
+.land .vr{display:grid;grid-template-columns:14px 1fr auto;gap:8px;align-items:center}
+.land .vr i{width:14px;height:14px;border-radius:50%}
+.land .vr b{font-weight:500;color:var(--ink)}
+.land .vr span{color:var(--ink-soft)}
+.land .vr em{font-style:normal;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+.sw.mg{background:radial-gradient(circle at 35% 50%,#0a2d3a 30%,transparent 31%),radial-gradient(circle at 68% 50%,#0a2d3a 30%,transparent 31%),radial-gradient(circle at 50% 50%,#35a3ad 60%,#8fffe9 70%,transparent 72%);border-radius:5px}
+.banner{position:fixed;left:50%;top:calc(18px + env(safe-area-inset-top,0px));transform:translateX(-50%);width:min(440px,calc(100% - 24px));border-radius:14px;padding:14px 16px;font-size:13.5px;z-index:6}
+.banner[hidden]{display:none}
+.checks{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:8px;font-size:12px}
+.checks li{display:grid;gap:2px;padding:7px 9px;border-radius:8px;background:var(--btn);border-left:3px solid var(--ink-soft)}
+.checks li.ok{border-left-color:#3fbf7f}
+.checks li.bad{border-left-color:var(--live)}
+.checks li b{font-weight:700;color:var(--ink)}
+.checks li span{color:var(--ink);font-variant-numeric:tabular-nums}
+.checks li small{color:var(--ink-soft);line-height:1.5}
+.checks li.sum{border-left-width:0;text-align:center}
+#checkBtn:disabled{opacity:.6;cursor:progress}
+.banner p{margin:0 0 10px;font-family:var(--serif);line-height:1.7}
+.panel-toggle{display:none;position:fixed;right:calc(16px + env(safe-area-inset-right,0px));top:calc(18px + env(safe-area-inset-top,0px));border-radius:999px;padding:7px 16px;font-size:13px;cursor:pointer;color:var(--ink)}
+
+/* 播放器 */
+.player{position:fixed;left:0;right:0;margin:0 auto;bottom:calc(14px + env(safe-area-inset-bottom,0px));width:min(1100px,calc(100% - 28px));border-radius:14px;padding:6px 14px 10px}
+.scrub{position:relative;height:34px;cursor:pointer;touch-action:none}
+.scrub canvas{position:absolute;left:0;top:2px;width:100%;height:22px;opacity:.55;pointer-events:none}
+.scrub .rail,.scrub .played{position:absolute;left:0;top:23px;height:4px;border-radius:4px;transition:height .15s,top .15s}
+.scrub .rail{width:100%;background:var(--track)}
+.scrub .played{width:0;background:linear-gradient(90deg,var(--accent-2),var(--accent))}
+.scrub:hover .rail,.scrub:hover .played,.scrub.active .rail,.scrub.active .played{top:22px;height:6px}
+.scrub .thumb{position:absolute;top:25px;left:0;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:#fff;box-shadow:0 0 0 3px var(--accent),0 0 14px var(--accent);pointer-events:none}
+.scrub .mark{position:absolute;top:15px;width:2px;height:16px;margin-left:-1px;background:var(--gold);border-radius:2px;pointer-events:none;display:none}
+.scrub .tip{position:absolute;bottom:40px;transform:translateX(-50%);background:var(--panel);border:1px solid var(--panel-line);border-radius:6px;padding:3px 8px;font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums;pointer-events:none;opacity:0;transition:opacity .12s}
+.scrub:hover .tip,.scrub.active .tip{opacity:1}
+.row{display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap}
+.ic{width:36px;height:34px;border:0;border-radius:8px;background:transparent;display:grid;place-items:center;cursor:pointer}
+.ic:hover{background:var(--btn-hover)}
+.ic svg{width:20px;height:20px;fill:currentColor}
+.ic .i-play{display:none}
+.ic.paused .i-play{display:block}
+.ic.paused .i-pause{display:none}
+.skip{border:0;background:transparent;border-radius:8px;padding:6px 8px;cursor:pointer;font-size:12.5px;font-variant-numeric:tabular-nums}
+.skip:hover{background:var(--btn-hover)}
+.skip:disabled{opacity:.35;cursor:default;background:transparent}
+.live{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--panel-line);background:var(--btn);border-radius:999px;padding:5px 12px;cursor:pointer;font-size:12.5px;font-weight:700}
+.live .dot{width:8px;height:8px;border-radius:50%;background:var(--ink-soft)}
+.live.on{border-color:transparent;background:var(--live);color:#fff}
+.live.on .dot{background:#fff;animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.25}}
+.time{font-size:13px;font-variant-numeric:tabular-nums;margin-left:6px;color:var(--ink)}
+.time .behind{color:var(--ink-soft);margin-left:6px}
+.spacer{flex:1}
+.speed{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-soft)}
+.speed select{background:var(--btn);border:1px solid var(--panel-line);border-radius:8px;padding:4px 6px;color:var(--ink)}
+.speed option{color:#1f1740}
+
+/* 泡泡資訊卡 */
+.card{position:fixed;left:calc(104px + env(safe-area-inset-left,0px));top:calc(282px + env(safe-area-inset-top,0px));width:290px;max-height:calc(100% - 420px);overflow:auto;border-radius:16px;padding:14px 16px 14px;font-size:13px}
+.card[hidden]{display:none}
+.card-head{display:flex;align-items:center;gap:10px}
+.card-head .swatch{width:18px;height:18px;border-radius:50%;flex:none}
+.card h2{margin:0;flex:1;font-family:var(--serif);font-size:18px;font-weight:700;letter-spacing:.04em}
+.card .x{border:0;background:transparent;font-size:20px;line-height:1;width:30px;height:30px;border-radius:8px;cursor:pointer;color:var(--ink-soft)}
+.card .x:hover{background:var(--btn-hover)}
+.fate{margin:8px 0 10px;font-family:var(--serif);line-height:1.7;color:var(--ink-soft)}
+.card dl{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;margin:0 0 12px}
+.card dt{color:var(--ink-soft)}
+.card dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+.card sup{font-size:.72em}
+.jump{width:100%;border:1px solid var(--panel-line);background:var(--btn);border-radius:10px;padding:8px;cursor:pointer;font-weight:500}
+.jump:hover{background:var(--btn-hover)}
+.jump:disabled{opacity:.5;cursor:default}
+
+@media (max-width:760px){
+  .title{writing-mode:horizontal-tb;font-size:24px;letter-spacing:.14em;left:calc(14px + env(safe-area-inset-left,0px));top:calc(12px + env(safe-area-inset-top,0px))}
+  .title small{margin:0 0 0 8px;font-size:11px;letter-spacing:.2em}
+  .plate{left:calc(12px + env(safe-area-inset-left,0px));right:calc(12px + env(safe-area-inset-right,0px));top:calc(48px + env(safe-area-inset-top,0px));width:auto;padding:8px 12px}
+  .lede{display:none}
+  .stats{grid-template-columns:auto 1fr auto 1fr;font-size:12px;gap:3px 10px}
+  .panel-toggle{right:calc(12px + env(safe-area-inset-right,0px));top:calc(8px + env(safe-area-inset-top,0px));padding:5px 12px}
+  .controls{top:calc(10px + env(safe-area-inset-top,0px));left:calc(12px + env(safe-area-inset-left,0px));right:calc(12px + env(safe-area-inset-right,0px));width:auto;max-height:calc(100% - 150px);z-index:5}
+  .plate-foot{display:none}
+  .card{left:calc(12px + env(safe-area-inset-left,0px));right:calc(12px + env(safe-area-inset-right,0px));width:auto;top:auto;max-height:50%;bottom:calc(122px + env(safe-area-inset-bottom,0px))}
+  .player{width:calc(100% - 20px);padding:4px 10px 8px}
+  .speed span{display:none}
+  .time{margin-left:2px;font-size:12px}
+}
+@media (prefers-reduced-motion:reduce){
+  .live.on .dot{animation:none}
+  .skip.music .music-eq i{animation:none !important}
+}
+
+</style>
+
+</head>
+<body>
+<canvas id="sky" aria-label="永恆暴脹模擬畫面：假真空持續膨脹，口袋宇宙泡泡不斷誕生"></canvas>
+
+<h1 class="title">永恆暴脹<small>口袋宇宙觀測站（三）</small></h1>
+
+<header class="plate panel">
+  <p class="lede">假真空以指數速率膨脹，量子穿隧不斷開出口袋宇宙；仍在膨脹的口袋宇宙裡又會生出下一層。同種真空相遇就融合，不同真空之間的疇壁則被能量較低的一方推著走。</p>
+  <dl class="stats">
+    <dt>宇宙時間</dt><dd id="sT">0.0 s</dd>
+    <dt>膨脹 e-folds</dt><dd id="sN">0.0</dd>
+    <dt>尺度因子 a</dt><dd id="sA">1</dd>
+    <dt>已誕生口袋宇宙</dt><dd id="sB">0</dd>
+    <dt>視野中假真空</dt><dd id="sF">100%</dd>
+    <dt>觀測者所在</dt><dd id="sO">假真空</dd>
+    <dt>宇宙種子</dt><dd id="sS">—</dd>
+  </dl>
+  <div class="plate-foot"><button class="mini" id="reseedBtn" hidden>換個種子重新開始</button><button class="mini" id="ledeBtn" aria-expanded="true">收起說明</button></div>
+</header>
+
+<button class="panel-toggle panel" id="panelToggle" aria-expanded="true" aria-controls="controls">設定</button>
+
+<aside class="controls panel" id="controls">
+  <div class="ctl-head">
+    <h2>設定</h2>
+    <button class="mini" id="notesBtn" aria-pressed="true">隱藏說明文字</button>
+    <button class="mini" id="ctlHide">收起</button>
+  </div>
+  <details open>
+    <summary>顯示</summary>
+    <div class="tog-grid">
+      <label class="tog"><input type="checkbox" id="optGrid" checked><span>時空網格</span></label>
+      <label class="tog"><input type="checkbox" id="optWarp" checked><span>空間扭曲</span></label>
+      <label class="tog"><input type="checkbox" id="optHz" checked><span>哈伯視界</span></label>
+      <label class="tog"><input type="checkbox" id="optQ" checked><span>量子漲落</span></label>
+      <label class="tog"><input type="checkbox" id="optNeb" checked><span>能量雲</span></label>
+      <label class="tog"><input type="checkbox" id="optStars" checked><span>泡內星系</span></label>
+      <label class="tog"><input type="checkbox" id="optCol" checked><span>碰撞面</span></label>
+      <label class="tog"><input type="checkbox" id="optFlash" checked><span>誕生閃光</span></label>
+      <label class="tog"><input type="checkbox" id="optLbl" checked><span>宇宙編號</span></label>
+      <label class="tog"><input type="checkbox" id="optVig" checked><span>暗角</span></label>
+    </div>
+  </details>
+  <details open>
+    <summary>即時參數</summary>
+    <div id="liveSliders"></div>
+  </details>
+  <details>
+    <summary>宇宙參數（需重新開始）</summary>
+    <div class="sl"><label for="seedIn"><span>宇宙種子</span></label>
+      <div class="seed-row"><input id="seedIn" type="text" inputmode="numeric" maxlength="10" autocomplete="off" spellcheck="false"><button class="mini" id="seedRnd">換一個</button></div>
+      <p class="note">相同的種子與參數會重現同一個宇宙：每個泡泡誕生的時刻、位置與真空種類都一樣。執行中拖動「即時參數」會改變之後的演化。</p></div>
+    <div class="sl"><label for="obsSel"><span>觀測者模式</span></label>
+      <select id="obsSel"><option value="post" selected>後選：永遠留在暴脹區</option><option value="typical">典型：可能被泡泡吞沒</option></select>
+      <p class="note">後選模式只看一條永遠不被吞沒的世界線。典型模式不做挑選，中央的觀測者遲早會落入某個口袋宇宙，甚至遭遇大擠壓。</p></div>
+    <div id="uniSliders"></div>
+    <div class="derived" id="derived"></div>
+    <button class="apply" id="applyBtn">套用並重新開始</button>
+    <p class="note">這些參數決定整個時空的幾何，改變後既有的歷史就不再成立，所以會清空時間軸重新演化。</p>
+  </details>
+  <details open>
+    <summary>視角</summary>
+    <div class="btns"><button id="zin">放大</button><button id="zout">縮小</button><button id="zreset">重設</button></div>
+    <p class="note">滾輪或雙指縮放，拖曳平移，點擊泡泡查看它的物理常數。空白鍵暫停，← → 跳 5 秒，L 回到直播，H 隱藏所有面板，M 開關音樂。</p>
+  </details>
+  <details>
+    <summary>真空地景</summary>
+    <div id="landscape" class="land"></div>
+    <p class="note">每個種子都會生成一組真空。同一種真空的泡泡相遇時會融合；正真空能的真空內部會繼續穿隧到能量更低的真空；負真空能的真空會走向大擠壓，能量越負崩塌得越快。</p>
+  </details>
+  <details>
+    <summary>音樂</summary>
+    <label class="tog"><input type="checkbox" id="optMusic"><span>背景音樂〈第一秒的永恆〉</span></label>
+    <div id="musicSliders"></div>
+    <p class="note">這首曲子由模擬即時生成，不會重複。D 利底亞調式的和聲鋪底緩緩輪轉；一串柔和的長音沿著同一個音階一級一級往上爬，最高處悄悄淡出、底部又淡入，形成永無止境上升的謝帕德音階，對應空間不斷翻倍（暫停時它也會停住）；每個口袋宇宙在畫面上誕生時敲響一聲鐘，音高由它的色系決定，靠近視界的較低沉、遠方的較清亮；可能宜居的宇宙會奏出三音動機；泡泡相撞是玻璃般的輕響，大擠壓則是一陣低沉的轟鳴。</p>
+  </details>
+  <details>
+    <summary>效能與資源</summary>
+    <div class="sl"><label for="qSel"><span>畫質</span></label>
+      <select id="qSel"><option value="auto">自動調整</option><option value="2">高</option><option value="1" selected>中</option><option value="0">低</option></select>
+      <p class="note">自動模式會在運算吃緊時降低解析度、網格取樣與特效數量，順暢時再調回來。</p></div>
+    <label class="tog"><input type="checkbox" id="optBg"><span>離開頁面時繼續運行</span></label>
+    <p class="note" style="margin-bottom:10px">切到其他分頁或縮小視窗時，模擬與音樂照常進行（只是不繪製畫面）。回來時直播已經往前走，錯過的部分可以拖曳進度條回看。瀏覽器在背景會降低計時頻率，模擬會以較大的時間步補上；部分手機瀏覽器會直接凍結背景分頁，這時仍會暫停。</p>
+    <div class="sl"><label for="fpsSel"><span>影格率上限</span></label>
+      <select id="fpsSel"><option value="60" selected>60 fps</option><option value="30">30 fps（省電）</option></select></div>
+    <div class="sl"><label for="histSel"><span>回放保留時間</span></label>
+      <select id="histSel"><option value="300">5 分鐘</option><option value="600">10 分鐘</option><option value="1200" selected>20 分鐘</option><option value="1800">30 分鐘</option><option value="3600">60 分鐘</option></select>
+      <p class="note">像直播的 DVR 一樣，只保留最近這段時間可以回看。更早的歷史會被捨棄，所以記憶體有固定上限，可以長時間掛著運行。</p></div>
+    <div class="derived" id="perf"></div>
+  </details>
+  <details>
+    <summary>自我檢查與其他</summary>
+    <button class="apply" id="checkBtn">執行自我檢查</button>
+    <p class="note">用全新的宇宙實例驗證程式的不變式：可重現性、成核合法性、物理與畫面歸屬一致、繪製邊界、穿隧率、長時間數值、疇壁穩定與繪製效能。約需 10 秒，不影響正在播放的模擬。</p>
+    <ul class="checks" id="checkOut"></ul>
+    <button class="apply" id="resetAll" style="margin-top:10px">所有參數還原預設</button>
+  </details>
+  <details open>
+    <summary>圖例</summary>
+    <ul class="legend">
+      <li><span class="sw fv"></span><span><b>假真空</b>仍在暴脹的背景。網格隨膨脹不斷向外流動，新的網格線從中央長出。</span></li>
+      <li><span class="sw pk"></span><span><b>口袋宇宙</b>量子穿隧產生的泡泡。真空能為正的仍在暴脹，內部是隨膨脹流動的能量雲；真空能近乎為零或為負的才會冷卻出星系。</span></li>
+      <li><span class="sw col"></span><span><b>疇壁</b>不同真空相撞後各佔一側，兩側各帶自己的顏色。疇壁被真空能較低的一方推向較高的一方：能量差越大，線越粗越亮，朝輸家推出的漣漪也越快。相撞與融合的瞬間會沿交界發光，再逐漸平息。</span></li>
+      <li><span class="sw cr"></span><span><b>大擠壓</b>真空能為負的宇宙會停止膨脹並收縮。從外面看，熾熱的收縮區與黑色的奇點區由中心向外擴散，泡壁照常擴張。</span></li>
+      <li><span class="sw mg"></span><span><b>融合與巢狀</b>同種真空的泡泡相遇會融為一體，不留交界；仍在膨脹的口袋宇宙裡會長出更小的下一層泡泡。</span></li>
+      <li><span class="sw hd"></span><span><b>熱寂</b>真空能近乎為零的宇宙不再暴脹，會一直膨脹冷卻：星光熄滅、星系遠離，從中心向外陷入越來越暗的空曠。</span></li>
+      <li><span class="sw hz"></span><span><b>哈伯視界</b>在界外誕生的泡泡，永遠追不上中央的觀測者。</span></li>
+      <li><span class="sw q"></span><span><b>量子漲落</b>在視界內閃爍，被拉到界外後凍結成金色。</span></li>
+    </ul>
+  </details>
+</aside>
+
+<div class="banner panel" id="banner" hidden>
+  <p id="bannerTxt"></p>
+  <div class="btns"><button id="bannerNew">換個種子重新開始</button><button id="bannerClose">繼續觀看</button></div>
+</div>
+<div class="card panel" id="card" hidden>
+  <div class="card-head"><span class="swatch" id="cSw"></span><h2 id="cTitle">口袋宇宙</h2><button class="x" id="cClose" aria-label="關閉">×</button></div>
+  <p class="fate" id="cFate"></p>
+  <dl id="cList"></dl>
+  <button class="jump" id="cJump">回到它誕生的時刻</button>
+</div>
+
+<footer class="player panel">
+  <div class="scrub" id="scrub" role="slider" tabindex="0" aria-label="時間軸" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
+    <canvas id="spark"></canvas>
+    <div class="rail"></div>
+    <div class="played" id="played"></div>
+    <div class="mark" id="mark"></div>
+    <div class="thumb" id="thumb"></div>
+    <div class="tip" id="tip">0:00</div>
+  </div>
+  <div class="row">
+    <button class="ic" id="play" aria-label="暫停">
+      <svg class="i-pause" viewBox="0 0 24 24"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>
+      <svg class="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z"/></svg>
+    </button>
+    <button class="skip" id="back">−10 秒</button>
+    <button class="skip" id="fwd">+10 秒</button>
+    <button class="live on" id="live"><span class="dot"></span><span id="liveTxt">直播中</span></button>
+    <span class="time" id="timeLbl">0:00</span>
+    <span class="spacer"></span>
+    <label class="speed"><span>模擬速度</span>
+      <select id="speed">
+        <option value="0.25">0.25×</option>
+        <option value="0.5">0.5×</option>
+        <option value="1" selected>1×</option>
+        <option value="2">2×</option>
+        <option value="4">4×</option>
+        <option value="8">8×</option>
+      </select>
+    </label>
+    <button class="skip music" id="musicBtn" aria-pressed="false" title="背景音樂（M）"><span class="music-eq" aria-hidden="true"><i></i><i></i><i></i></span><span id="musicTxt">音樂</span></button>
+    <button class="skip" id="uiBtn" aria-pressed="false">隱藏面板</button>
+  </div>
+</footer>
+
+<script>
+(() => {
+  // src/app/state.js
+  var S = {
+    U: null,
+    // 宇宙參數的唯讀鏡像（方便繪製時使用；真正的值在 S.U.p，重新開始時同步）
+    HUB: 0.25,
+    RH: 140,
+    R0: 3,
+    RGEN: 3e3,
+    PRESIM: 18,
+    HIST: 1200,
+    PAL: [],
+    qLevel: 1,
+    qMode: "1",
+    fpsCap: 60,
+    tView: 0,
+    isLive: true,
+    playing: true,
+    speed: 1,
+    scrubbing: false,
+    selected: null,
+    pendingCol: [],
+    vw: 0,
+    vh: 0,
+    dpr: 1,
+    Z: 1,
+    minZ: 0.3,
+    zoomAnim: null,
+    vis: [],
+    maxPathCoord: 0,
+    texLastT: null,
+    texSpeedSeen: 0,
+    obsEndKey: "",
+    prevT: 0,
+    workEma: 5,
+    fpsEma: 60,
+    frames: 0,
+    fpsShown: 0,
+    fpsClock: 0,
+    last: performance.now()
+  };
+
+  // src/app/hooks.js
+  var handlers = /* @__PURE__ */ new Map();
+  function on(name, fn) {
+    if (!handlers.has(name)) handlers.set(name, []);
+    handlers.get(name).push(fn);
+    return () => {
+      const a = handlers.get(name);
+      const i = a.indexOf(fn);
+      if (i >= 0) a.splice(i, 1);
+    };
+  }
+  function emit(name, ...args) {
+    const a = handlers.get(name);
+    if (!a) return;
+    for (const fn of a.slice()) {
+      try {
+        fn(...args);
+      } catch (e) {
+        console.error(`[hook ${name}]`, e);
+      }
+    }
+  }
+  function emitUntil(name, ...args) {
+    const a = handlers.get(name);
+    if (!a) return false;
+    for (const fn of a.slice()) {
+      try {
+        if (fn(...args) === true) return true;
+      } catch (e) {
+        console.error(`[hook ${name}]`, e);
+      }
+    }
+    return false;
+  }
+
+  // src/core/math.js
+  var TAU = Math.PI * 2;
+  function mulberry32(a) {
+    return function() {
+      a |= 0;
+      a = a + 1831565813 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  function hsl2rgb(h, s, l) {
+    s /= 100;
+    l /= 100;
+    const k = (n) => (n + h / 30) % 12, a = s * Math.min(l, 1 - l), f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+    return [f(0) * 255, f(8) * 255, f(4) * 255];
+  }
+  function hash(a, b, c) {
+    let h = Math.imul((a | 0) ^ 2654435769, 2246822507);
+    h = Math.imul(h ^ h >>> 13 ^ (b | 0), 3266489909);
+    h = Math.imul(h ^ h >>> 16 ^ Math.imul(c | 0, 668265261), 2246822507);
+    h ^= h >>> 15;
+    h = Math.imul(h, 739982445);
+    h ^= h >>> 12;
+    return (h >>> 0) / 4294967296;
+  }
+  function poisson(rng, l) {
+    if (l > 30) {
+      const u = rng() || 1e-9, v = rng();
+      return Math.max(0, Math.round(l + Math.sqrt(l) * Math.sqrt(-2 * Math.log(u)) * Math.cos(TAU * v)));
+    }
+    const L = Math.exp(-l);
+    let k = 0, p = 1;
+    do {
+      k++;
+      p *= rng();
+    } while (p > L);
+    return k - 1;
+  }
+
+  // src/core/territory.js
+  var Territory = /* @__PURE__ */ (() => {
+    const isAncestor = (a, b) => {
+      for (let p = b.parent; p; p = p.parent) if (p === a) return true;
+      return false;
+    };
+    const related = (a, b) => isAncestor(a, b) || isAncestor(b, a);
+    const insideOf = (a, o) => Math.hypot(a.cx - o.cx, a.cy - o.cy) + a.r <= o.r;
+    const arrival = (c, x, y) => Math.hypot(x - c.cx, y - c.cy) - c.r;
+    function wallGeom(wx, wy, rW, lx, ly, rL, s) {
+      const dx = lx - wx, dy = ly - wy, d = Math.hypot(dx, dy);
+      if (!(d > 0)) return null;
+      const ux = dx / d, uy = dy / d;
+      const xc = (rW * rW - rL * rL + d * d) / (2 * d), h = Math.sqrt(Math.max(0, rW * rW - xc * xc));
+      let xv = (d + rW - rL) / 2 + s / 2;
+      xv = Math.max(d - rL + 0.5, Math.min(xv, rW - 0.5));
+      const sig = xv - xc;
+      const g = {
+        wx,
+        wy,
+        ux,
+        uy,
+        xc,
+        h,
+        xv,
+        sig,
+        line: Math.abs(sig) < 0.5,
+        p1x: wx + ux * xc + uy * h,
+        p1y: wy + uy * xc - ux * h,
+        p2x: wx + ux * xc - uy * h,
+        p2y: wy + uy * xc + ux * h
+      };
+      if (!g.line) {
+        g.R = (h * h + sig * sig) / (2 * Math.abs(sig));
+        const xo = xv - Math.sign(sig) * g.R;
+        g.cx = wx + ux * xo;
+        g.cy = wy + uy * xo;
+      }
+      g.lSide = (x, y) => {
+        if (g.line) return (x - wx) * ux + (y - wy) * uy > xc;
+        const inside = (x - g.cx) ** 2 + (y - g.cy) ** 2 < g.R * g.R;
+        return sig > 0 ? !inside : inside;
+      };
+      return g;
+    }
+    const beats = (F, a, b) => {
+      const ea = F.eps(a), eb = F.eps(b);
+      return ea < eb || ea === eb && a.tn > b.tn;
+    };
+    function rule(F, A, B) {
+      const d = Math.hypot(B.cx - A.cx, B.cy - A.cy);
+      if (d >= A.r + B.r) return null;
+      if (related(A.b, B.b)) return null;
+      if (d <= Math.abs(A.r - B.r)) {
+        const [X, Y] = A.r < B.r ? [A, B] : [B, A];
+        let D = null;
+        for (let q = X.b.parent; q; q = q.parent) {
+          const c = F.circ(q);
+          if (!c) break;
+          if (!insideOf(c, Y)) {
+            D = c;
+            break;
+          }
+        }
+        if (beats(F, X.b, Y.b)) return { kind: "inherit", X, Y, free: true };
+        if (!D) return { kind: "inherit", X, Y, g: null };
+        if (D.b.vac === Y.b.vac) return { kind: "inherit", X, Y, D, merge: true, g: wallGeom(Y.cx, Y.cy, Y.r, D.cx, D.cy, D.r, 0) };
+        if (!beats(F, Y.b, D.b)) return { kind: "inherit", X, Y, D, free: true };
+        return { kind: "inherit", X, Y, D, g: wallGeom(Y.cx, Y.cy, Y.r, D.cx, D.cy, D.r, F.shift(Y.b, D.b)) };
+      }
+      if (A.b.vac === B.b.vac) return { kind: "merge", A, B };
+      const [W, L] = beats(F, A.b, B.b) ? [A, B] : [B, A];
+      const g = wallGeom(W.cx, W.cy, W.r, L.cx, L.cy, L.r, F.shift(W.b, L.b));
+      return g ? { kind: "wall", W, L, g } : null;
+    }
+    const otherOf = (R, v) => R.kind === "merge" ? R.A === v ? R.B : R.A : R.kind === "wall" ? R.W === v ? R.L : R.W : R.X === v ? R.Y : R.X;
+    function ownerIn(R, x, y) {
+      if (R.kind === "merge") return arrival(R.A, x, y) < arrival(R.B, x, y) ? R.A : R.B;
+      if (R.kind === "wall") return R.g.lSide(x, y) ? R.L : R.W;
+      if (R.free) return R.X;
+      return R.g && R.g.lSide(x, y) ? R.X : R.Y;
+    }
+    const takes = (R, v, x, y) => ownerIn(R, x, y) !== v;
+    const drawOrder = (F, a, b) => F.eps(b.b) - F.eps(a.b) || a.b.tn - b.b.tn;
+    function drawContains(v, x, y) {
+      if (arrival(v, x, y) >= 0) return false;
+      for (const R of v.rules || []) {
+        if (R.kind === "merge") {
+          if (arrival(otherOf(R, v), x, y) < arrival(v, x, y)) return false;
+        } else if (R.kind === "wall") {
+          if (R.W === v && arrival(R.L, x, y) < 0 && R.g.lSide(x, y)) return false;
+        } else if (R.X === v && !R.free) {
+          if (!R.g || !R.g.lSide(x, y)) return false;
+        }
+      }
+      return true;
+    }
+    function buildRules(cs, F, maxN = Infinity) {
+      const byB = /* @__PURE__ */ new Map();
+      for (const c of cs) {
+        c.rules = [];
+        c.kids = null;
+        byB.set(c.b, c);
+      }
+      const n = Math.min(cs.length, maxN), all = [];
+      for (let i = 0; i < n; i++) for (let j = 0; j < i; j++) {
+        const R = rule(F, cs[j], cs[i]);
+        if (R) {
+          cs[j].rules.push(R);
+          cs[i].rules.push(R);
+          all.push(R);
+        }
+      }
+      for (const c of cs) for (let q = c.b.parent; q; q = q.parent) {
+        const pc = byB.get(q);
+        if (pc) (pc.kids || (pc.kids = [])).push(c);
+      }
+      return all;
+    }
+    function ownerAt(F, circles, x, y) {
+      const cands = [];
+      for (const c of circles) if (Math.hypot(x - c.cx, y - c.cy) < c.r) cands.push({ b: c.b, cx: c.cx, cy: c.cy, r: c.r, src: c });
+      if (!cands.length) return null;
+      cands.sort((a, b) => a.b.tn - b.b.tn || a.b.id - b.b.id);
+      buildRules(cands, F);
+      cands.sort((a, b) => drawOrder(F, a, b));
+      let own = null;
+      for (const c of cands) if (drawContains(c, x, y)) own = c;
+      return own ? own.src : null;
+    }
+    function cellRay(v, ex, ey, lim) {
+      let rho = lim;
+      for (const R of v.rules || []) {
+        if (R.kind === "merge") {
+          const o = otherOf(R, v), wx = o.cx - v.cx, wy = o.cy - v.cy, w2 = wx * wx + wy * wy, kk = v.r - o.r, den = 2 * (ex * wx + ey * wy - kk);
+          if (den > 0) {
+            const r = (w2 - kk * kk) / den;
+            if (r < rho) rho = r;
+          }
+        } else if (R.kind === "wall") {
+          if (R.W !== v) continue;
+          const o = R.L, g = R.g;
+          const fx = v.cx - o.cx, fy = v.cy - o.cy, bq = ex * fx + ey * fy, disc = bq * bq - (fx * fx + fy * fy - o.r * o.r);
+          if (disc <= 0) continue;
+          const sq = Math.sqrt(disc), r1 = Math.max(0, -bq - sq), r2 = -bq + sq;
+          if (r2 <= 0 || r1 >= rho) continue;
+          let rs = Infinity;
+          if (g.line) {
+            const eu = ex * g.ux + ey * g.uy, x0 = (v.cx - g.wx) * g.ux + (v.cy - g.wy) * g.uy;
+            if (x0 + r1 * eu > g.xc) rs = r1;
+            else if (eu > 1e-12) {
+              const t = (g.xc - x0) / eu;
+              if (t < r2) rs = Math.max(r1, t);
+            }
+          } else {
+            const gx = v.cx - g.cx, gy = v.cy - g.cy, bb = ex * gx + ey * gy, dd = bb * bb - (gx * gx + gy * gy - g.R * g.R);
+            if (g.sig > 0) {
+              if (dd <= 0) rs = r1;
+              else {
+                const t1 = -bb - Math.sqrt(dd), t2 = -bb + Math.sqrt(dd);
+                if (r1 < t1 || r1 > t2) rs = r1;
+                else if (t2 < r2) rs = t2;
+              }
+            } else if (dd > 0) {
+              const t1 = -bb - Math.sqrt(dd), t2 = -bb + Math.sqrt(dd), lo = Math.max(r1, t1), hi = Math.min(r2, t2);
+              if (lo < hi) rs = lo;
+            }
+          }
+          if (rs < rho) rho = rs;
+        } else if (R.X === v && !R.free) {
+          const g = R.g;
+          if (!g) {
+            rho = 0;
+            break;
+          }
+          let rs = Infinity;
+          if (g.line) {
+            const x0 = (v.cx - g.wx) * g.ux + (v.cy - g.wy) * g.uy, eu = ex * g.ux + ey * g.uy;
+            if (x0 <= g.xc) rs = 0;
+            else if (eu < -1e-12) rs = (x0 - g.xc) / -eu;
+          } else {
+            const gx = v.cx - g.cx, gy = v.cy - g.cy, bb = ex * gx + ey * gy, c0 = gx * gx + gy * gy - g.R * g.R, dd = bb * bb - c0;
+            if (g.sig > 0) {
+              if (c0 < 0) rs = 0;
+              else if (dd > 0) {
+                const t1 = -bb - Math.sqrt(dd);
+                if (t1 > 0) rs = t1;
+              }
+            } else {
+              if (c0 >= 0) rs = 0;
+              else rs = -bb + Math.sqrt(Math.max(0, dd));
+            }
+          }
+          if (rs < rho) rho = rs;
+        }
+      }
+      return Math.max(0, rho);
+    }
+    function wallTaken(v, x, y) {
+      for (const R of v.rules || []) {
+        if (R.kind === "inherit" && R.Y === v) continue;
+        const o = otherOf(R, v);
+        if (arrival(o, x, y) < 0 && takes(R, v, x, y)) return true;
+      }
+      return false;
+    }
+    function displayOwner(cands, x, y) {
+      let best = null;
+      for (const c of cands) if ((!best || c.ord > best.ord) && drawContains(c, x, y)) best = c;
+      return best;
+    }
+    function wallBetween(R, cands, x, y, nx, ny, e) {
+      const o1 = displayOwner(cands, x + nx * e, y + ny * e), o2 = displayOwner(cands, x - nx * e, y - ny * e);
+      return !!o1 && !!o2 && o1 !== o2 && o1.b.vac !== o2.b.vac;
+    }
+    function relevantCands(cands, A, B, e) {
+      const x0 = Math.max(A.cx - A.r, B.cx - B.r) - e, x1 = Math.min(A.cx + A.r, B.cx + B.r) + e;
+      const y0 = Math.max(A.cy - A.r, B.cy - B.r) - e, y1 = Math.min(A.cy + A.r, B.cy + B.r) + e;
+      const cs = [];
+      let third = false;
+      for (const c of cands) {
+        if (c === A || c === B || isAncestor(c.b, A.b) || isAncestor(c.b, B.b)) {
+          cs.push(c);
+          continue;
+        }
+        const qx = Math.max(x0, Math.min(x1, c.cx)), qy = Math.max(y0, Math.min(y1, c.cy));
+        if (Math.hypot(qx - c.cx, qy - c.cy) < c.r) {
+          cs.push(c);
+          third = true;
+        }
+      }
+      return { cs, third };
+    }
+    function curveSamples(P2, T0, T1) {
+      let len = 0, p = P2(T0);
+      for (let i = 1; i <= 8; i++) {
+        const q = P2(T0 + (T1 - T0) * i / 8);
+        len += Math.hypot(q[0] - p[0], q[1] - p[1]);
+        p = q;
+      }
+      return Math.max(24, Math.min(256, Math.ceil(len / 2.5)));
+    }
+    function mergeCurve(R, cands, box, e = 1.5, seam = false) {
+      const A = R.A, B = R.B, dx = B.cx - A.cx, dy = B.cy - A.cy, d = Math.hypot(dx, dy);
+      if (!(d > 0)) return null;
+      const a = (A.r - B.r) / 2, c = d / 2;
+      if (Math.abs(a) >= c) return null;
+      const rel = relevantCands(cands, A, B, e + 2);
+      if (!seam && !rel.third) return null;
+      const bb = Math.sqrt(c * c - a * a), ux = dx / d, uy = dy / d, mx = A.cx + dx / 2, my = A.cy + dy / 2;
+      const xc = (A.r * A.r - B.r * B.r + d * d) / (2 * d), hh = Math.sqrt(Math.max(0, A.r * A.r - xc * xc));
+      const S2 = Math.max(1e-6, Math.asinh(hh / bb));
+      const P2 = (t) => {
+        const sg = -S2 + 2 * S2 * t;
+        return [mx + ux * a * Math.cosh(sg) - uy * bb * Math.sinh(sg), my + uy * a * Math.cosh(sg) + ux * bb * Math.sinh(sg)];
+      };
+      const N = (t) => {
+        const p0 = P2(Math.max(0, t - 1e-4)), p1 = P2(Math.min(1, t + 1e-4)), tx = p1[0] - p0[0], ty = p1[1] - p0[1], l = Math.hypot(tx, ty) || 1;
+        return [-ty / l, tx / l];
+      };
+      const inBoth = (x, y) => arrival(A, x, y) < 0 && arrival(B, x, y) < 0;
+      const inBox = (x, y) => !box || x > box.x0 && x < box.x1 && y > box.y0 && y < box.y1;
+      const ok = seam ? ((t) => {
+        const [x, y] = P2(t);
+        if (!inBox(x, y)) return false;
+        if (!rel.third) return true;
+        const [nx, ny] = N(t);
+        const o1 = displayOwner(rel.cs, x + nx * e, y + ny * e), o2 = displayOwner(rel.cs, x - nx * e, y - ny * e);
+        return (o1 === A || o1 === B) && (o2 === A || o2 === B);
+      }) : ((t) => {
+        const [x, y] = P2(t);
+        if (!inBox(x, y)) return false;
+        const [nx, ny] = N(t);
+        return wallBetween(R, rel.cs, x, y, nx, ny, e);
+      });
+      return { P: P2, segs: sampleSegs(ok, 0, 1, curveSamples(P2, 0, 1)) };
+    }
+    function sampleSegs(ok, T0, T1, M) {
+      const tt = (i) => T0 + (T1 - T0) * i / M, fl = [];
+      for (let i = 0; i <= M; i++) fl.push(ok(tt(i)));
+      const refine = (a, b) => {
+        for (let i = 0; i < 14; i++) {
+          const m = (a + b) / 2;
+          if (ok(m)) a = m;
+          else b = m;
+        }
+        return (a + b) / 2;
+      };
+      const segs = [];
+      for (let i = 0; i <= M; i++) {
+        if (!fl[i] || i > 0 && fl[i - 1]) continue;
+        let j = i;
+        while (j < M && fl[j + 1]) j++;
+        segs.push([i > 0 ? refine(tt(i), tt(i - 1)) : T0, j < M ? refine(tt(j), tt(j + 1)) : T1]);
+        i = j;
+      }
+      return segs;
+    }
+    function shellVisible(v, cands, x, y, nx, ny, e) {
+      const inn = displayOwner(cands, x - nx * e, y - ny * e);
+      if (inn !== v) return false;
+      const out = displayOwner(cands, x + nx * e, y + ny * e);
+      return !out || out !== v && out.b.vac !== v.b.vac;
+    }
+    function boxWedge(cx, cy, B) {
+      if (cx > B.x0 && cx < B.x1 && cy > B.y0 && cy < B.y1) return null;
+      const cs = [[B.x0, B.y0], [B.x1, B.y0], [B.x1, B.y1], [B.x0, B.y1]];
+      const a = cs.map(([x, y]) => Math.atan2(y - cy, x - cx)).sort((p, q) => p - q);
+      let gi = 3, gap = a[0] + TAU - a[3];
+      for (let i = 0; i < 3; i++) {
+        if (a[i + 1] - a[i] > gap) {
+          gap = a[i + 1] - a[i];
+          gi = i;
+        }
+      }
+      const a0 = a[(gi + 1) % 4];
+      let dmax = 0;
+      for (const [x, y] of cs) dmax = Math.max(dmax, Math.hypot(x - cx, y - cy));
+      const qx = Math.max(B.x0, Math.min(B.x1, cx)), qy = Math.max(B.y0, Math.min(B.y1, cy));
+      return { a0, a1: a0 + (TAU - gap), dmin: Math.hypot(qx - cx, qy - cy), dmax };
+    }
+    function domainWall(R, cands, box, e = 1.5) {
+      const { W, L, g } = R;
+      if (!(g.h > 0.5)) return null;
+      let P2, arc = null;
+      if (g.line) P2 = (t) => [g.p1x + (g.p2x - g.p1x) * t, g.p1y + (g.p2y - g.p1y) * t];
+      else {
+        const a1 = Math.atan2(g.p1y - g.cy, g.p1x - g.cx), vx = g.wx + g.ux * g.xv, vy = g.wy + g.uy * g.xv;
+        const norm = (a) => {
+          while (a < a1) a += TAU;
+          while (a >= a1 + TAU) a -= TAU;
+          return a;
+        };
+        let a2 = norm(Math.atan2(g.p2y - g.cy, g.p2x - g.cx));
+        const av = norm(Math.atan2(vy - g.cy, vx - g.cx));
+        if (av > a2) a2 -= TAU;
+        arc = { a1, a2 };
+        P2 = (t) => {
+          const a = a1 + (a2 - a1) * t;
+          return [g.cx + Math.cos(a) * g.R, g.cy + Math.sin(a) * g.R];
+        };
+      }
+      const N = (t) => {
+        if (g.line) {
+          const dx = g.p2x - g.p1x, dy = g.p2y - g.p1y, l = Math.hypot(dx, dy) || 1;
+          return [-dy / l, dx / l];
+        }
+        const [x, y] = P2(t);
+        return [(x - g.cx) / g.R, (y - g.cy) / g.R];
+      };
+      let T0 = 0, T1 = 1;
+      if (box) {
+        if (!arc) {
+          const [x0, y0] = P2(0), [x1, y1] = P2(1), dx = x1 - x0, dy = y1 - y0;
+          for (const [pp, q] of [[-dx, x0 - box.x0], [dx, box.x1 - x0], [-dy, y0 - box.y0], [dy, box.y1 - y0]]) {
+            if (pp === 0) {
+              if (q < 0) return { P: P2, arc, g, segs: [] };
+              continue;
+            }
+            const r = q / pp;
+            if (pp < 0) T0 = Math.max(T0, r);
+            else T1 = Math.min(T1, r);
+          }
+        } else {
+          const wd = boxWedge(g.cx, g.cy, box);
+          if (wd) {
+            if (g.R < wd.dmin - 2 || g.R > wd.dmax + 2) return { P: P2, arc, g, segs: [] };
+            const lo = Math.min(arc.a1, arc.a2), hi = Math.max(arc.a1, arc.a2);
+            let a = Infinity, b = -Infinity;
+            for (let k = -2; k <= 2; k++) {
+              const s0 = Math.max(lo, wd.a0 + TAU * k), s1 = Math.min(hi, wd.a1 + TAU * k);
+              if (s0 < s1) {
+                const ta = (s0 - arc.a1) / (arc.a2 - arc.a1), tb = (s1 - arc.a1) / (arc.a2 - arc.a1);
+                a = Math.min(a, ta, tb);
+                b = Math.max(b, ta, tb);
+              }
+            }
+            if (!(b > a)) return { P: P2, arc, g, segs: [] };
+            T0 = Math.max(0, a);
+            T1 = Math.min(1, b);
+          }
+        }
+        if (!(T1 > T0)) return { P: P2, arc, g, segs: [] };
+      }
+      const rel = relevantCands(cands, W, L, e + 2);
+      if (!rel.third) return { P: P2, N, arc, g, segs: [[T0, T1]] };
+      const ok = (t) => {
+        const [x, y] = P2(t), [nx, ny] = N(t);
+        return wallBetween(R, rel.cs, x, y, nx, ny, e);
+      };
+      return { P: P2, N, arc, g, segs: sampleSegs(ok, T0, T1, curveSamples(P2, T0, T1)) };
+    }
+    return { isAncestor, related, insideOf, arrival, wallGeom, beats, rule, otherOf, ownerIn, takes, buildRules, ownerAt, drawOrder, drawContains, cellRay, wallTaken, displayOwner, shellVisible, boxWedge, domainWall, mergeCurve };
+  })();
+
+  // src/core/universe.js
+  var STEP = 1 / 30;
+  var EMAX = 1e13;
+  var LONG = 90;
+  var BUCKET = 0.5;
+  var MAXB = 16e4;
+  var FALSE_EPS = 1;
+  var VNAMES = "子丑寅卯辰巳午未申酉戌亥甲乙丙丁";
+  function makeLandscape(r, p) {
+    const n = p.vacN, VAC = [];
+    const hues = [];
+    for (let i = 0; i < n; i++) hues.push((i * 360 / n + r() * 12) % 360);
+    for (let i = n - 1; i > 0; i--) {
+      const j = r() * (i + 1) | 0;
+      [hues[i], hues[j]] = [hues[j], hues[i]];
+    }
+    const nA = Math.min(n - 1, Math.round(n * p.crunchP)), nT = Math.max(1, Math.round(n * 0.18));
+    const kinds = [];
+    for (let i = 0; i < n; i++) kinds.push(i < nA ? "ads" : i < nA + nT ? "tiny" : "ds");
+    for (let i = n - 1; i > 0; i--) {
+      const j = r() * (i + 1) | 0;
+      [kinds[i], kinds[j]] = [kinds[j], kinds[i]];
+    }
+    for (let i = 0; i < n; i++) {
+      const kind = kinds[i];
+      let eps, lexp, lman;
+      if (kind === "tiny") {
+        eps = 0;
+        lexp = 100 + Math.floor(r() * 23);
+        lman = 1 + r() * 8.9;
+      } else {
+        const mag = 0.05 + r() * 0.85;
+        eps = kind === "ads" ? -mag : mag;
+        const val = mag * 1e-10;
+        lexp = Math.ceil(-Math.log10(val));
+        lman = val * Math.pow(10, lexp);
+      }
+      const dims = r() < 1 - p.oddDimP ? 3 : [1, 2, 4, 5, 6, 7, 10][r() * 7 | 0];
+      const ainv = kind === "tiny" ? 137 + (r() - 0.5) * 80 : 60 + r() * 190;
+      const mratio = kind === "tiny" ? 600 + r() * 2800 : 300 + r() * 3600;
+      const grel = kind === "ds" ? 0.25 + r() * 1.25 : 0;
+      r();
+      VAC.push({
+        i,
+        name: VNAMES[i] + "型真空",
+        kind,
+        eps,
+        lexp,
+        lman,
+        lsign: eps < 0 ? -1 : 1,
+        dims,
+        ainv,
+        mratio,
+        grel,
+        hue: hues[i],
+        w: 0.4 + r(),
+        crunchT: kind === "ads" ? Math.max(3, 1.5 / (p.H * Math.sqrt(-eps))) : Infinity,
+        // 熱寂：真空能近乎為零的宇宙會一直膨脹、冷卻，恆星燃盡、星系彼此遠離到視界之外。Λ 越小越慢（時間尺度 ∝ 1/√Λ，這裡以指數 lexp 示意）
+        hdT: kind === "tiny" ? (30 + (lexp - 100) * 2) * (0.25 / p.H) : Infinity
+      });
+    }
+    return VAC;
+  }
+  function createUniverse(p, tune2) {
+    const rng = mulberry32(p.seed);
+    const VAC = makeLandscape(rng, p);
+    const maxInner = Math.max(0, ...VAC.map((v) => v.grel));
+    const U = {
+      p,
+      tune: tune2,
+      VAC,
+      tSim: 0,
+      acc: 0,
+      tStart: 0,
+      trimmed: 0,
+      hist: [],
+      longs: [],
+      live: [],
+      buckets: [],
+      bucketBase: 0,
+      vacCount: VAC.map(() => 0),
+      window: 1200,
+      nextId: 1,
+      stepN: 0
+    };
+    Object.defineProperty(U, "tLive", { get: () => U.tSim + U.acc });
+    const listeners = { born: [], retire: [] };
+    U.on = (name, fn) => {
+      listeners[name].push(fn);
+      return () => {
+        const a = listeners[name], i = a.indexOf(fn);
+        if (i >= 0) a.splice(i, 1);
+      };
+    };
+    const notify = (name, b) => {
+      for (const fn of listeners[name]) fn(b);
+    };
+    const E = (b, t) => Math.min(EMAX, Math.exp(p.H * (t - b.tn)));
+    U.E = E;
+    U.circleAt = (b, t) => {
+      const e = E(b, t);
+      return { b, cx: b.x * e, cy: b.y * e, r: p.R0 * e + p.RH * (e - 1) };
+    };
+    U.eps = (b) => VAC[b.vac].eps;
+    const tcCache = /* @__PURE__ */ new Map();
+    U.collideTime = (a, b) => {
+      const key = a.id < b.id ? a.id * 1e7 + b.id : b.id * 1e7 + a.id;
+      let tc = tcCache.get(key);
+      if (tc !== void 0) return tc;
+      const f = (t) => {
+        const A = U.circleAt(a, t), B = U.circleAt(b, t);
+        return Math.hypot(A.cx - B.cx, A.cy - B.cy) - A.r - B.r;
+      };
+      let lo = Math.max(a.tn, b.tn), hi = lo + 0.5;
+      if (f(lo) <= 0) tc = lo;
+      else {
+        while (f(hi) > 0 && hi - lo < 600) hi = lo + (hi - lo) * 2;
+        for (let i = 0; i < 40; i++) {
+          const m = (lo + hi) / 2;
+          if (f(m) > 0) lo = m;
+          else hi = m;
+        }
+        tc = hi;
+      }
+      if (tcCache.size > 4e4) tcCache.clear();
+      tcCache.set(key, tc);
+      return tc;
+    };
+    U.shift = (W, L, t) => {
+      if (W.vac === L.vac) return 0;
+      const D = U.eps(L) - U.eps(W), tc = U.collideTime(W, L);
+      if (t <= tc) return 0;
+      return 0.85 * D / (Math.abs(D) + 0.25) * tune2.wallK * p.RH * (Math.min(EMAX, Math.exp(p.H * (t - tc))) - 1);
+    };
+    U.frame = (t, scale = 1, circ) => ({ t, eps: U.eps, shift: (W, L) => U.shift(W, L, t) * scale, circ: circ || ((b) => U.circleAt(b, t)) });
+    U.bornBy = (t) => {
+      const h = U.hist;
+      let lo = 0, hi = h.length;
+      while (lo < hi) {
+        const m = lo + hi >> 1;
+        if (h[m].tn <= t) lo = m + 1;
+        else hi = m;
+      }
+      return lo;
+    };
+    U.born = (t) => U.trimmed + U.bornBy(t);
+    U.aliveAt = (t) => {
+      if (t >= U.tSim - 1e-9) return U.live.filter((b) => b.tn <= t && b.texit > t);
+      const out = U.longs.filter((b) => b.tn <= t && b.texit > t);
+      for (let i = U.bornBy(t) - 1; i >= 0; i--) {
+        const b = U.hist[i];
+        if (b.tn < t - LONG) break;
+        if (!b.long && b.texit > t) out.push(b);
+      }
+      return out;
+    };
+    U.ownerAt = (x, y, t) => Territory.ownerAt(U.frame(t), U.aliveAt(t).map((b) => U.circleAt(b, t)), x, y);
+    U.crunchedAt = (b, x, y, t) => {
+      if (!b.crunch) return false;
+      const c = U.circleAt(b, t), xx = Math.min(1, Math.hypot(x - c.cx, y - c.cy) / c.r);
+      return (t - b.tn) * Math.sqrt(1 - xx * xx) >= b.crunchT;
+    };
+    U.heatAt = (b, x, y, t) => {
+      if (!isFinite(b.heatT)) return false;
+      const c = U.circleAt(b, t), xx = Math.min(1, Math.hypot(x - c.cx, y - c.cy) / c.r);
+      return (t - b.tn) * Math.sqrt(1 - xx * xx) >= b.heatT;
+    };
+    U.observer = (t) => {
+      const o = U.ownerAt(0, 0, t);
+      if (!o) return { kind: "false" };
+      if (U.crunchedAt(o.b, 0, 0, t)) return { kind: "crunch", b: o.b };
+      if (U.heatAt(o.b, 0, 0, t)) return { kind: "heat", b: o.b };
+      return { kind: "pocket", b: o.b, V: VAC[o.b.vac] };
+    };
+    function addBubble(x, y, d, t, parent) {
+      const pe = parent ? VAC[parent.vac].eps : FALSE_EPS;
+      let tot = 0;
+      for (const v of VAC) if (v.eps < pe) tot += v.w;
+      if (tot <= 0) return null;
+      let pick = rng() * tot, vac = 0;
+      for (const v of VAC) {
+        if (v.eps < pe) {
+          pick -= v.w;
+          if (pick <= 0) {
+            vac = v.i;
+            break;
+          }
+        }
+      }
+      const V = VAC[vac], den = d - p.R0 - p.RH;
+      const b = {
+        id: U.nextId++,
+        tn: t,
+        x,
+        y,
+        d,
+        vac,
+        seed: rng(),
+        parent: parent || null,
+        depth: parent ? parent.depth + 1 : 0,
+        crunch: V.kind === "ads",
+        crunchT: V.crunchT,
+        heatT: V.hdT,
+        texit: den > 0 ? t + Math.log((p.RGEN + 60 - p.RH) / den) / p.H : Infinity
+      };
+      b.long = !(b.texit - t <= LONG);
+      U.hist.push(b);
+      U.live.push(b);
+      if (b.long) U.longs.push(b);
+      U.vacCount[vac]++;
+      notify("born", b);
+      const k = Math.floor(t / BUCKET) - U.bucketBase;
+      while (U.buckets.length <= k) U.buckets.push(0);
+      U.buckets[k]++;
+      return b;
+    }
+    function nucleate() {
+      const t = U.tSim, gmax = Math.max(1, maxInner * tune2.innerMul);
+      const n = poisson(rng, tune2.gamma * gmax * Math.PI * p.RGEN * p.RGEN * STEP);
+      if (!n) return;
+      const F = U.frame(t), circles = [];
+      for (const b of U.live) if (b.texit > t) circles.push(U.circleAt(b, t));
+      for (let i = 0; i < n; i++) {
+        const rr = p.RGEN * Math.sqrt(rng()), ang = rng() * TAU, u = rng();
+        if (!p.typical && rr < p.RH + p.R0 + 3) continue;
+        const x = Math.cos(ang) * rr, y = Math.sin(ang) * rr;
+        const own = Territory.ownerAt(F, circles, x, y);
+        let rel = 1;
+        if (own) {
+          if (Territory.arrival(own, x, y) > -p.R0 * 2) continue;
+          rel = VAC[own.b.vac].grel * tune2.innerMul;
+        }
+        if (u * gmax >= rel) continue;
+        const b = addBubble(x, y, rr, t, own ? own.b : null);
+        if (b) circles.push(U.circleAt(b, t));
+      }
+    }
+    function retire() {
+      const t = U.tSim, Rg = p.RGEN + 200;
+      const live = U.live.filter((b) => b.texit > t && b.tn < t);
+      if (live.length < 2) return;
+      const C = new Map(live.map((b) => [b, U.circleAt(b, t)]));
+      const covers = (c) => Math.hypot(c.cx, c.cy) + Rg < c.r;
+      const ring = [];
+      for (let k = 0; k < 48; k++) ring.push([Math.cos(TAU * k / 48) * Rg, Math.sin(TAU * k / 48) * Rg]);
+      ring.push([0, 0]);
+      const F = U.frame(t);
+      for (const b of live) {
+        if (isFinite(b.texit)) continue;
+        const cb = C.get(b);
+        for (const o of live) {
+          if (o === b) continue;
+          const co = C.get(o);
+          if (!covers(co)) continue;
+          let gone = false;
+          if (Territory.isAncestor(b, o)) gone = true;
+          else if (!Territory.related(b, o)) {
+            const R = Territory.rule(F, co, cb);
+            if (!R) gone = false;
+            else if (R.kind === "merge") gone = covers(cb) && (o.tn < b.tn || o.tn === b.tn && o.id < b.id);
+            else if (R.kind === "wall") gone = R.W === co && ring.every(([x, y]) => Territory.arrival(cb, x, y) >= 0 || !R.g.lSide(x, y));
+            else if (R.kind === "inherit") {
+              if (R.X === cb) gone = !R.free && (!R.g || ring.every(([x, y]) => !R.g.lSide(x, y)));
+              else gone = !!R.free;
+            }
+          }
+          if (gone) {
+            b.texit = t + STEP / 2;
+            notify("retire", b);
+            break;
+          }
+        }
+      }
+    }
+    U.advance = (dt) => {
+      U.acc += dt;
+      let n = 0;
+      while (U.acc >= STEP && n < 2e4) {
+        U.acc -= STEP;
+        U.tSim += STEP;
+        nucleate();
+        if (++U.stepN % 30 === 0) retire();
+        n++;
+      }
+      if (U.live.some((b) => b.texit <= U.tSim)) U.live = U.live.filter((b) => b.texit > U.tSim);
+      const k = Math.floor(U.tLive / BUCKET) - U.bucketBase;
+      while (U.buckets.length <= k) U.buckets.push(0);
+      U.trim();
+    };
+    U.trim = () => {
+      const tl = U.tLive;
+      let cut = tl - U.window;
+      if (U.hist.length > MAXB) cut = Math.max(cut, U.hist[U.hist.length - Math.floor(MAXB * 0.9)].tn + LONG + 1);
+      cut = Math.min(cut, tl - 5);
+      if (cut <= U.tStart + 0.5) return;
+      U.tStart = cut;
+      const idx = U.bornBy(cut - LONG - 1);
+      if (idx > 0) {
+        U.hist.splice(0, idx);
+        U.trimmed += idx;
+      }
+      if (U.longs.some((b) => b.texit <= cut)) U.longs = U.longs.filter((b) => b.texit > cut);
+      const kb = Math.floor(cut / BUCKET) - U.bucketBase;
+      if (kb > 0) {
+        U.buckets.splice(0, kb);
+        U.bucketBase += kb;
+      }
+    };
+    U.presim = (sec) => {
+      for (let i = 0; i < Math.round(sec / STEP); i++) U.advance(STEP);
+    };
+    U.fingerprint = (tMax) => U.hist.filter((b) => b.tn <= tMax).map((b) => `${b.id}:${b.tn.toFixed(6)}:${b.x.toFixed(4)}:${b.y.toFixed(4)}:${b.vac}:${b.parent ? b.parent.id : 0}`).join("|");
+    return U;
+  }
+
+  // src/core/selfcheck.js
+  var SelfCheck = /* @__PURE__ */ (() => {
+    const baseP = { seed: 4242, H: 0.25, RH: 140, R0: 3, RGEN: 3e3, typical: false, vacN: 12, crunchP: 0.25, oddDimP: 0.15 };
+    const baseT = () => ({ gamma: 25e-7, innerMul: 1, wallK: 1 });
+    function buildRules(U, t) {
+      const byB = /* @__PURE__ */ new Map(), cs = U.aliveAt(t).map((b) => {
+        const c = U.circleAt(b, t);
+        byB.set(b, c);
+        return c;
+      });
+      cs.sort((a, b) => a.b.tn - b.b.tn || a.b.id - b.b.id);
+      const F = U.frame(t, 1, (b) => byB.get(b) || U.circleAt(b, t));
+      Territory.buildRules(cs, F);
+      return { cs, F, byB };
+    }
+    const tests = [
+      { name: "可重現性", desc: "同一個種子、以不同的時間切分推進，前 25 秒的每個泡泡必須完全相同", run() {
+        const A = createUniverse(baseP, baseT()), B = createUniverse(baseP, baseT());
+        for (let i = 0; i < 30 * 30; i++) A.advance(STEP);
+        for (let i = 0; i < 81; i++) B.advance(0.3711);
+        const fa = A.fingerprint(25), fb = B.fingerprint(25);
+        return { pass: fa === fb && fa.length > 0, detail: `${A.bornBy(25)} 個泡泡${fa === fb ? "完全一致" : "不一致"}` };
+      } },
+      { name: "成核合法性", desc: "每個泡泡誕生處的擁有者必須正是它的母宇宙；只有仍在暴脹的宇宙能成核，大擠壓區更不行", run() {
+        let bad = 0, ads = 0, crunched = 0, n = 0;
+        for (const typical of [false, true]) {
+          const U = createUniverse({ ...baseP, seed: typical ? 23 : 4242, typical }, baseT());
+          U.presim(60);
+          for (const b of U.hist) {
+            const t = b.tn, F = U.frame(t), cs = U.aliveAt(t).filter((o) => o.id < b.id).map((o) => U.circleAt(o, t));
+            const own = Territory.ownerAt(F, cs, b.x, b.y);
+            n++;
+            if ((own ? own.b : null) !== b.parent) bad++;
+            if (b.parent && U.VAC[b.parent.vac].kind !== "ds") ads++;
+            if (b.parent && U.crunchedAt(b.parent, b.x, b.y, t)) crunched++;
+          }
+        }
+        return { pass: !bad && !ads && !crunched, detail: `檢查 ${n} 個泡泡：歸屬不符 ${bad}、誕生在不再暴脹的宇宙 ${ads}、誕生在大擠壓區 ${crunched}` };
+      } },
+      { name: "物理與畫面歸屬一致", desc: "隨機取點，模擬判定的擁有者必須等於畫面上實際顯示的宇宙", run() {
+        let mis = 0, n = 0;
+        for (const [seed, typical] of [[4242, false], [99, false], [23, true]]) {
+          const U = createUniverse({ ...baseP, seed, typical }, baseT());
+          U.presim(70);
+          for (const t of [40, 55, 70]) {
+            const { cs, F } = buildRules(U, t);
+            const order = cs.slice().sort((a, b) => Territory.drawOrder(F, a, b));
+            const r = mulberry32(seed + t);
+            for (let i = 0; i < 1500; i++) {
+              const rr = 2400 * Math.sqrt(r()), a = r() * TAU, x = Math.cos(a) * rr, y = Math.sin(a) * rr;
+              const sim = Territory.ownerAt(F, cs, x, y);
+              let disp = null;
+              for (const c of order) if (Territory.drawContains(c, x, y)) disp = c;
+              n++;
+              if ((sim ? sim.b : null) !== (disp ? disp.b : null)) mis++;
+            }
+          }
+        }
+        return { pass: mis / n < 2e-3, detail: `${n} 個取樣點中 ${mis} 個不一致（${(mis / n * 100).toFixed(2)}%）` };
+      } },
+      { name: "繪製邊界正確", desc: "畫面用射線算出的領域邊界，必須與逐點判斷的結果吻合", run() {
+        const U = createUniverse(baseP, baseT());
+        U.presim(60);
+        const { cs } = buildRules(U, 60), r = mulberry32(7);
+        let bad = 0, n = 0;
+        for (const c of cs) {
+          if (!c.rules.length || c.r < 5) continue;
+          for (let k = 0; k < 24; k++) {
+            const a = r() * TAU, ex = Math.cos(a), ey = Math.sin(a), rho = Territory.cellRay(c, ex, ey, c.r);
+            const eps = Math.max(0.05, c.r * 1e-4);
+            const inn = rho > 2 * eps ? Territory.drawContains(c, c.cx + ex * (rho - eps), c.cy + ey * (rho - eps)) : true;
+            const out = rho < c.r - 2 * eps ? !Territory.drawContains(c, c.cx + ex * (rho + eps), c.cy + ey * (rho + eps)) : true;
+            n++;
+            if (!inn || !out) bad++;
+          }
+        }
+        return { pass: bad / n < 0.01, detail: `${n} 條射線中 ${bad} 條不吻合（${(bad / Math.max(1, n) * 100).toFixed(2)}%）` };
+      } },
+      { name: "穿隧率正確", desc: "實際成核次數必須符合各區域真空的穿隧率（以隨機取樣估計預期值）", run() {
+        const U = createUniverse(baseP, baseT());
+        U.presim(90);
+        const r = mulberry32(11), G = U.tune.gamma, RG = U.p.RGEN, T0 = 20, T1 = U.tSim;
+        let accFV = 0, accIn = 0, S2 = 5e3;
+        for (let i = 0; i < S2; i++) {
+          const t = T0 + r() * (T1 - T0), rr = RG * Math.sqrt(r()), a = r() * TAU, x = Math.cos(a) * rr, y = Math.sin(a) * rr;
+          if (rr < U.p.RH + U.p.R0 + 3) continue;
+          const own = U.ownerAt(x, y, t);
+          if (!own) accFV++;
+          else if (Territory.arrival(own, x, y) <= -U.p.R0 * 2) accIn += U.VAC[own.b.vac].grel * U.tune.innerMul;
+        }
+        const vol = Math.PI * RG * RG * (T1 - T0), eTop = G * vol * accFV / S2, eIn = G * vol * accIn / S2;
+        let top = 0, inn = 0;
+        for (const b of U.hist) {
+          if (b.tn < T0) continue;
+          if (b.parent) inn++;
+          else top++;
+        }
+        const ok = Math.abs(top - eTop) < 0.12 * eTop + 30 && Math.abs(inn - eIn) < 0.15 * eIn + 30;
+        return { pass: ok, detail: `假真空：預期約 ${Math.round(eTop)}、實際 ${top}；口袋宇宙內部：預期約 ${Math.round(eIn)}、實際 ${inn}` };
+      } },
+      { name: "觀測者歸屬不跳回", desc: "典型觀測者模式下連續演化 400 秒：觀測者所在的宇宙一旦換掉就不會再換回來，永遠存在的巨大泡泡也不會累積", run() {
+        let returns = 0, maxEternal = 0, n = 0;
+        for (const seed of [1, 4, 7, 23, 4242]) {
+          const U = createUniverse({ ...baseP, seed, typical: true }, baseT());
+          const seen = /* @__PURE__ */ new Set();
+          let prev = null;
+          for (let t = 0; t < 400; t += 0.5) {
+            U.advance(0.5);
+            n++;
+            const o = U.observer(U.tSim), id = o.b ? o.b.id : 0;
+            if (id !== prev) {
+              if (seen.has(id)) returns++;
+              seen.add(id);
+              prev = id;
+            }
+          }
+          maxEternal = Math.max(maxEternal, U.live.filter((b) => !isFinite(b.texit)).length);
+        }
+        return { pass: !returns && maxEternal <= 3, detail: `5 個宇宙、${n} 個時間點：跳回 ${returns} 次；最後同時存在的永久泡泡最多 ${maxEternal} 個` };
+      } },
+      { name: "交界線連續", desc: "沿多條掃描線找出畫面上所有「兩種不同真空（或真空與假真空）相鄰」的地方，每一處都必須有泡壁或疇壁線經過，特別是三個泡泡的交會處", run() {
+        let total = 0, miss = 0;
+        for (const seed of [99, 7]) {
+          const U = createUniverse({ ...baseP, seed }, baseT());
+          U.presim(60);
+          const t = U.tSim, { cs, F, byB } = buildRules(U, t);
+          cs.slice().sort((a, b) => Territory.drawOrder(F, a, b)).forEach((c, n) => c.ord = n);
+          const candsOf = (v) => {
+            const set = /* @__PURE__ */ new Set([v]);
+            for (const R of v.rules) set.add(Territory.otherOf(R, v));
+            for (const k of v.kids || []) set.add(k);
+            for (let q = v.b.parent; q; q = q.parent) {
+              const c = byB.get(q);
+              if (c) set.add(c);
+            }
+            return [...set];
+          };
+          const B = { x0: -1300, y0: -1300, x1: 1300, y1: 1300 };
+          const grid = /* @__PURE__ */ new Map(), put = (x, y) => {
+            const k = Math.floor(x / 4) + "," + Math.floor(y / 4);
+            grid.set(k, (grid.get(k) || []).concat([[x, y]]));
+          };
+          const seen = /* @__PURE__ */ new Set();
+          for (const c of cs) for (const R of c.rules) {
+            if (R.kind === "inherit" || seen.has(R)) continue;
+            seen.add(R);
+            const dw = R.kind === "wall" ? Territory.domainWall(R, candsOf(R.W).concat(candsOf(R.L)), B) : Territory.mergeCurve(R, candsOf(R.A).concat(candsOf(R.B)), B);
+            if (!dw) continue;
+            for (const [a, b2] of dw.segs) {
+              const [x0, y0] = dw.P(a), [x1, y1] = dw.P(b2);
+              const n = Math.min(4e3, Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 1.5) + 8);
+              for (let i = 0; i <= n; i++) {
+                const [x, y] = dw.P(a + (b2 - a) * i / n);
+                put(x, y);
+              }
+            }
+          }
+          for (const c of cs) {
+            if (c.cx + c.r < B.x0 || c.cx - c.r > B.x1 || c.cy + c.r < B.y0 || c.cy - c.r > B.y1) continue;
+            const cd = candsOf(c), n = Math.min(4e4, Math.ceil(c.r * TAU));
+            for (let i = 0; i < n; i++) {
+              const a = TAU * i / n, x = c.cx + Math.cos(a) * c.r, y = c.cy + Math.sin(a) * c.r;
+              if (x < B.x0 || x > B.x1 || y < B.y0 || y > B.y1) continue;
+              if (Territory.shellVisible(c, cd, x, y, Math.cos(a), Math.sin(a), 1.5)) put(x, y);
+            }
+          }
+          const near = (x, y) => {
+            const gx = Math.floor(x / 4), gy = Math.floor(y / 4);
+            for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (const [px, py] of grid.get(gx + i + "," + (gy + j)) || []) if (Math.hypot(px - x, py - y) < 3) return true;
+            return false;
+          };
+          for (let y = B.y0 + 17; y < B.y1; y += 40) {
+            let prev = Territory.displayOwner(cs, B.x0, y);
+            for (let x = B.x0 + 1; x <= B.x1; x += 1) {
+              const cur = Territory.displayOwner(cs, x, y);
+              if (cur !== prev && (!cur || !prev || cur.b.vac !== prev.b.vac)) {
+                total++;
+                if (!near(x - 0.5, y)) miss++;
+              }
+              prev = cur;
+            }
+          }
+        }
+        return { pass: total > 0 && miss / total < 5e-3, detail: `${total} 處交界中，沒有線經過的有 ${miss} 處（${(miss / Math.max(1, total) * 100).toFixed(2)}%）` };
+      } },
+      { name: "長時間數值穩定", desc: "典型觀測者模式、高膨脹率下連續演化 40 分鐘，所有幾何量都必須是有限數值", run() {
+        const U = createUniverse({ ...baseP, seed: 23, typical: true, H: 0.6, RH: 140 }, baseT());
+        const t0 = performance.now();
+        U.presim(40 * 60);
+        const ms = performance.now() - t0;
+        const t = U.tSim, cs = U.aliveAt(t).map((b) => U.circleAt(b, t));
+        const finite = cs.every((c) => isFinite(c.cx) && isFinite(c.cy) && isFinite(c.r));
+        const obs = U.observer(t);
+        return { pass: finite && !!obs, detail: `${cs.length} 個存活泡泡，數值${finite ? "全部有限" : "出現無限大"}；40 分鐘的演化耗時 ${(ms / 1e3).toFixed(1)} 秒` };
+      } },
+      { name: "疇壁穩定", desc: "以每秒 60 格的間隔連續計算 2 秒，疇壁不應忽隱忽現（出現又在 10 格內消失，或反之）", run() {
+        const U = createUniverse(baseP, baseT());
+        U.presim(60);
+        const hist = /* @__PURE__ */ new Map();
+        let obs = 0;
+        for (let i = 0; i < 120; i++) {
+          const t = 58 + i / 60, { cs, F, byB } = buildRules(U, t), seen = /* @__PURE__ */ new Set();
+          cs.slice().sort((a, b) => Territory.drawOrder(F, a, b)).forEach((c, n) => c.ord = n);
+          const candsOf = (v) => {
+            const set = /* @__PURE__ */ new Set([v]);
+            for (const R of v.rules) set.add(Territory.otherOf(R, v));
+            for (const k of v.kids || []) set.add(k);
+            for (let q = v.b.parent; q; q = q.parent) {
+              const c = byB.get(q);
+              if (c) set.add(c);
+            }
+            return [...set];
+          };
+          for (const c of cs) for (const R of c.rules) {
+            if (R.kind !== "wall" || seen.has(R)) continue;
+            seen.add(R);
+            const k = R.W.b.id + ":" + R.L.b.id, dw = Territory.domainWall(R, candsOf(R.W).concat(candsOf(R.L)));
+            let len = 0;
+            if (dw) for (const [a2, b2] of dw.segs) {
+              let p0 = dw.P(a2);
+              for (let j = 1; j <= 12; j++) {
+                const q = dw.P(a2 + (b2 - a2) * j / 12);
+                len += Math.hypot(q[0] - p0[0], q[1] - p0[1]);
+                p0 = q;
+              }
+            }
+            if (!hist.has(k)) hist.set(k, []);
+            hist.get(k)[i] = len > 2;
+            obs++;
+          }
+        }
+        let flick = 0;
+        for (const arr of hist.values()) {
+          for (let i = 1; i < arr.length; i++) {
+            if (arr[i] === void 0 || arr[i - 1] === void 0 || arr[i] === arr[i - 1]) continue;
+            for (let j = i + 1; j < Math.min(arr.length, i + 10); j++) if (arr[j] === arr[i - 1]) {
+              flick++;
+              break;
+            }
+          }
+        }
+        return { pass: flick === 0, detail: `${obs} 次觀測中忽隱忽現 ${flick} 次` };
+      } }
+    ];
+    return { tests, buildRules };
+  })();
+
+  // src/app/config.js
+  var tune = { gamma: 25e-7, innerMul: 1, wallK: 1 };
+  var K = { habTol: 30, gridBase: 26, warp: 1, neb: 1, ripples: 2, stars: 1, lblMin: 38 };
+  var reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var QL = [
+    { name: "低", dpr: 1, step: 30, warp: 24, col: 200, stars: 24 },
+    { name: "中", dpr: 1.5, step: 22, warp: 50, col: 400, stars: 60 },
+    { name: "高", dpr: 2, step: 16, warp: 90, col: 600, stars: 999 }
+  ];
+  var colSeen = /* @__PURE__ */ new Set();
+  var isHab = (b) => {
+    const v = S.U.VAC[b.vac];
+    return v.kind === "tiny" && v.dims === 3 && Math.abs(v.ainv - 137) < K.habTol && v.mratio > 1e3 && v.mratio < 3e3;
+  };
+  var epsOf = (b) => S.U.VAC[b.vac].eps;
+
+  // src/render/textures.js
+  function makeNebula() {
+    const N = 256, c = document.createElement("canvas");
+    c.width = c.height = N;
+    const g = c.getContext("2d"), img = g.createImageData(N, N), d = img.data;
+    function vn(x, y, cells, seed) {
+      const fx = x * cells, fy = y * cells, ix = Math.floor(fx), iy = Math.floor(fy);
+      let tx = fx - ix, ty = fy - iy;
+      tx = tx * tx * (3 - 2 * tx);
+      ty = ty * ty * (3 - 2 * ty);
+      const i0 = (ix % cells + cells) % cells, j0 = (iy % cells + cells) % cells, i1 = (i0 + 1) % cells, j1 = (j0 + 1) % cells;
+      const a = hash(i0, j0, seed), b = hash(i1, j0, seed), cc = hash(i0, j1, seed), dd = hash(i1, j1, seed);
+      return a + (b - a) * tx + (cc - a) * ty + (a - b - cc + dd) * tx * ty;
+    }
+    function fbm(x, y, seed) {
+      let s = 0, amp = 1, n = 0;
+      for (let o = 0; o < 5; o++) {
+        s += amp * vn(x, y, 3 << o, seed * 17 + o);
+        n += amp;
+        amp *= 0.5;
+      }
+      return s / n;
+    }
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      const u = x / N, v = y / N;
+      const wx = fbm(u, v, 5), wy = fbm(u, v, 6);
+      const n1 = fbm(u + 0.35 * wx, v + 0.35 * wy, 1);
+      const n2 = fbm(u + 0.25 * wy, v + 0.25 * wx, 2);
+      const n3 = fbm(u + 0.2 * wx, v, 3);
+      let dens = Math.min(1, Math.max(0, (n1 - 0.36) / 0.36));
+      dens = dens * dens * (3 - 2 * dens);
+      let ridge = Math.pow(1 - Math.abs(n3 * 2 - 1), 9);
+      const m = Math.min(1, Math.max(0, (n2 - 0.32) / 0.36));
+      const i = (y * N + x) * 4;
+      d[i] = Math.min(255, 10 + dens * (196 * (1 - m) + 40 * m) * 0.72 + ridge * 70);
+      d[i + 1] = Math.min(255, 6 + dens * (52 * (1 - m) + 150 * m) * 0.72 + ridge * 44);
+      d[i + 2] = Math.min(255, 26 + dens * (172 * (1 - m) + 236 * m) * 0.72 + ridge * 120);
+      d[i + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    return c;
+  }
+  function makeStars() {
+    const N = 512, c = document.createElement("canvas");
+    c.width = c.height = N;
+    const g = c.getContext("2d");
+    const cols = ["255,255,255", "255,236,210", "205,222,255", "255,214,232"];
+    const wrap = (x, y, r, fn) => {
+      for (const dx of [-N, 0, N]) for (const dy of [-N, 0, N]) {
+        const X = x + dx, Y = y + dy;
+        if (X > -r && X < N + r && Y > -r && Y < N + r) fn(X, Y);
+      }
+    };
+    for (let i = 0; i < 9; i++) {
+      const x = Math.random() * N, y = Math.random() * N, s = 6 + Math.random() * 12, ang = Math.random() * Math.PI;
+      wrap(x, y, s * 1.2, (X, Y) => {
+        g.save();
+        g.translate(X, Y);
+        g.rotate(ang);
+        g.scale(1, 0.36);
+        const gr = g.createRadialGradient(0, 0, 0, 0, 0, s);
+        gr.addColorStop(0, "rgba(255,246,228,.85)");
+        gr.addColorStop(0.25, "rgba(225,205,255,.35)");
+        gr.addColorStop(1, "rgba(200,180,255,0)");
+        g.fillStyle = gr;
+        g.beginPath();
+        g.arc(0, 0, s, 0, TAU);
+        g.fill();
+        g.restore();
+      });
+    }
+    for (let i = 0; i < 560; i++) {
+      const x = Math.random() * N, y = Math.random() * N, s = Math.pow(Math.random(), 7);
+      const r = 0.35 + s * 1.9, a = 0.3 + Math.random() * 0.7, col = cols[Math.random() * cols.length | 0];
+      wrap(x, y, r * 5, (X, Y) => {
+        if (r > 1.1) {
+          const gr = g.createRadialGradient(X, Y, 0, X, Y, r * 4.5);
+          gr.addColorStop(0, `rgba(${col},${a * 0.4})`);
+          gr.addColorStop(1, `rgba(${col},0)`);
+          g.fillStyle = gr;
+          g.beginPath();
+          g.arc(X, Y, r * 4.5, 0, TAU);
+          g.fill();
+        }
+        g.fillStyle = `rgba(${col},${a})`;
+        g.beginPath();
+        g.arc(X, Y, r, 0, TAU);
+        g.fill();
+      });
+    }
+    return c;
+  }
+
+  // src/ui/dom.js
+  var $ = (id) => document.getElementById(id);
+  var store = { get(k) {
+    try {
+      return localStorage.getItem("ei3:" + k);
+    } catch (e) {
+      return null;
+    }
+  }, set(k, v) {
+    try {
+      localStorage.setItem("ei3:" + k, v);
+    } catch (e) {
+    }
+  } };
+
+  // src/ui/timeline.js
+  var scrub;
+  var thumb;
+  var played;
+  var tip;
+  var mark;
+  var spark;
+  var sctx;
+  var playBtn;
+  var liveBtn;
+  var liveTxt;
+  var timeLbl;
+  var backBtn;
+  var fwdBtn;
+  function fmt(s) {
+    s = Math.max(0, s);
+    const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, r = Math.floor(s % 60);
+    return h ? `${h}:${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}` : `${m}:${String(r).padStart(2, "0")}`;
+  }
+  var span = () => Math.max(1e-6, S.U.tLive - S.U.tStart);
+  function goLive() {
+    S.isLive = true;
+    S.playing = true;
+    S.tView = S.U.tLive;
+  }
+  function seek(t) {
+    S.tView = Math.max(S.U.tStart, Math.min(S.U.tLive, t));
+    if (S.tView >= S.U.tLive - 0.05) goLive();
+    else S.isLive = false;
+  }
+  function togglePlay() {
+    if (S.playing) {
+      S.playing = false;
+      S.isLive = false;
+    } else S.playing = true;
+  }
+  var lastTL = "";
+  function updateTimeline() {
+    const f = S.U.tLive > S.U.tStart ? (S.tView - S.U.tStart) / span() : 1;
+    thumb.style.left = f * 100 + "%";
+    played.style.width = f * 100 + "%";
+    liveBtn.classList.toggle("on", S.isLive);
+    liveTxt.textContent = S.isLive ? "直播中" : "回到直播";
+    playBtn.classList.toggle("paused", !S.playing);
+    playBtn.setAttribute("aria-label", S.playing ? "暫停" : "播放");
+    fwdBtn.disabled = S.isLive;
+    const behind = S.U.tLive - S.tView;
+    const s = S.isLive ? fmt(S.tView) : `${fmt(S.tView)}<span class="behind">落後直播 ${fmt(behind)}</span>`;
+    if (s !== lastTL) {
+      timeLbl.innerHTML = s;
+      lastTL = s;
+      scrub.setAttribute("aria-valuenow", S.tView.toFixed(1));
+      scrub.setAttribute("aria-valuemax", S.U.tLive.toFixed(1));
+      scrub.setAttribute("aria-valuetext", `${fmt(S.tView)}，共 ${fmt(S.U.tLive)}`);
+    }
+    if (S.selected && S.selected.tn >= S.U.tStart) {
+      mark.style.display = "block";
+      mark.style.left = (S.selected.tn - S.U.tStart) / span() * 100 + "%";
+    } else mark.style.display = "none";
+  }
+  function sizeSpark() {
+    const r = spark.getBoundingClientRect();
+    spark.width = Math.max(1, Math.round(r.width * S.dpr));
+    spark.height = Math.max(1, Math.round(r.height * S.dpr));
+    drawSpark();
+  }
+  function drawSpark() {
+    if (!S.U) return;
+    const W = spark.width, Hh = spark.height;
+    sctx.clearRect(0, 0, W, Hh);
+    const buckets = S.U.buckets, b0 = Math.max(0, Math.floor(S.U.tStart / BUCKET) - S.U.bucketBase);
+    const nb = Math.max(1, Math.ceil(S.U.tLive / BUCKET) - S.U.bucketBase - b0);
+    const cols = Math.max(1, Math.floor(W / (3 * S.dpr)));
+    const vals = new Array(cols).fill(0);
+    for (let c = 0; c < cols; c++) {
+      const i0 = Math.floor(c / cols * nb), i1 = Math.max(i0 + 1, Math.floor((c + 1) / cols * nb));
+      let s = 0, n = 0;
+      for (let i = i0; i < i1 && i + b0 < buckets.length; i++) {
+        s += buckets[i + b0];
+        n++;
+      }
+      vals[c] = n ? s / n : 0;
+    }
+    let mx = 0, mn = Infinity;
+    for (const v of vals) {
+      mx = Math.max(mx, v);
+      mn = Math.min(mn, v);
+    }
+    if (!(mx > mn)) {
+      mx = mn + 1;
+    }
+    const g = sctx.createLinearGradient(0, 0, W, 0);
+    const st = getComputedStyle(document.documentElement);
+    g.addColorStop(0, st.getPropertyValue("--accent-2").trim() || "#6fd3ff");
+    g.addColorStop(1, st.getPropertyValue("--accent").trim() || "#ff6fcf");
+    sctx.fillStyle = g;
+    const bw = W / cols;
+    for (let i = 0; i < cols; i++) {
+      const hgt = Math.max(1 * S.dpr, (0.15 + 0.8 * (vals[i] - mn) / (mx - mn)) * Hh);
+      sctx.fillRect(i * bw + bw * 0.2, Hh - hgt, bw * 0.6, hgt);
+    }
+  }
+  function tFromX(x) {
+    const r = scrub.getBoundingClientRect();
+    return Math.max(0, Math.min(1, (x - r.left) / r.width));
+  }
+  var endScrub = () => {
+    S.scrubbing = false;
+    scrub.classList.remove("active");
+  };
+  function init() {
+    scrub = $("scrub");
+    thumb = $("thumb");
+    played = $("played");
+    tip = $("tip");
+    mark = $("mark");
+    spark = $("spark");
+    sctx = spark.getContext("2d");
+    playBtn = $("play");
+    liveBtn = $("live");
+    liveTxt = $("liveTxt");
+    timeLbl = $("timeLbl");
+    backBtn = $("back");
+    fwdBtn = $("fwd");
+    scrub.addEventListener("pointerdown", (e) => {
+      S.scrubbing = true;
+      scrub.classList.add("active");
+      scrub.setPointerCapture(e.pointerId);
+      const f = tFromX(e.clientX);
+      if (f > 0.995) goLive();
+      else seek(S.U.tStart + f * span());
+    });
+    scrub.addEventListener("pointermove", (e) => {
+      const f = tFromX(e.clientX), t = S.U.tStart + f * span();
+      tip.style.left = f * 100 + "%";
+      tip.textContent = f > 0.995 ? "直播" : `${fmt(t)}　N = ${(S.HUB * t).toFixed(1)}`;
+      if (S.scrubbing) {
+        if (f > 0.995) goLive();
+        else seek(t);
+      }
+    });
+    scrub.addEventListener("pointerup", endScrub);
+    scrub.addEventListener("pointercancel", endScrub);
+    scrub.addEventListener("keydown", (e) => {
+      if (e.key === "Home") {
+        seek(S.U.tStart);
+        e.preventDefault();
+      }
+      if (e.key === "End") {
+        goLive();
+        e.preventDefault();
+      }
+    });
+    playBtn.addEventListener("click", togglePlay);
+    liveBtn.addEventListener("click", goLive);
+    backBtn.addEventListener("click", () => seek(S.tView - 10));
+    fwdBtn.addEventListener("click", () => seek(S.tView + 10));
+    $("speed").addEventListener("change", (e) => {
+      S.speed = parseFloat(e.target.value);
+    });
+  }
+
+  // src/render/camera.js
+  var cv = document.getElementById("sky");
+  var ctx = cv.getContext("2d");
+  var MAXZ = 14;
+  var P = { x: 0, y: 0 };
+  var nebCanvas;
+  var nebPat;
+  var nebLum;
+  function tintedNebula(col) {
+    const N = nebCanvas.width, c = document.createElement("canvas");
+    c.width = c.height = N;
+    const g = c.getContext("2d"), img = g.createImageData(N, N), d = img.data;
+    for (let i = 0; i < nebLum.length; i++) {
+      const l = Math.pow(nebLum[i], 1.3);
+      d[i * 4] = col[0] * l * 0.42 + 4;
+      d[i * 4 + 1] = col[1] * l * 0.42 + 4;
+      d[i * 4 + 2] = col[2] * l * 0.42 + 8;
+      d[i * 4 + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    return ctx.createPattern(c, "repeat");
+  }
+  var starPat;
+  function defaultZoom() {
+    return Math.max(0.45, Math.min(1.25, Math.min(S.vw, S.vh) / 760));
+  }
+  function clampCam() {
+    const hd = Math.hypot(S.vw, S.vh) / 2;
+    S.minZ = hd / (S.RGEN * 0.9);
+    S.Z = Math.min(MAXZ, Math.max(S.minZ, S.Z));
+    const lim = Math.max(0, S.RGEN * 0.9 - hd / S.Z), m = Math.hypot(P.x, P.y);
+    if (m > lim) {
+      const k = lim / (m || 1);
+      P.x *= k;
+      P.y *= k;
+    }
+  }
+  function resize() {
+    S.dpr = Math.min(window.devicePixelRatio || 1, QL[S.qLevel].dpr);
+    S.vw = innerWidth;
+    S.vh = innerHeight;
+    cv.width = Math.round(S.vw * S.dpr);
+    cv.height = Math.round(S.vh * S.dpr);
+    clampCam();
+    sizeSpark();
+  }
+  function toS(x, y) {
+    return [S.vw / 2 + (x - P.x) * S.Z, S.vh / 2 + (y - P.y) * S.Z];
+  }
+  function toP(sx, sy) {
+    return [P.x + (sx - S.vw / 2) / S.Z, P.y + (sy - S.vh / 2) / S.Z];
+  }
+  function zoomAbout(f, sx, sy) {
+    const [px, py] = toP(sx, sy);
+    S.Z = Math.min(MAXZ, Math.max(S.minZ, S.Z * f));
+    P.x = px - (sx - S.vw / 2) / S.Z;
+    P.y = py - (sy - S.vh / 2) / S.Z;
+    clampCam();
+  }
+  function animateZoom(f, sx = S.vw / 2, sy = S.vh / 2) {
+    S.zoomAnim = { rem: Math.log(f), sx, sy };
+  }
+  function stepZoomAnim() {
+    if (!S.zoomAnim) return;
+    const s = S.zoomAnim.rem * 0.22;
+    zoomAbout(Math.exp(s), S.zoomAnim.sx, S.zoomAnim.sy);
+    S.zoomAnim.rem -= s;
+    if (Math.abs(S.zoomAnim.rem) < 2e-3) S.zoomAnim = null;
+  }
+  function buildPalettes(VAC) {
+    return VAC.map((V) => {
+      const wall = hsl2rgb(V.hue, 95, 74);
+      return { wall, core: hsl2rgb(V.hue, 70, 9), rim: hsl2rgb(V.hue, 58, 40), neb: V.kind === "ds" ? tintedNebula(wall) : null };
+    });
+  }
+  function init2() {
+    nebCanvas = makeNebula();
+    nebPat = ctx.createPattern(nebCanvas, "repeat");
+    nebLum = (() => {
+      const d = nebCanvas.getContext("2d").getImageData(0, 0, nebCanvas.width, nebCanvas.height).data, out = new Float32Array(d.length / 4);
+      for (let i = 0; i < out.length; i++) {
+        const l = (d[i * 4] + d[i * 4 + 1] + d[i * 4 + 2]) / 3;
+        out[i] = Math.min(1, Math.max(0, (l - 14) / 110));
+      }
+      return out;
+    })();
+    starPat = ctx.createPattern(makeStars(), "repeat");
+  }
+
+  // src/render/scene.js
+  var visByB = /* @__PURE__ */ new Map();
+  function candOf(v) {
+    if (v.cand) return v.cand;
+    const set = /* @__PURE__ */ new Set([v]);
+    for (const R of v.rules || []) set.add(Territory.otherOf(R, v));
+    for (const k of v.kids || []) set.add(k);
+    for (let q = v.b.parent; q; q = q.parent) {
+      const pv = visByB.get(q);
+      if (pv) set.add(pv);
+    }
+    return v.cand = [...set].filter((c) => c.ord !== void 0).sort((a, b) => b.ord - a.ord);
+  }
+  var mergeCands = (a, b) => [...new Set(candOf(a).concat(candOf(b)))].sort((p, q) => q.ord - p.ord);
+  var opt = { grid: true, warp: true, hz: true, q: true, neb: true, stars: true, col: true, flash: true, lbl: true, vig: true };
+  var walls = [];
+  var AX = 0;
+  var AY = 0;
+  var RHS = 0;
+  var TQ = 0;
+  var WX = 0;
+  var WY = 0;
+  var T_R = 0;
+  var PH = 0;
+  var warpList = [];
+  function screenCircle(b, t) {
+    const c = S.U.circleAt(b, t);
+    return { b, cx: S.vw / 2 + (c.cx - P.x) * S.Z, cy: S.vh / 2 + (c.cy - P.y) * S.Z, r: c.r * S.Z, px: c.cx, py: c.cy, pr: c.r };
+  }
+  function collect(t) {
+    const hd = Math.hypot(S.vw, S.vh) / 2, cx = S.vw / 2, cy = S.vh / 2;
+    S.vis = [];
+    for (const b of S.U.aliveAt(t)) {
+      const v = screenCircle(b, t);
+      const D = Math.hypot(v.cx - cx, v.cy - cy);
+      if (D - v.r > hd) continue;
+      v.sx = v.cx;
+      v.sy = v.cy;
+      v.sr = v.r;
+      v.age = t - b.tn;
+      v.full = v.r - D > hd;
+      S.vis.push(v);
+    }
+    S.vis.sort((a, b) => a.b.tn - b.b.tn || a.b.id - b.b.id);
+    const byB = /* @__PURE__ */ new Map();
+    for (const v of S.vis) byB.set(v.b, v);
+    visByB = byB;
+    const F = S.U.frame(t, S.Z, (b) => byB.get(b) || screenCircle(b, t));
+    walls = Territory.buildRules(S.vis, F, QL[S.qLevel].col).filter((R) => R.kind === "wall" || R.kind === "merge");
+    for (const v of S.vis) v.grp = v;
+    const root = (v) => {
+      while (v.grp !== v) {
+        v.grp = v.grp.grp;
+        v = v.grp;
+      }
+      return v;
+    };
+    for (const v of S.vis) for (const R of v.rules) if (R.kind === "merge") {
+      const a = root(R.A), b = root(R.B);
+      if (a !== b) {
+        if (a.b.tn <= b.b.tn) b.grp = a;
+        else a.grp = b;
+      }
+    }
+    for (const v of S.vis) v.grp = root(v);
+    return F;
+  }
+  var BIG = 2e4;
+  function viewBox() {
+    return { x0: -40, y0: -40, x1: S.vw + 40, y1: S.vh + 40 };
+  }
+  var viewWedge = (cx, cy) => Territory.boxWedge(cx, cy, viewBox());
+  function radialGrad(cx, cy, r0, r1, stops) {
+    const css = (s) => `rgba(${s[1] | 0},${s[2] | 0},${s[3] | 0},${s[4]})`;
+    const D = Math.hypot(S.vw / 2 - cx, S.vh / 2 - cy), diag = Math.hypot(S.vw, S.vh) / 2 + 40;
+    if (r1 < BIG || D < 1) {
+      const g2 = ctx.createRadialGradient(cx, cy, r0, cx, cy, r1);
+      for (const s of stops) g2.addColorStop(s[0], css(s));
+      return g2;
+    }
+    const nx = (S.vw / 2 - cx) / D, ny = (S.vh / 2 - cy) / D, da = Math.max(r0, D - diag), db = Math.max(da + 1, D + diag);
+    const g = ctx.createLinearGradient(cx + nx * da, cy + ny * da, cx + nx * db, cy + ny * db);
+    const at = (rho) => {
+      const f = (rho - r0) / (r1 - r0);
+      if (f <= stops[0][0]) return stops[0];
+      for (let i = 1; i < stops.length; i++) if (f <= stops[i][0]) {
+        const a = stops[i - 1], b = stops[i], t = (f - a[0]) / (b[0] - a[0] || 1);
+        return [f, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t, a[4] + (b[4] - a[4]) * t];
+      }
+      return stops[stops.length - 1];
+    };
+    g.addColorStop(0, css(at(da)));
+    for (const s of stops) {
+      const u = (r0 + s[0] * (r1 - r0) - da) / (db - da);
+      if (u > 0 && u < 1) g.addColorStop(u, css(s));
+    }
+    g.addColorStop(1, css(at(db)));
+    return g;
+  }
+  var C4 = (c, a) => [c[0], c[1], c[2], a];
+  function cellPath(v, cap) {
+    ctx.beginPath();
+    const lim = cap === void 0 ? Math.max(0.6, v.r) : Math.min(v.r, cap);
+    const constrained = v.rules && v.rules.some((R) => R.kind === "merge" || R.kind === "wall" && R.W === v || R.kind === "inherit" && R.X === v && !R.free);
+    const wedge = viewWedge(v.cx, v.cy);
+    if (!constrained && cap === void 0 && v.full) {
+      ctx.rect(-10, -10, S.vw + 20, S.vh + 20);
+      return;
+    }
+    if (!constrained && !wedge && lim < BIG) {
+      ctx.arc(v.cx, v.cy, lim, 0, TAU);
+      return;
+    }
+    if (cap === void 0 && v.cellPts) {
+      const p = v.cellPts;
+      ctx.moveTo(p[0], p[1]);
+      for (let k = 2; k < p.length; k += 2) ctx.lineTo(p[k], p[k + 1]);
+      ctx.closePath();
+      return;
+    }
+    let pts2;
+    if (!wedge) {
+      const N = Math.pow(2, Math.ceil(Math.log2(Math.max(32, Math.min(1024, lim * TAU / 5)))));
+      pts2 = new Float64Array(N * 2);
+      for (let k = 0; k < N; k++) {
+        const th = TAU * k / N, ex = Math.cos(th), ey = Math.sin(th), rho = constrained ? Territory.cellRay(v, ex, ey, lim) : lim;
+        pts2[2 * k] = v.cx + ex * rho;
+        pts2[2 * k + 1] = v.cy + ey * rho;
+      }
+    } else {
+      const inner = Math.max(0, wedge.dmin - 2), outer = Math.min(lim, wedge.dmax + 2);
+      if (outer <= inner) {
+        if (cap === void 0) v.cellPts = new Float64Array(0);
+        return;
+      }
+      const N = 256;
+      pts2 = new Float64Array((N + 1) * 4);
+      for (let k = 0; k <= N; k++) {
+        const th = wedge.a0 + (wedge.a1 - wedge.a0) * k / N, ex = Math.cos(th), ey = Math.sin(th);
+        let rho = constrained ? Territory.cellRay(v, ex, ey, lim) : lim;
+        rho = Math.max(inner, Math.min(outer, rho));
+        pts2[2 * k] = v.cx + ex * rho;
+        pts2[2 * k + 1] = v.cy + ey * rho;
+        const j = 2 * N + 1 - k;
+        pts2[2 * j] = v.cx + ex * inner;
+        pts2[2 * j + 1] = v.cy + ey * inner;
+      }
+    }
+    if (cap === void 0) v.cellPts = pts2;
+    if (!pts2.length) return;
+    for (let k = 0; k < pts2.length; k += 2) S.maxPathCoord = Math.max(S.maxPathCoord, Math.abs(pts2[k]), Math.abs(pts2[k + 1]));
+    ctx.moveTo(pts2[0], pts2[1]);
+    for (let k = 2; k < pts2.length; k += 2) ctx.lineTo(pts2[k], pts2[k + 1]);
+    ctx.closePath();
+  }
+  function arcRuns(cx, cy, r, a0, a1, ok, M) {
+    const refine = (a, b) => {
+      for (let i = 0; i < 16; i++) {
+        const m = (a + b) / 2;
+        if (ok(m)) a = m;
+        else b = m;
+      }
+      return (a + b) / 2;
+    };
+    let start = null, prev = a0, prevOk = false;
+    const flush = (st, en) => {
+      if (r < BIG) {
+        ctx.moveTo(cx + Math.cos(st) * r, cy + Math.sin(st) * r);
+        ctx.arc(cx, cy, r, st, en);
+        return;
+      }
+      const K2 = 64;
+      for (let i = 0; i <= K2; i++) {
+        const a = st + (en - st) * i / K2, x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+        S.maxPathCoord = Math.max(S.maxPathCoord, Math.abs(x), Math.abs(y));
+      }
+    };
+    for (let k = 0; k <= M; k++) {
+      const a = a0 + (a1 - a0) * k / M, f = ok(a);
+      if (f && !prevOk) start = k === 0 ? a : refine(a, prev);
+      if (!f && prevOk) flush(start, refine(prev, a));
+      prev = a;
+      prevOk = f;
+    }
+    if (prevOk) flush(start, a1);
+  }
+  function wallPath(v) {
+    ctx.beginPath();
+    const cands = candOf(v);
+    const others = cands.filter((c) => c !== v && !Territory.isAncestor(c.b, v.b));
+    const free = (th) => {
+      const ex = Math.cos(th), ey = Math.sin(th), x = v.cx + ex * v.r, y = v.cy + ey * v.r;
+      let near = false;
+      for (const c of others) if (Math.hypot(x - c.cx, y - c.cy) < c.r + 2) {
+        near = true;
+        break;
+      }
+      return near ? Territory.shellVisible(v, cands, x, y, ex, ey, 1.5) : true;
+    };
+    const wedge = viewWedge(v.cx, v.cy);
+    if (wedge) {
+      if (v.r < wedge.dmin - 2 || v.r > wedge.dmax + 2) return;
+      arcRuns(v.cx, v.cy, v.r, wedge.a0, wedge.a1, v.rules && v.rules.length ? free : () => true, Math.max(24, Math.min(256, Math.ceil(Math.min(v.r * (wedge.a1 - wedge.a0), 4 * (S.vw + S.vh)) / 6))));
+      return;
+    }
+    if (!v.rules || !v.rules.length) {
+      ctx.arc(v.cx, v.cy, v.r, 0, TAU);
+      return;
+    }
+    const ang = [];
+    for (let k = 0; k < 96; k++) ang.push(TAU * k / 96);
+    for (const R of v.rules) {
+      const o = Territory.otherOf(R, v), dx = o.cx - v.cx, dy = o.cy - v.cy, d = Math.hypot(dx, dy);
+      const c = (v.r * v.r + d * d - o.r * o.r) / (2 * v.r * d);
+      if (c <= -1 || c >= 1) continue;
+      const a0 = Math.atan2(dy, dx), half = Math.acos(c);
+      for (let k = 0; k <= 24; k++) ang.push(((a0 - half + 2 * half * k / 24) % TAU + TAU) % TAU);
+    }
+    ang.sort((a, b) => a - b);
+    const M = ang.length, fr = ang.map(free);
+    if (fr.every(Boolean)) {
+      ctx.arc(v.cx, v.cy, v.r, 0, TAU);
+      return;
+    }
+    const refine = (a, b) => {
+      for (let i = 0; i < 16; i++) {
+        const m = (a + b) / 2;
+        if (free(m)) a = m;
+        else b = m;
+      }
+      return (a + b) / 2;
+    };
+    for (let k = 0; k < M; k++) {
+      const kp = (k - 1 + M) % M;
+      if (!fr[k] || fr[kp]) continue;
+      const st = refine(ang[k], ang[kp] > ang[k] ? ang[kp] - TAU : ang[kp]);
+      let j = k;
+      while (fr[(j + 1) % M] && (j + 1) % M !== k) j = (j + 1) % M;
+      const jn = (j + 1) % M;
+      let en = refine(ang[j], ang[jn] < ang[j] ? ang[jn] + TAU : ang[jn]);
+      while (en < st) en += TAU;
+      ctx.moveTo(v.cx + Math.cos(st) * v.r, v.cy + Math.sin(st) * v.r);
+      ctx.arc(v.cx, v.cy, v.r, st, en);
+    }
+  }
+  function wallPolylines(R) {
+    const dw = R.kind === "wall" ? Territory.domainWall(R, mergeCands(R.W, R.L), viewBox()) : Territory.mergeCurve(R, mergeCands(R.A, R.B), viewBox());
+    return dw && dw.segs.length ? polysOf(dw) : null;
+  }
+  function warp(x, y) {
+    let dx = 0, dy = 0;
+    if (!opt.warp || K.warp <= 0) {
+      WX = 0;
+      WY = 0;
+      return;
+    }
+    for (let i = 0; i < warpList.length; i++) {
+      const w = warpList[i], vx = x - w.sx, vy = y - w.sy, r2 = vx * vx + vy * vy;
+      if (r2 > w.o2 || r2 < w.i2) continue;
+      const r = Math.sqrt(r2) || 1, d = r - w.sr, f = w.amp * Math.exp(-d * d / (w.ww * w.ww));
+      dx += vx / r * f;
+      dy += vy / r * f;
+    }
+    const hx = x - AX, hy = y - AY, hr = Math.sqrt(hx * hx + hy * hy) || 1, hd = (hr - RHS) / (RHS * 0.5);
+    const sw = Math.exp(-hd * hd) * Math.min(7, RHS * 0.05) * (0.65 + 0.35 * Math.sin(TQ * 0.9));
+    dx += (hx * 0.8 - hy * 0.35) / hr * sw;
+    dy += (hy * 0.8 + hx * 0.35) / hr * sw;
+    if (!reduceMotion) {
+      dx += 1.8 * Math.sin(y * 0.019 + x * 7e-3 + TQ * 1.7);
+      dy += 1.8 * Math.sin(x * 0.017 - y * 6e-3 + TQ * 1.3);
+    }
+    WX = dx * K.warp;
+    WY = dy * K.warp;
+  }
+  function v2(n) {
+    if (n === 0) return 6;
+    n = Math.abs(n);
+    let c = 0;
+    while ((n & 1) === 0 && c < 6) {
+      n >>= 1;
+      c++;
+    }
+    return c;
+  }
+  function drawGrid(ph) {
+    const sig = K.gridBase * Math.pow(2, ph), step = QL[S.qLevel].step;
+    ctx.globalCompositeOperation = "lighter";
+    for (let axis = 0; axis < 2; axis++) {
+      const a0 = axis ? AY : AX, len = axis ? S.vw : S.vh, span2 = axis ? S.vh : S.vw;
+      const n0 = Math.floor((-40 - a0) / sig), n1 = Math.ceil((span2 + 40 - a0) / sig);
+      for (let n = n0; n <= n1; n++) {
+        const w = Math.min(v2(n), 5) + ph, al = Math.min(0.3, 0.055 * w);
+        if (al < 5e-3) continue;
+        const p = a0 + n * sig;
+        ctx.strokeStyle = `rgba(196,176,255,${al})`;
+        ctx.lineWidth = 0.45 + 0.16 * w;
+        ctx.beginPath();
+        for (let s = -20, first = true; s <= len + 20; s += step) {
+          const x = axis ? s : p, y = axis ? p : s;
+          warp(x, y);
+          if (first) {
+            ctx.moveTo(x + WX, y + WY);
+            first = false;
+          } else ctx.lineTo(x + WX, y + WY);
+        }
+        ctx.stroke();
+      }
+    }
+  }
+  function drawRipples(t) {
+    const dtb = 0.2, L = 5, m = K.ripples;
+    const k0 = Math.max(0, Math.floor((t - L) / dtb)), k1 = Math.floor(t / dtb);
+    ctx.globalCompositeOperation = "lighter";
+    ctx.lineWidth = 1.1;
+    for (let k = k0; k <= k1; k++) for (let i = 0; i < m; i++) {
+      const tb = (k + hash(k, i, 11)) * dtb, age = t - tb;
+      if (age < 0 || age > L) continue;
+      const ang = hash(k, i, 12) * TAU, rr = (0.12 + 0.83 * Math.sqrt(hash(k, i, 13))) * S.RH;
+      const E = Math.exp(S.HUB * age), px = Math.cos(ang) * rr * E, py = Math.sin(ang) * rr * E;
+      const rad = (3 + hash(k, i, 14) * 9) * E * S.Z;
+      const [sx, sy] = toS(px, py);
+      if (sx < -rad || sy < -rad || sx > S.vw + rad || sy > S.vh + rad) continue;
+      const out = rr * E > S.RH;
+      let a = Math.pow(1 - age / L, 1.6) * Math.min(1, age * 4) * 0.55;
+      if (!out && !reduceMotion) a *= 0.6 + 0.4 * Math.sin(age * 11 + k);
+      const col = out ? "255,212,140" : "255,128,222";
+      ctx.strokeStyle = `rgba(${col},${a})`;
+      ctx.beginPath();
+      ctx.arc(sx, sy, Math.max(0.8, rad), 0, TAU);
+      ctx.stroke();
+      ctx.fillStyle = `rgba(${col},${a * 0.12})`;
+      ctx.fill();
+    }
+  }
+  function drawHorizon() {
+    ctx.globalCompositeOperation = "source-over";
+    const g = ctx.createRadialGradient(AX, AY, 0, AX, AY, RHS);
+    g.addColorStop(0, "rgba(255,220,160,.05)");
+    g.addColorStop(0.85, "rgba(255,220,160,.02)");
+    g.addColorStop(1, "rgba(255,220,160,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(AX, AY, RHS, 0, TAU);
+    ctx.fill();
+    ctx.setLineDash([5, 7]);
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = "rgba(242,196,109,.6)";
+    ctx.beginPath();
+    ctx.arc(AX, AY, RHS, 0, TAU);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = '500 12px "Noto Serif TC", serif';
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    ctx.fillStyle = "rgba(242,210,150,.85)";
+    if (RHS > 70) ctx.fillText("哈伯視界", AX, AY - RHS - 6);
+    ctx.globalCompositeOperation = "lighter";
+    const s = 7;
+    ctx.strokeStyle = "rgba(255,236,190,.9)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(AX - s, AY);
+    ctx.lineTo(AX + s, AY);
+    ctx.moveTo(AX, AY - s);
+    ctx.lineTo(AX, AY + s);
+    ctx.stroke();
+    const gg = ctx.createRadialGradient(AX, AY, 0, AX, AY, 10);
+    gg.addColorStop(0, "rgba(255,240,200,.9)");
+    gg.addColorStop(1, "rgba(255,240,200,0)");
+    ctx.fillStyle = gg;
+    ctx.beginPath();
+    ctx.arc(AX, AY, 10, 0, TAU);
+    ctx.fill();
+    if (RHS > 70) {
+      ctx.globalCompositeOperation = "source-over";
+      ctx.textBaseline = "top";
+      ctx.font = '12px "Noto Sans TC", sans-serif';
+      ctx.fillStyle = "rgba(242,226,190,.7)";
+      ctx.fillText("觀測者", AX, AY + 12);
+    }
+  }
+  var rgba = (c, a) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+  var mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+  function heatGeo(v) {
+    const T2 = v.b.heatT;
+    if (!isFinite(T2)) return null;
+    const A = v.age, T1 = T2 * 0.35;
+    if (A <= T1) return null;
+    return { x0: Math.sqrt(1 - (T1 / A) ** 2), x1: A > T2 ? Math.sqrt(1 - (T2 / A) ** 2) : 0, prog: Math.min(1, (A - T1) / (T2 - T1)) };
+  }
+  function crunchGeo(v) {
+    const b = v.b;
+    if (!b.crunch) return null;
+    const A = v.age, tc = b.crunchT, tt = tc * 0.55;
+    if (A <= tt) return null;
+    return { xt: Math.sqrt(1 - (tt / A) ** 2), xc: A > tc ? Math.sqrt(1 - (tc / A) ** 2) : 0, heat: Math.min(1, (A - tt) / (tc - tt)) };
+  }
+  var TEX_VMAX = 30;
+  var texPhase = /* @__PURE__ */ new Map();
+  var texStepped = /* @__PURE__ */ new Set();
+  var wallFade = /* @__PURE__ */ new Map();
+  var wallFadeLast = performance.now();
+  function polysOf(dw) {
+    const out = [];
+    for (const [t0, t1] of dw.segs) {
+      const p0 = dw.P(t0), pm = dw.P((t0 + t1) / 2), p1 = dw.P(t1);
+      const len = Math.hypot(pm[0] - p0[0], pm[1] - p0[1]) + Math.hypot(p1[0] - pm[0], p1[1] - pm[1]);
+      const K2 = Math.max(6, Math.min(160, Math.ceil(len / 6))), arr = new Float32Array((K2 + 1) * 2);
+      for (let i = 0; i <= K2; i++) {
+        const [x, y] = dw.P(t0 + (t1 - t0) * i / K2);
+        arr[2 * i] = x;
+        arr[2 * i + 1] = y;
+      }
+      out.push(arr);
+    }
+    return out;
+  }
+  function normalsOf(p) {
+    if (p._n) return p._n;
+    const n = new Float32Array(p.length), last = p.length - 2;
+    for (let i = 0; i <= last; i += 2) {
+      const a = Math.max(0, i - 2), b = Math.min(last, i + 2), tx = p[b] - p[a], ty = p[b + 1] - p[a + 1], l = Math.hypot(tx, ty) || 1;
+      n[i] = -ty / l;
+      n[i + 1] = tx / l;
+    }
+    return p._n = n;
+  }
+  function tracePolys(pts2, off) {
+    ctx.beginPath();
+    for (const p of pts2) {
+      const n = off ? normalsOf(p) : null;
+      for (let i = 0; i < p.length; i += 2) {
+        const x = off ? p[i] + n[i] * off : p[i], y = off ? p[i + 1] + n[i + 1] * off : p[i + 1];
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+    }
+  }
+  var WHITE = [255, 255, 255];
+  function drawWallStyled(f, ph) {
+    const st = f.style, a = f.a;
+    if (st.seam) {
+      tracePolys(f.pts, 0);
+      ctx.lineWidth = 14;
+      ctx.strokeStyle = rgba(mix(st.col, WHITE, 0.3), 0.22 * st.flash);
+      ctx.stroke();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = rgba(mix(st.col, WHITE, 0.6), 0.5 * st.flash);
+      ctx.stroke();
+      return;
+    }
+    const s = st.str, mid = mix(st.colP, st.colM, 0.5);
+    tracePolys(f.pts, 0);
+    ctx.lineWidth = 4 + 9 * s;
+    ctx.strokeStyle = rgba(mid, (0.07 + 0.15 * s) * a);
+    ctx.stroke();
+    if (st.flash > 0.01) {
+      ctx.lineWidth = 18;
+      ctx.strokeStyle = rgba(mix(mid, WHITE, 0.3), 0.22 * st.flash * a);
+      ctx.stroke();
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = rgba(mix(mid, WHITE, 0.65), 0.5 * st.flash * a);
+      ctx.stroke();
+    }
+    if (st.ripple && s > 0.03) {
+      const cyc = ph * (0.35 + 1.1 * s);
+      ctx.lineWidth = 1.1;
+      for (let k = 0; k < 3; k++) {
+        const o = ((cyc + k / 3) % 1 + 1) % 1, d = 3 + o * (10 + 14 * s), al2 = Math.pow(1 - o, 1.6) * 0.42 * s * a;
+        if (al2 < 0.01) continue;
+        tracePolys(f.pts, st.sign * d);
+        ctx.strokeStyle = rgba(mix(st.sign > 0 ? st.colM : st.colP, WHITE, 0.5), al2);
+        ctx.stroke();
+      }
+    }
+    const w = 1 + 0.9 * s, al = (0.5 + 0.45 * s) * a;
+    tracePolys(f.pts, 1.3);
+    ctx.lineWidth = w;
+    ctx.strokeStyle = rgba(mix(st.colP, WHITE, 0.4), al);
+    ctx.stroke();
+    tracePolys(f.pts, -1.3);
+    ctx.lineWidth = w;
+    ctx.strokeStyle = rgba(mix(st.colM, WHITE, 0.4), al);
+    ctx.stroke();
+  }
+  function resetTemporal() {
+    texPhase.clear();
+    S.texLastT = null;
+    wallFade.clear();
+  }
+  function drawBubbles(F) {
+    const nowR = performance.now(), fdt = Math.min(0.1, (nowR - (drawBubbles.last || nowR)) / 1e3);
+    drawBubbles.last = nowR;
+    const texCand = [];
+    for (const v of S.vis) {
+      if (v.sr <= 6) continue;
+      const w = Math.min(S.vw, v.sx + v.sr) - Math.max(0, v.sx - v.sr), h = Math.min(S.vh, v.sy + v.sr) - Math.max(0, v.sy - v.sr);
+      if (w > 0 && h > 0) texCand.push({ v, area: Math.min(w * h, Math.PI * v.sr * v.sr) });
+    }
+    texCand.sort((a, b) => b.area - a.area);
+    const texOK = /* @__PURE__ */ new Set();
+    for (let i = 0; i < Math.min(texCand.length, QL[S.qLevel].stars); i++) texOK.add(texCand[i].v);
+    for (const v of S.vis) {
+      const tgt = texOK.has(v) ? 1 : 0, b = v.b;
+      if (b._tf === void 0) b._tf = tgt;
+      b._tf += (tgt - b._tf) * Math.min(1, fdt * 10);
+    }
+    const order = S.vis.slice().sort((a, b) => Territory.drawOrder(F, a, b));
+    for (const v of S.vis) {
+      v.cand = null;
+      v.ord = void 0;
+    }
+    order.forEach((v, i) => v.ord = i);
+    let first = 0;
+    for (let i = order.length - 1; i >= 0; i--) {
+      const v = order[i];
+      if (!v.full) continue;
+      let all = true;
+      for (let gx = 0; gx <= 15 && all; gx++) for (let gy = 0; gy <= 9 && all; gy++) if (!Territory.drawContains(v, S.vw * gx / 15, S.vh * gy / 9)) all = false;
+      if (all) {
+        first = i;
+        break;
+      }
+    }
+    const dtv = Math.max(-0.25, Math.min(0.25, T_R - (S.texLastT === null ? T_R : S.texLastT)));
+    S.texLastT = T_R;
+    const rhoMax = /* @__PURE__ */ new Map();
+    for (let oi = first; oi < order.length; oi++) {
+      const v = order[oi], x0 = Math.max(0, v.cx - v.r), x1 = Math.min(S.vw, v.cx + v.r), y0 = Math.max(0, v.cy - v.r), y1 = Math.min(S.vh, v.cy + v.r);
+      if (x1 <= x0 || y1 <= y0) continue;
+      let m = 0;
+      for (const [x, y] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]) m = Math.max(m, Math.hypot(x - AX, y - AY));
+      rhoMax.set(v.b.vac, Math.max(rhoMax.get(v.b.vac) || 0, m));
+    }
+    const texPh = (key, natural, vac, drift = 0) => {
+      const vmax = TEX_VMAX - drift, rho = Math.max(60, rhoMax.get(vac) || 60), rate = Math.min(natural, vmax / (Math.LN2 * rho));
+      S.texSpeedSeen = Math.max(S.texSpeedSeen, Math.LN2 * rate * (rhoMax.get(vac) || 0) + drift);
+      let ph = texPhase.get(key);
+      if (ph === void 0) ph = 0;
+      if (!texStepped.has(key)) {
+        ph += rate * dtv;
+        texPhase.set(key, ph);
+        texStepped.add(key);
+      }
+      return ph;
+    };
+    texStepped.clear();
+    for (let oi = first; oi < order.length; oi++) {
+      const v = order[oi];
+      const pal = S.PAL[v.b.vac], sr = Math.max(0.6, v.sr), sx = v.sx, sy = v.sy;
+      ctx.globalCompositeOperation = "source-over";
+      const s1 = Math.max(0, 1 - 90 / sr), s2 = Math.max(s1, 1 - 16 / sr);
+      ctx.fillStyle = radialGrad(sx, sy, 0, sr, [[0, ...C4(pal.core, 0.985)], [s1, ...C4(mix(pal.core, pal.rim, 0.3), 0.98)], [s2, ...C4(pal.rim, 0.96)], [1, ...C4(pal.wall, 0.97)]]);
+      cellPath(v);
+      ctx.fill();
+      const cg = crunchGeo(v), gr = v.grp || v;
+      const V = S.U.VAC[v.b.vac];
+      if (V.kind === "ds") {
+        const tf = v.b._tf;
+        if (opt.neb && K.neb > 0 && tf > 0.01) {
+          const sp = 2 + 6 * Math.sqrt(V.eps), ang = V.i * 2.39996, dx = Math.cos(ang) * sp * T_R, dy = Math.sin(ang) * sp * T_R;
+          const uN = texPh("n" + V.i, S.HUB * Math.sqrt(V.eps) / Math.LN2, V.i, sp) + Math.log2(S.Z), phN = uN - Math.floor(uN);
+          ctx.globalCompositeOperation = "lighter";
+          for (let k = 0; k < 2; k++) {
+            const x = phN + k, w = Math.pow(Math.sin(Math.PI * x / 2), 2), scl = 1.25 * Math.pow(2, x - 1);
+            pal.neb.setTransform(new DOMMatrix().translateSelf(AX + dx, AY + dy).rotateSelf(V.i * 47).scaleSelf(scl));
+            ctx.globalAlpha = Math.min(1, w * 0.72 * K.neb) * Math.min(1, sr / 40) * tf;
+            ctx.fillStyle = pal.neb;
+            cellPath(v);
+            ctx.fill();
+          }
+          ctx.globalAlpha = 1;
+        }
+      } else if (opt.stars && sr > 16 && v.b._tf > 0.01) {
+        const a = K.stars * Math.min(1, Math.max(0, (gr.age - 0.8) / 3)) * Math.min(1, sr / 60) * v.b._tf;
+        if (a > 0.02) {
+          const uS = texPh("s" + V.i, 1 / 60, V.i) + Math.log2(S.Z), phS = uS - Math.floor(uS);
+          ctx.globalCompositeOperation = "lighter";
+          for (let k = 0; k < 2; k++) {
+            const x = phS + k, w = Math.pow(Math.sin(Math.PI * x / 2), 2), scl = 0.9 * Math.pow(2, x - 1);
+            starPat.setTransform(new DOMMatrix().translateSelf(AX, AY).rotateSelf(V.i * 47).scaleSelf(scl));
+            ctx.globalAlpha = a * Math.min(1, w * 1.4);
+            ctx.fillStyle = starPat;
+            cellPath(v);
+            ctx.fill();
+          }
+          if (cg && cg.xt * sr > 4) {
+            for (let k = 0; k < 2; k++) {
+              const x = phS + k, w = Math.pow(Math.sin(Math.PI * x / 2), 2);
+              starPat.setTransform(new DOMMatrix().translateSelf(AX, AY).rotateSelf(V.i * 47 + 37).scaleSelf(0.45 * Math.pow(2, x - 1)));
+              ctx.globalAlpha = Math.min(1, a * (0.5 + cg.heat) * Math.min(1, w * 1.4));
+              cellPath(v, cg.xt * sr);
+              ctx.fill();
+            }
+          }
+          ctx.globalAlpha = 1;
+        }
+      }
+      const hg = heatGeo(v);
+      if (hg) {
+        const { x0, x1, prog } = hg, mid = x1 + (x0 - x1) * 0.45;
+        const hs = [[0, 4, 3, 9, x1 > 0 ? 0.93 : 0.93 * prog]];
+        if (x1 > 0) hs.push([x1, 4, 3, 9, 0.93]);
+        hs.push([Math.max(x1, mid), 26, 10, 16, 0.55 * prog], [Math.max(x1, mid, x0), 30, 12, 18, 0]);
+        ctx.globalCompositeOperation = "source-over";
+        ctx.fillStyle = radialGrad(sx, sy, 0, sr, hs);
+        cellPath(v);
+        ctx.fill();
+      }
+      if (v.age < 3.5 && V.kind !== "ds") {
+        const a = Math.pow(1 - v.age / 3.5, 2) * 0.85, rr = Math.max(2, sr);
+        ctx.globalCompositeOperation = "lighter";
+        ctx.fillStyle = radialGrad(sx, sy, 0, rr, [[0, 255, 252, 240, a], [0.5, ...C4(pal.wall, a * 0.5)], [1, ...C4(pal.wall, 0)]]);
+        cellPath(v);
+        ctx.fill();
+      }
+      if (cg) {
+        const { xt, xc, heat } = cg, mid = xc + (xt - xc) * 0.32;
+        const hs = [[0, 255, 250, 242, xc > 0 ? 0.9 : 0.9 * heat]];
+        if (xc > 0) hs.push([xc, 255, 250, 242, 0.95]);
+        hs.push([Math.max(xc, mid), 160, 192, 255, 0.5 * heat], [Math.max(xc, mid, xt), 120, 150, 255, 0]);
+        ctx.globalCompositeOperation = "lighter";
+        ctx.fillStyle = radialGrad(sx, sy, 0, sr, hs);
+        cellPath(v);
+        ctx.fill();
+        if (xc > 0) {
+          ctx.globalCompositeOperation = "source-over";
+          ctx.fillStyle = "#000";
+          cellPath(v, xc * sr);
+          ctx.fill();
+          if (xc * sr > 2) {
+            ctx.globalCompositeOperation = "lighter";
+            ctx.fillStyle = radialGrad(sx, sy, Math.max(0, xc * sr - 6), xc * sr + 3, [[0, 255, 248, 236, 0], [0.62, 255, 248, 236, 0.9], [1, 255, 248, 236, 0]]);
+            cellPath(v, xc * sr + 3);
+            ctx.fill();
+          }
+        }
+      }
+    }
+    ctx.globalCompositeOperation = "lighter";
+    for (const v of S.vis) {
+      if (v.full) continue;
+      const col = S.PAL[v.b.vac].wall;
+      if (v.sr < 1.2) {
+        ctx.fillStyle = rgba(col, 0.9);
+        ctx.fillRect(v.sx - 1, v.sy - 1, 2, 2);
+      } else {
+        wallPath(v);
+        ctx.lineWidth = Math.min(10, 3 + v.sr * 0.05);
+        ctx.strokeStyle = rgba(col, 0.12);
+        ctx.stroke();
+        ctx.lineWidth = Math.min(2.4, 0.8 + v.sr * 0.012);
+        ctx.strokeStyle = rgba(col, 0.9);
+        ctx.stroke();
+      }
+      if (opt.flash && v.age < 0.9) {
+        const a = Math.pow(1 - v.age / 0.9, 2), rr = v.sr + 6 + v.age * 70;
+        const g = ctx.createRadialGradient(v.sx, v.sy, 0, v.sx, v.sy, rr);
+        g.addColorStop(0, `rgba(255,255,255,${a * 0.9})`);
+        g.addColorStop(0.3, rgba(col, a * 0.4));
+        g.addColorStop(1, rgba(col, 0));
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(v.sx, v.sy, rr, 0, TAU);
+        ctx.fill();
+      }
+    }
+    if (opt.col) {
+      const now = performance.now(), dtr = Math.min(0.1, (now - wallFadeLast) / 1e3);
+      wallFadeLast = now;
+      const seen = /* @__PURE__ */ new Set();
+      for (const R of walls) {
+        const isWall = R.kind === "wall", A = isWall ? R.W : R.A, Bv = isWall ? R.L : R.B;
+        const age = T_R - S.U.collideTime(A.b, Bv.b), flash = age >= 0 && age < 3 ? (1 - age / 3) ** 2 : 0;
+        if (!isWall && flash > 0.01) {
+          const sm = Territory.mergeCurve(R, mergeCands(A, Bv), viewBox(), 1.5, true);
+          if (sm && sm.segs.length) {
+            const k2 = "s" + A.b.id + ":" + Bv.b.id;
+            seen.add(k2);
+            wallFade.set(k2, { a: 1, pts: polysOf(sm), style: { seam: true, col: S.PAL[A.b.vac].wall, flash } });
+          }
+        }
+        const pl = wallPolylines(R);
+        if (!pl) continue;
+        const k = R.kind[0] + A.b.id + ":" + Bv.b.id;
+        seen.add(k);
+        let f = wallFade.get(k);
+        if (!f) {
+          f = { a: 0 };
+          wallFade.set(k, f);
+        }
+        const cd = mergeCands(A, Bv), p0 = pl[0], nr0 = normalsOf(p0), m = p0.length >> 2 << 1;
+        const mx = p0[m], my = p0[m + 1], nx = nr0[m], ny = nr0[m + 1];
+        const oP = Territory.displayOwner(cd, mx + nx * 2.5, my + ny * 2.5), oM = Territory.displayOwner(cd, mx - nx * 2.5, my - ny * 2.5);
+        const colP = S.PAL[(oP || A).b.vac].wall, colM = S.PAL[(oM || Bv).b.vac].wall;
+        const eP = oP ? epsOf(oP.b) : epsOf(A.b), eM = oM ? epsOf(oM.b) : epsOf(Bv.b);
+        const D = Math.abs(eP - eM), str = D / (D + 0.25);
+        f.a = Math.min(1, f.a + dtr / 0.25);
+        f.pts = pl;
+        f.style = { colP, colM, str, sign: eP > eM ? 1 : -1, ripple: D > 0.02, flash: isWall ? flash : 0 };
+      }
+      const ph = T_R;
+      for (const [k, f] of wallFade) {
+        if (!seen.has(k)) {
+          f.a -= dtr / 0.45;
+          if (f.a <= 0) {
+            wallFade.delete(k);
+            continue;
+          }
+        }
+        drawWallStyled(f, ph);
+      }
+    } else wallFade.clear();
+    for (const R of walls) {
+      if (R.kind !== "wall") continue;
+      const A = R.W, B = R.L, x1 = R.g.p1x, y1 = R.g.p1y, x2 = R.g.p2x, y2 = R.g.p2y;
+      const ck = A.b.id + ":" + B.b.id;
+      if (!colSeen.has(ck)) {
+        colSeen.add(ck);
+        if (colSeen.size > 6e3) colSeen.clear();
+        S.pendingCol.push((x1 + x2) / (2 * S.vw) * 2 - 1);
+      }
+      if (!opt.col) continue;
+      const cm = mix(S.PAL[A.b.vac].wall, S.PAL[B.b.vac].wall, 0.5);
+      const fs = 6 + Math.min(16, Math.min(A.sr, B.sr) * 0.08);
+      for (const [fx, fy] of [[x1, y1], [x2, y2]]) {
+        if (fx < -fs || fy < -fs || fx > S.vw + fs || fy > S.vh + fs) continue;
+        if (A.rules.some((R2) => {
+          const o = Territory.otherOf(R2, A);
+          return o !== B && Math.hypot(fx - o.cx, fy - o.cy) < o.r - 0.5;
+        })) continue;
+        const g = ctx.createRadialGradient(fx, fy, 0, fx, fy, fs);
+        g.addColorStop(0, "rgba(255,255,255,.95)");
+        g.addColorStop(0.3, rgba(cm, 0.5));
+        g.addColorStop(1, rgba(cm, 0));
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(fx, fy, fs, 0, TAU);
+        ctx.fill();
+      }
+    }
+    ctx.globalCompositeOperation = "source-over";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    if (opt.lbl) {
+      ctx.font = '500 11.5px "Noto Serif TC", serif';
+      for (const v of S.vis) {
+        if (v.sr < K.lblMin) continue;
+        const lx = v.sx, ly = v.sy - v.sr * 0.55;
+        if (lx < 0 || ly < 0 || lx > S.vw || ly > S.vh) continue;
+        ctx.fillStyle = "rgba(255,255,255,.72)";
+        ctx.fillText(`#${v.b.id}${isHab(v.b) ? " ✦" : ""}`, lx, ly);
+      }
+    }
+    if (S.selected) {
+      const v = S.vis.find((o) => o.b === S.selected);
+      if (v && v.sr < BIG) {
+        ctx.setLineDash([6, 6]);
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = "rgba(255,255,255,.85)";
+        ctx.beginPath();
+        ctx.arc(v.sx, v.sy, v.sr + 7, 0, TAU);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+  }
+  function render(t) {
+    ctx.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#0c0820";
+    ctx.fillRect(0, 0, S.vw, S.vh);
+    [AX, AY] = toS(0, 0);
+    RHS = S.RH * S.Z;
+    TQ = t;
+    T_R = t;
+    const u = S.HUB * t / Math.LN2 + Math.log2(S.Z), ph = u - Math.floor(u);
+    PH = ph;
+    ctx.globalCompositeOperation = "lighter";
+    if (opt.neb && K.neb > 0) for (let k = 0; k < 3; k++) {
+      const x = ph + k, w = Math.pow(Math.sin(Math.PI * x / 3), 2), s = 1.7 * Math.pow(2, x - 1);
+      nebPat.setTransform(new DOMMatrix().translateSelf(AX, AY).rotateSelf(x * 8).scaleSelf(s));
+      ctx.globalAlpha = Math.min(1, w * 0.52 * K.neb);
+      ctx.fillStyle = nebPat;
+      ctx.fillRect(0, 0, S.vw, S.vh);
+    }
+    ctx.globalAlpha = 1;
+    const F = collect(t);
+    warpList.length = 0;
+    for (const v of S.vis) {
+      if (v.full || v.sr < 5) continue;
+      const ww = Math.max(8, Math.min(60, v.sr * 0.12));
+      warpList.push({
+        sx: v.sx,
+        sy: v.sy,
+        sr: v.sr,
+        ww,
+        amp: Math.min(14, 3 + v.sr * 0.06),
+        i2: Math.max(0, v.sr - 2.5 * ww) ** 2,
+        o2: (v.sr + 3 * ww) ** 2
+      });
+      if (warpList.length > QL[S.qLevel].warp) break;
+    }
+    if (opt.grid) drawGrid(ph);
+    if (opt.q) drawRipples(t);
+    if (opt.hz) drawHorizon();
+    drawBubbles(F);
+    emit("render:world", { ctx, t });
+    ctx.globalCompositeOperation = "source-over";
+    const fr = S.RGEN * S.Z;
+    const fog = ctx.createRadialGradient(AX, AY, fr * 0.8, AX, AY, fr * 0.93);
+    fog.addColorStop(0, "rgba(12,8,32,0)");
+    fog.addColorStop(1, "rgba(12,8,32,1)");
+    ctx.fillStyle = fog;
+    ctx.fillRect(0, 0, S.vw, S.vh);
+    if (opt.vig) {
+      const vg = ctx.createRadialGradient(S.vw / 2, S.vh / 2, Math.min(S.vw, S.vh) * 0.35, S.vw / 2, S.vh / 2, Math.hypot(S.vw, S.vh) * 0.6);
+      vg.addColorStop(0, "rgba(6,3,18,0)");
+      vg.addColorStop(1, "rgba(6,3,18,.55)");
+      ctx.fillStyle = vg;
+      ctx.fillRect(0, 0, S.vw, S.vh);
+    }
+    emit("render:overlay", { ctx, t });
+  }
+
+  // src/ui/card.js
+  var card;
+  function lamStr(V) {
+    return `${V.lsign < 0 ? "−" : "+"}${V.lman.toFixed(1)} × 10<sup>−${V.lexp}</sup>`;
+  }
+  function fateText(b, v) {
+    const V = S.U.VAC[b.vac];
+    if (V.dims !== 3) return `這裡的空間有 ${V.dims} 個維度。行星軌道與原子都難以穩定，我們熟悉的化學不會出現。`;
+    if (b.crunch) {
+      const cg = v && crunchGeo(v);
+      if (cg && cg.xc > 0) return "真空能為負，這個宇宙已走到大擠壓。從外面看，奇點區從中心向泡壁擴散；對裡面的居民而言，整個宇宙是在同一刻結束的。泡壁本身不受影響，仍照常擴張。";
+      if (cg) return "真空能為負，膨脹已經反轉。空間正在收縮，星系彼此靠攏，光被壓縮得越來越藍、越來越熱。";
+      return `真空能為負。它目前仍在膨脹，但終將反轉，約在誕生後 ${V.crunchT.toFixed(1)} 秒走到大擠壓（|Λ| 越大越快）。`;
+    }
+    if (V.kind === "tiny") {
+      const hg = v && heatGeo(v);
+      if (hg && hg.x1 > 0) return "這個宇宙已走入熱寂：恆星燃盡、黑洞蒸發，加速膨脹把其他星系推到視界之外。從外面看，熱寂區從中心向泡壁擴散；它不是結束，而是無限漫長地趨近於什麼都不發生。";
+      if (hg) return "這個宇宙正在冷卻：恆星一顆顆熄滅，星系彼此遠離，光越來越暗、越來越紅。";
+      return isHab(b) ? "真空能幾乎為零，物理常數也落在能形成原子、恆星與長壽星系的範圍。人擇原理說，也許有人正在這裡仰望星空。它已不再暴脹，終將走向熱寂。" : "真空能幾乎為零，已經不再暴脹，不會再生出新的口袋宇宙；但常數組合不太適合孕育複雜結構。它終將走向熱寂。";
+    }
+    return "真空能為正，內部仍在暴脹，會繼續穿隧出能量更低的下一層口袋宇宙。";
+  }
+  function openCard(b) {
+    S.selected = b;
+    const pal = S.PAL[b.vac];
+    $("cSw").style.background = `radial-gradient(circle, ${rgba(pal.core, 1)} 45%, ${rgba(pal.rim, 1)} 80%, ${rgba(pal.wall, 1)} 100%)`;
+    $("cTitle").textContent = `口袋宇宙 #${b.id}・${S.U.VAC[b.vac].name}`;
+    card.hidden = false;
+    updateCard();
+    emit("select", b);
+  }
+  function updateCard() {
+    if (!S.selected || card.hidden) return;
+    const b = S.selected, v = S.vis.find((o) => o.b === b);
+    let state;
+    if (S.tView < b.tn) state = `<dt>狀態</dt><dd>尚未誕生（${(b.tn - S.tView).toFixed(1)} 秒後）</dd>`;
+    else if (S.tView >= b.texit) state = `<dt>狀態</dt><dd>已流出觀測範圍</dd>`;
+    else {
+      const E = S.U.E(b, S.tView), r = S.R0 * E + S.RH * (E - 1);
+      state = `<dt>年齡</dt><dd>${(S.tView - b.tn).toFixed(1)} s</dd><dt>物理半徑</dt><dd>${(r / S.RH).toFixed(2)} R<sub>H</sub></dd><dt>與觀測者距離</dt><dd>${(b.d * E / S.RH).toFixed(2)} R<sub>H</sub></dd>`;
+    }
+    $("cFate").textContent = fateText(b, v);
+    const gone = b.tn < S.U.tStart;
+    $("cJump").disabled = gone;
+    $("cJump").textContent = gone ? "誕生時刻已超出回放保留範圍" : "回到它誕生的時刻";
+    const V = S.U.VAC[b.vac];
+    const origin = b.parent ? `第 ${b.depth + 1} 層，誕生於 #${b.parent.id}（${S.U.VAC[b.parent.vac].name}）內部` : "第 1 層，誕生於暴脹假真空";
+    const fate = V.kind === "ads" ? `<dt>大擠壓時間</dt><dd>誕生後 ${V.crunchT.toFixed(1)} s</dd>` : V.kind === "tiny" ? `<dt>熱寂時間</dt><dd>誕生後 ${V.hdT.toFixed(0)} s</dd>` : `<dt>內部穿隧率</dt><dd>${(V.grel * tune.innerMul).toFixed(2)} Γ</dd>`;
+    $("cList").innerHTML = `<dt>來源</dt><dd>${origin}</dd><dt>誕生時刻</dt><dd>t = ${b.tn.toFixed(1)} s（N = ${(S.HUB * b.tn).toFixed(2)}）</dd>` + state + `<dt>真空能量密度 Λ</dt><dd>${lamStr(V)}</dd>` + fate + `<dt>空間維度</dt><dd>${V.dims}</dd><dt>精細結構常數</dt><dd>1 / ${V.ainv.toFixed(1)}</dd><dt>質子／電子質量比</dt><dd>${Math.round(V.mratio).toLocaleString("zh-TW")}</dd>`;
+  }
+  function init3() {
+    card = $("card");
+    $("cClose").addEventListener("click", () => {
+      card.hidden = true;
+      S.selected = null;
+      emit("select", null);
+    });
+    $("cJump").addEventListener("click", () => {
+      if (!S.selected || S.selected.tn < S.U.tStart) return;
+      const t0 = Math.max(S.U.tStart, S.selected.tn - 1.2);
+      seek(t0);
+      S.playing = true;
+      const E = Math.exp(S.HUB * (t0 - S.selected.tn));
+      S.Z = Math.max(S.Z, 1.4 * defaultZoom());
+      P.x = S.selected.x * E;
+      P.y = S.selected.y * E;
+      clampCam();
+    });
+  }
+
+  // src/ui/controls.js
+  var OPT_IDS = { optGrid: "grid", optWarp: "warp", optHz: "hz", optQ: "q", optNeb: "neb", optStars: "stars", optCol: "col", optFlash: "flash", optLbl: "lbl", optVig: "vig" };
+  var LIVE_P = [
+    {
+      id: "gamma",
+      label: "穿隧成核率 Γ",
+      min: 0.5,
+      max: 8,
+      step: 0.1,
+      def: 2.5,
+      fmt: (v) => `${v.toFixed(1)} × 10⁻⁶`,
+      set: (v) => tune.gamma = v * 1e-6,
+      note: "每單位體積、單位時間發生量子穿隧的機率。Γ 越小，泡泡越難填滿假真空，暴脹越「永恆」。"
+    },
+    {
+      id: "innerMul",
+      label: "口袋宇宙內部穿隧倍率",
+      min: 0,
+      max: 3,
+      step: 0.05,
+      def: 1,
+      fmt: (v) => `${v.toFixed(2)}×`,
+      set: (v) => tune.innerMul = v,
+      note: "正真空能的口袋宇宙內部，穿隧出下一層泡泡的速率倍數。設為 0 就不會產生巢狀泡泡。"
+    },
+    {
+      id: "wallK",
+      label: "疇壁速度倍率",
+      min: 0,
+      max: 2,
+      step: 0.05,
+      def: 1,
+      fmt: (v) => `${v.toFixed(2)}×`,
+      set: (v) => tune.wallK = v,
+      note: "不同真空之間的疇壁被能量差推動的速度。設為 0 時疇壁停在相撞的位置。"
+    },
+    {
+      id: "habTol",
+      label: "宜居容許範圍",
+      min: 5,
+      max: 80,
+      step: 1,
+      def: 30,
+      fmt: (v) => `1/α 在 137 ± ${v}`,
+      set: (v) => K.habTol = v,
+      note: "精細結構常數要多接近我們的宇宙，才標記為可能宜居（✦）。"
+    },
+    {
+      id: "gridBase",
+      label: "網格密度",
+      min: 14,
+      max: 60,
+      step: 1,
+      def: 26,
+      fmt: (v) => `${v} px`,
+      set: (v) => K.gridBase = v,
+      note: "最細一層網格的螢幕間距。數字越小網格越密。"
+    },
+    {
+      id: "warp",
+      label: "扭曲強度",
+      min: 0,
+      max: 3,
+      step: 0.05,
+      def: 1,
+      fmt: (v) => `${v.toFixed(2)}×`,
+      set: (v) => K.warp = v,
+      note: "泡壁張力、哈伯視界與量子抖動讓網格彎曲的程度。"
+    },
+    {
+      id: "neb",
+      label: "能量雲亮度",
+      min: 0,
+      max: 1.8,
+      step: 0.05,
+      def: 1,
+      fmt: (v) => `${v.toFixed(2)}×`,
+      set: (v) => K.neb = v,
+      note: "代表假真空能量密度的背景雲。"
+    },
+    {
+      id: "ripples",
+      label: "量子漲落密度",
+      min: 0,
+      max: 8,
+      step: 1,
+      def: 2,
+      fmt: (v) => `${v * 5} 個／秒`,
+      set: (v) => K.ripples = v,
+      note: "哈伯視界內每秒出現的漲落數量。"
+    },
+    {
+      id: "stars",
+      label: "泡內星光",
+      min: 0,
+      max: 1.5,
+      step: 0.05,
+      def: 1,
+      fmt: (v) => `${v.toFixed(2)}×`,
+      set: (v) => K.stars = v,
+      note: "口袋宇宙冷卻後浮現的星系與恆星亮度。"
+    },
+    {
+      id: "lblMin",
+      label: "編號顯示門檻",
+      min: 10,
+      max: 160,
+      step: 2,
+      def: 38,
+      fmt: (v) => `半徑 > ${v} px`,
+      set: (v) => K.lblMin = v,
+      note: "泡泡在螢幕上大於這個半徑才會標上編號。"
+    }
+  ];
+  var UNI_P = [
+    {
+      id: "hub",
+      label: "哈伯參數 H",
+      min: 0.08,
+      max: 0.7,
+      step: 0.01,
+      def: 0.25,
+      fmt: (v) => `${v.toFixed(2)} / 秒`,
+      note: "每秒膨脹的 e-fold 數，也就是暴脹的速率。"
+    },
+    {
+      id: "rh",
+      label: "哈伯半徑 R<sub>H</sub>",
+      min: 50,
+      max: 280,
+      step: 5,
+      def: 140,
+      fmt: (v) => `${v} px`,
+      note: "等於 c / H。決定視界大小，也決定泡壁擴張的光速 c。"
+    },
+    {
+      id: "r0",
+      label: "泡泡初始半徑",
+      min: 1,
+      max: 30,
+      step: 1,
+      def: 3,
+      fmt: (v) => `${v} px`,
+      note: "穿隧剛完成時，真真空泡泡的大小。"
+    },
+    {
+      id: "rgen",
+      label: "模擬範圍",
+      min: 1500,
+      max: 6e3,
+      step: 100,
+      def: 3e3,
+      fmt: (v) => `${v} px`,
+      note: "離觀測者多遠以內會產生泡泡。越大可縮得越遠，但也越吃效能。"
+    },
+    {
+      id: "vacN",
+      label: "真空種類數",
+      min: 4,
+      max: 16,
+      step: 1,
+      def: 12,
+      fmt: (v) => `${v} 種`,
+      note: "這個宇宙的地景裡有多少種可能的真空。種類越少，同種真空相遇融合的機會越多。"
+    },
+    {
+      id: "crunchP",
+      label: "負真空能比例",
+      min: 0,
+      max: 0.6,
+      step: 0.01,
+      def: 0.25,
+      fmt: (v) => `${Math.round(v * 100)}%`,
+      note: "地景中真空能為負、終將走向大擠壓的真空所佔比例。"
+    },
+    {
+      id: "oddDimP",
+      label: "異常維度比例",
+      min: 0,
+      max: 0.6,
+      step: 0.01,
+      def: 0.15,
+      fmt: (v) => `${Math.round(v * 100)}%`,
+      note: "空間維度不是 3 的真空所佔比例。"
+    },
+    {
+      id: "presim",
+      label: "預先演化時間",
+      min: 0,
+      max: 60,
+      step: 1,
+      def: 18,
+      fmt: (v) => `${v} 秒`,
+      note: "重新開始時先在背景跑多久，讓畫面一開始就有泡泡與可回看的歷史。"
+    }
+  ];
+  var uniVal = {};
+  function buildSliders(host, list, onInput) {
+    for (const p of list) {
+      const w = document.createElement("div");
+      w.className = "sl";
+      w.innerHTML = `<label for="p_${p.id}"><span>${p.label}</span><output id="o_${p.id}"></output></label><input type="range" id="p_${p.id}" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.def}">` + (p.note ? `<p class="note">${p.note}</p>` : "");
+      host.appendChild(w);
+      const inp = w.querySelector("input"), out = w.querySelector("output");
+      const upd = () => {
+        const v = parseFloat(inp.value);
+        out.textContent = p.fmt(v);
+        onInput(p, v);
+      };
+      inp.addEventListener("input", upd);
+      p.el = inp;
+      p.upd = upd;
+      upd();
+    }
+  }
+  var uniReady = false;
+  function refreshDerived() {
+    const h = uniVal.hub, rh = uniVal.rh;
+    const q = S.U ? S.U.p : {};
+    const dirty = !S.U || h !== q.H || rh !== q.RH || uniVal.r0 !== q.R0 || uniVal.rgen !== q.RGEN || uniVal.presim !== S.PRESIM || uniVal.vacN !== q.vacN || uniVal.crunchP !== q.crunchP || uniVal.oddDimP !== q.oddDimP || parseSeed($("seedIn").value) !== q.seed || $("obsSel").value === "typical" !== q.typical;
+    $("derived").innerHTML = `泡壁速度 c = H·R<sub>H</sub> = <b>${(h * rh).toFixed(1)} px/s</b><br>空間倍增時間 ln2 / H = <b>${(Math.LN2 / h).toFixed(2)} 秒</b><br>每分鐘膨脹 <b>10<sup>${(h * 60 / Math.LN10).toFixed(1)}</sup></b> 倍`;
+    $("applyBtn").classList.toggle("dirty", dirty);
+    $("applyBtn").textContent = dirty ? "套用並重新開始（有未套用的變更）" : "套用並重新開始";
+  }
+  function parseSeed(str) {
+    str = String(str || "").trim();
+    if (/^\d{1,10}$/.test(str)) return Number(str) >>> 0;
+    let h = 2166136261;
+    for (const ch of str) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+    return h >>> 0;
+  }
+  function landHTML() {
+    return S.U.VAC.map((V) => {
+      const p = S.PAL[V.i];
+      const tag = V.kind === "ads" ? `Λ<0，${V.crunchT.toFixed(1)} s 後大擠壓` : V.kind === "tiny" ? `Λ≈0，不再暴脹，${V.hdT.toFixed(0)} s 後熱寂` : `Λ>0，仍在暴脹，內部穿隧 ${V.grel.toFixed(2)}Γ`;
+      const hab = isHab({ vac: V.i }) ? " ✦" : "";
+      return `<div class="vr"><i style="background:radial-gradient(circle,${rgba(p.core, 1)} 40%,${rgba(p.rim, 1)} 75%,${rgba(p.wall, 1)} 100%)"></i><span><b>${V.name}${hab}</b>　${tag}${V.dims !== 3 ? `，${V.dims} 維` : ""}</span><em id="vc${V.i}">0</em></div>`;
+    }).join("");
+  }
+  function updateLandCounts() {
+    for (const V of S.U.VAC) {
+      const el = document.getElementById("vc" + V.i);
+      if (el) el.textContent = S.U.vacCount[V.i].toLocaleString("zh-TW");
+    }
+  }
+  function restart() {
+    const seed = parseSeed($("seedIn").value);
+    $("seedIn").value = seed;
+    S.PRESIM = uniVal.presim;
+    S.U = createUniverse({
+      seed,
+      H: uniVal.hub,
+      RH: uniVal.rh,
+      R0: uniVal.r0,
+      RGEN: uniVal.rgen,
+      typical: $("obsSel").value === "typical",
+      vacN: uniVal.vacN,
+      crunchP: uniVal.crunchP,
+      oddDimP: uniVal.oddDimP
+    }, tune);
+    S.U.window = S.HIST;
+    S.HUB = S.U.p.H;
+    S.RH = S.U.p.RH;
+    S.R0 = S.U.p.R0;
+    S.RGEN = S.U.p.RGEN;
+    S.PAL = buildPalettes(S.U.VAC);
+    $("landscape").innerHTML = landHTML();
+    $("sS").textContent = seed;
+    S.obsEndKey = "";
+    $("banner").hidden = true;
+    $("reseedBtn").hidden = true;
+    resetTemporal();
+    try {
+      history.replaceState(null, "", "#seed=" + seed + (S.U.p.typical ? "&obs=typical" : ""));
+    } catch (e) {
+    }
+    colSeen.clear();
+    S.pendingCol = [];
+    S.tView = 0;
+    S.isLive = true;
+    S.playing = true;
+    S.scrubbing = false;
+    S.selected = null;
+    card.hidden = true;
+    S.zoomAnim = null;
+    clampCam();
+    S.U.presim(S.PRESIM);
+    S.tView = S.U.tLive;
+    S.prevT = S.tView;
+    drawSpark();
+    refreshDerived();
+    emit("universe", S.U);
+  }
+  function init4() {
+    for (const [id, key] of Object.entries(OPT_IDS)) $(id).addEventListener("change", (e) => opt[key] = e.target.checked);
+    buildSliders($("liveSliders"), LIVE_P, (p, v) => p.set(v));
+    buildSliders($("uniSliders"), UNI_P, (p, v) => {
+      uniVal[p.id] = v;
+      if (uniReady) refreshDerived();
+    });
+    {
+      const m = /seed=([^&]+)/.exec(location.hash), o = /obs=typical/.test(location.hash);
+      $("seedIn").value = m ? parseSeed(decodeURIComponent(m[1])) : Math.random() * 1e9 >>> 0;
+      if (o) $("obsSel").value = "typical";
+    }
+    uniReady = true;
+    refreshDerived();
+    $("applyBtn").addEventListener("click", restart);
+    $("seedIn").addEventListener("input", refreshDerived);
+    $("obsSel").addEventListener("change", refreshDerived);
+    $("seedRnd").addEventListener("click", () => {
+      $("seedIn").value = Math.random() * 1e9 >>> 0;
+      refreshDerived();
+    });
+    $("bannerClose").addEventListener("click", () => {
+      $("banner").hidden = true;
+    });
+    $("bannerNew").addEventListener("click", () => {
+      $("seedIn").value = Math.random() * 1e9 >>> 0;
+      restart();
+    });
+    $("reseedBtn").addEventListener("click", () => {
+      $("seedIn").value = Math.random() * 1e9 >>> 0;
+      restart();
+    });
+    $("resetAll").addEventListener("click", () => {
+      for (const p of LIVE_P) {
+        p.el.value = p.def;
+        p.upd();
+      }
+      for (const p of UNI_P) {
+        p.el.value = p.def;
+        p.upd();
+      }
+      for (const [id, key] of Object.entries(OPT_IDS)) {
+        $(id).checked = true;
+        opt[key] = true;
+      }
+      restart();
+    });
+    $("zin").addEventListener("click", () => animateZoom(1.8));
+    $("zout").addEventListener("click", () => animateZoom(1 / 1.8));
+    $("zreset").addEventListener("click", () => {
+      S.zoomAnim = null;
+      S.Z = defaultZoom();
+      P.x = 0;
+      P.y = 0;
+      clampCam();
+    });
+  }
+
+  // src/ui/selfcheck-ui.js
+  var extraChecks = [];
+  function init5() {
+    $("checkBtn").addEventListener("click", async () => {
+      const btn = $("checkBtn"), out = $("checkOut");
+      btn.disabled = true;
+      out.innerHTML = "";
+      const rows = [...SelfCheck.tests, ...extraChecks, { name: "巨大泡泡繪製", desc: "典型觀測者模式演化 10 分鐘後（觀測者已被半徑上億像素的泡泡吞沒），畫面幾何必須仍在畫面尺度、繪製不得變慢", run() {
+        const keep = { U: S.U, PAL: S.PAL, HUB: S.HUB, RH: S.RH, R0: S.R0, RGEN: S.RGEN, Z: S.Z, px: P.x, py: P.y };
+        let worst = 0, ms = 0, ok = true, err = "";
+        try {
+          for (const seed of [23, 777, 4242]) {
+            const T = createUniverse({ seed, H: 0.25, RH: 140, R0: 3, RGEN: 3e3, typical: true, vacN: 12, crunchP: 0.25, oddDimP: 0.15 }, { gamma: 25e-7, innerMul: 1, wallK: 1 });
+            T.presim(600);
+            S.U = T;
+            S.PAL = buildPalettes(T.VAC);
+            S.HUB = T.p.H;
+            S.RH = T.p.RH;
+            S.R0 = T.p.R0;
+            S.RGEN = T.p.RGEN;
+            P.x = 0;
+            P.y = 0;
+            S.Z = defaultZoom();
+            for (const zf of [1, 0.4, 6]) {
+              S.Z = Math.max(S.minZ, Math.min(MAXZ, defaultZoom() * zf));
+              S.maxPathCoord = 0;
+              render(T.tSim);
+              const t0 = performance.now();
+              for (let i = 0; i < 4; i++) render(T.tSim - i * 0.5);
+              ms = Math.max(ms, (performance.now() - t0) / 4);
+              worst = Math.max(worst, S.maxPathCoord);
+            }
+          }
+        } catch (e) {
+          ok = false;
+          err = e.message;
+        }
+        S.U = keep.U;
+        S.PAL = keep.PAL;
+        S.HUB = keep.HUB;
+        S.RH = keep.RH;
+        S.R0 = keep.R0;
+        S.RGEN = keep.RGEN;
+        S.Z = keep.Z;
+        P.x = keep.px;
+        P.y = keep.py;
+        if (!ok) return { pass: false, detail: "發生錯誤：" + err };
+        return { pass: worst < 1e6 && ms < 16, detail: `最大路徑座標 ${Math.round(worst).toLocaleString("zh-TW")} 像素，最慢每格 ${ms.toFixed(1)} 毫秒` };
+      } }, { name: "紋理流速上限", desc: `放大到最大並平移到模擬範圍邊緣（離觀測者最遠處）連續播放，口袋宇宙內的能量雲與星空在畫面上的移動速度不得超過每秒 ${TEX_VMAX} 像素`, run() {
+        const keep = { Z: S.Z, px: P.x, py: P.y, last: S.texLastT };
+        S.texSpeedSeen = 0;
+        try {
+          for (const zf of [1, 4, 100]) {
+            S.Z = Math.max(S.minZ, Math.min(MAXZ, defaultZoom() * zf));
+            P.x = S.RGEN;
+            P.y = 0;
+            clampCam();
+            for (let i = 0; i < 20; i++) render(S.tView + i / 30);
+          }
+        } finally {
+          S.Z = keep.Z;
+          P.x = keep.px;
+          P.y = keep.py;
+          S.texLastT = keep.last;
+        }
+        return { pass: S.texSpeedSeen <= TEX_VMAX + 0.01, detail: `觀測到的最大移動速度 ${S.texSpeedSeen.toFixed(1)} 像素／秒` };
+      } }, { name: "繪製效能", desc: "目前畫面的單格繪製時間應低於 16 毫秒（每秒 60 格的預算）", run() {
+        const t0 = performance.now();
+        for (let i = 0; i < 10; i++) render(S.tView);
+        const ms = (performance.now() - t0) / 10;
+        return { pass: ms < 16, detail: `平均每格 ${ms.toFixed(1)} 毫秒（畫質：${QL[S.qLevel].name}）` };
+      } }];
+      let passN = 0;
+      for (const T of rows) {
+        const li = document.createElement("li");
+        li.innerHTML = `<b>${T.name}</b><span>執行中…</span>`;
+        out.appendChild(li);
+        await new Promise((r2) => setTimeout(r2, 30));
+        let r;
+        try {
+          r = T.run();
+        } catch (e) {
+          r = { pass: false, detail: "發生錯誤：" + e.message };
+        }
+        if (r.pass) passN++;
+        li.className = r.pass ? "ok" : "bad";
+        li.innerHTML = `<b>${r.pass ? "✓" : "✗"} ${T.name}</b><span>${r.detail}</span><small>${T.desc}</small>`;
+      }
+      const sum = document.createElement("li");
+      sum.className = passN === rows.length ? "ok sum" : "bad sum";
+      sum.innerHTML = `<b>${passN} / ${rows.length} 項通過</b>`;
+      out.appendChild(sum);
+      btn.disabled = false;
+    });
+  }
+
+  // src/app/api.js
+  function createApi() {
+    return {
+      version: 1,
+      // 事件
+      on,
+      emit,
+      emitUntil,
+      // 狀態（唯讀為主；直接改 S 的欄位請小心）
+      S,
+      get U() {
+        return S.U;
+      },
+      get tView() {
+        return S.tView;
+      },
+      tune,
+      K,
+      renderOpt: opt,
+      // 核心
+      Territory,
+      createUniverse,
+      STEP,
+      mulberry32,
+      hsl2rgb,
+      TAU,
+      SelfCheck,
+      // 攝影機與座標（物理座標 ↔ 螢幕座標）
+      camera: {
+        P,
+        cv,
+        get Z() {
+          return S.Z;
+        },
+        MAXZ,
+        toScreen: toS,
+        toPhysical: toP,
+        set(x, y, Z) {
+          if (x !== void 0) P.x = x;
+          if (y !== void 0) P.y = y;
+          if (Z !== void 0) S.Z = Z;
+          clampCam();
+        },
+        zoomAbout,
+        animateZoom,
+        defaultZoom,
+        clamp: clampCam
+      },
+      // 繪製
+      ctx,
+      render,
+      rgba,
+      mix,
+      resetTemporal,
+      // 時間軸
+      time: { seek, goLive, togglePlay },
+      restart,
+      openCard,
+      // 介面
+      $,
+      store,
+      /* 在設定面板加入一個可摺疊區塊，回傳內容容器 */
+      addPanel({ title, html = "", open = false }) {
+        const d = document.createElement("details");
+        if (open) d.open = true;
+        d.innerHTML = `<summary>${title}</summary><div class="plugin-panel">${html}</div>`;
+        const anchor = [...document.querySelectorAll("#controls > details")].pop();
+        document.getElementById("controls").insertBefore(d, anchor || null);
+        return d.querySelector(".plugin-panel");
+      },
+      /* 加入自我檢查項目 */
+      addCheck(test) {
+        extraChecks.push(test);
+      }
+    };
+  }
+
+  // src/ui/panels.js
+  var body = document.body;
+  var pt;
+  function setCtl(open) {
+    body.classList.toggle("ctl-closed", !open);
+    pt.setAttribute("aria-expanded", open);
+    store.set("ctl", open ? "1" : "0");
+  }
+  function setNotes(show) {
+    body.classList.toggle("no-notes", !show);
+    $("notesBtn").textContent = show ? "隱藏說明文字" : "顯示說明文字";
+    $("notesBtn").setAttribute("aria-pressed", show);
+    store.set("notes", show ? "1" : "0");
+  }
+  function setLede(show) {
+    $("ledeBtn").closest(".plate").classList.toggle("compact", !show);
+    $("ledeBtn").textContent = show ? "收起說明" : "展開說明";
+    $("ledeBtn").setAttribute("aria-expanded", show);
+    store.set("lede", show ? "1" : "0");
+  }
+  function setUI(hidden) {
+    body.classList.toggle("ui-hidden", hidden);
+    $("uiBtn").textContent = hidden ? "顯示面板" : "隱藏面板";
+    $("uiBtn").setAttribute("aria-pressed", hidden);
+  }
+  function init6() {
+    pt = $("panelToggle");
+    pt.addEventListener("click", () => setCtl(true));
+    $("ctlHide").addEventListener("click", () => setCtl(false));
+    $("notesBtn").addEventListener("click", () => setNotes(body.classList.contains("no-notes")));
+    $("ledeBtn").addEventListener("click", () => setLede($("ledeBtn").closest(".plate").classList.contains("compact")));
+    $("uiBtn").addEventListener("click", () => setUI(!body.classList.contains("ui-hidden")));
+    {
+      const narrow = matchMedia("(max-width:760px)").matches, c = store.get("ctl");
+      setCtl(narrow ? false : c !== "0");
+      setNotes(store.get("notes") !== "0");
+      setLede(store.get("lede") !== "0");
+    }
+  }
+
+  // src/audio/music.js
+  var Music;
+  var musicBtn;
+  var optMusic;
+  async function setMusic(v) {
+    const ok = await Music.setOn(v);
+    musicBtn.setAttribute("aria-pressed", ok && v);
+    $("musicTxt").textContent = ok && v ? "音樂開" : "音樂";
+    optMusic.checked = !!(ok && v);
+    store.set("music", ok && v ? "1" : "0");
+  }
+  function musicEvents(t0, t1) {
+    for (const v of S.vis) {
+      const b = v.b, onScr = v.sx > -30 && v.sy > -30 && v.sx < S.vw + 30 && v.sy < S.vh + 30, pan = v.sx / S.vw * 2 - 1;
+      if (b.tn > t0 && b.tn <= t1 && onScr) {
+        const near = Math.max(0, Math.min(1, 1 - (b.d / S.RH - 1) / 8));
+        Music.birth(b, pan, near);
+      }
+      if (b.crunch) {
+        const tc = b.tn + b.crunchT;
+        if (tc > t0 && tc <= t1 && v.sr > 8) Music.crunch(Math.max(-1, Math.min(1, pan)));
+      }
+    }
+    if (S.pendingCol.length) Music.collide(S.pendingCol[0]);
+  }
+  function init7() {
+    Music = /* @__PURE__ */ (() => {
+      let ac = null, on2 = false;
+      let mix2, comp, master, reverb, wet, padBus, shepBus, fxBus, noiseBuf;
+      const vol = { master: 0.7, pad: 0.8, shep: 0.8, fx: 0.2 };
+      const shepWaves = [];
+      let shepStep = null, shepVoices = 0;
+      const SHEP_PC = [38, 40, 42, 44, 45, 47, 49];
+      let chordT = 0, chordI = 0, voices = 0, nextBell = 0, nextCol = 0, nextCrunch = 0;
+      const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+      const CHORDS = [[50, 57, 61, 64, 69], [50, 52, 56, 59, 66], [47, 54, 57, 62, 66], [42, 57, 61, 64, 68], [50, 57, 61, 64, 68], [50, 52, 56, 59, 64], [49, 56, 59, 64, 68], [45, 52, 59, 61, 64]];
+      const CH_DUR = 11, MAXV = 16;
+      const BELL = [62, 66, 69, 73, 64, 71];
+      function panner(p) {
+        if (!ac.createStereoPanner) return ac.createGain();
+        const n = ac.createStereoPanner();
+        n.pan.value = Math.max(-1, Math.min(1, p));
+        return n;
+      }
+      function makeIR(sec) {
+        const sr = ac.sampleRate, len = Math.floor(sr * sec), buf = ac.createBuffer(2, len, sr);
+        for (let c = 0; c < 2; c++) {
+          const d = buf.getChannelData(c);
+          for (let i = 0; i < len; i++) {
+            const t = i / len;
+            d[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, 3.2) * Math.min(1, i / (sr * 0.012));
+          }
+        }
+        return buf;
+      }
+      function init12() {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return false;
+        ac = new AC();
+        master = ac.createGain();
+        master.gain.value = 0;
+        comp = ac.createDynamicsCompressor();
+        comp.threshold.value = -20;
+        comp.knee.value = 18;
+        comp.ratio.value = 3;
+        comp.attack.value = 0.02;
+        comp.release.value = 0.4;
+        mix2 = ac.createGain();
+        mix2.connect(comp);
+        comp.connect(master);
+        master.connect(ac.destination);
+        reverb = ac.createConvolver();
+        reverb.buffer = makeIR(4.5);
+        wet = ac.createGain();
+        wet.gain.value = 0.6;
+        reverb.connect(wet);
+        wet.connect(mix2);
+        padBus = ac.createGain();
+        shepBus = ac.createGain();
+        fxBus = ac.createGain();
+        for (const b of [padBus, shepBus, fxBus]) {
+          b.connect(mix2);
+          b.connect(reverb);
+        }
+        noiseBuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+        const nd = noiseBuf.getChannelData(0);
+        for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+        const dF = ac.createBiquadFilter();
+        dF.type = "lowpass";
+        dF.frequency.value = 280;
+        dF.Q.value = 0.8;
+        dF.connect(padBus);
+        const lfo = ac.createOscillator();
+        lfo.frequency.value = 0.045;
+        const lg = ac.createGain();
+        lg.gain.value = 140;
+        lfo.connect(lg);
+        lg.connect(dF.frequency);
+        lfo.start();
+        for (const [m, type, det, g] of [[38, "sawtooth", -7, 0.045], [38, "sawtooth", 7, 0.045], [45, "triangle", 0, 0.05], [26, "sine", 0, 0.13]]) {
+          const o = ac.createOscillator();
+          o.type = type;
+          o.frequency.value = hz(m);
+          o.detune.value = det;
+          const gn = ac.createGain();
+          gn.gain.value = g;
+          o.connect(gn);
+          gn.connect(dF);
+          o.start();
+        }
+        for (const m of SHEP_PC) {
+          const f0 = hz(m) / 2, n = 64, re = new Float32Array(n), im = new Float32Array(n);
+          for (let h = 1; h < n; h *= 2) {
+            const l = Math.log2(f0 * h / 330);
+            im[h] = Math.exp(-l * l / (2 * 0.85 * 0.85));
+          }
+          shepWaves.push({ f0, wave: ac.createPeriodicWave(re, im) });
+        }
+        shepBus.disconnect();
+        const sf = ac.createBiquadFilter();
+        sf.type = "lowpass";
+        sf.frequency.value = 1100;
+        sf.Q.value = 0.3;
+        shepBus.connect(sf);
+        sf.connect(mix2);
+        const sendRev = ac.createGain();
+        sendRev.gain.value = 1.4;
+        sf.connect(sendRev);
+        sendRev.connect(reverb);
+        applyVol();
+        return true;
+      }
+      function applyVol() {
+        if (!ac) return;
+        const t = ac.currentTime;
+        padBus.gain.setTargetAtTime(vol.pad, t, 0.2);
+        shepBus.gain.setTargetAtTime(vol.shep, t, 0.2);
+        fxBus.gain.setTargetAtTime(vol.fx, t, 0.2);
+        master.gain.setTargetAtTime(on2 ? vol.master * 0.9 : 0, t, on2 ? 0.5 : 0.15);
+      }
+      function playChord(notes) {
+        const t = ac.currentTime + 0.02, dur = CH_DUR, att = 3.5, rel = 6;
+        const f = ac.createBiquadFilter();
+        f.type = "lowpass";
+        f.Q.value = 0.5;
+        f.frequency.setValueAtTime(480, t);
+        f.frequency.linearRampToValueAtTime(1500, t + dur * 0.6);
+        f.frequency.linearRampToValueAtTime(650, t + dur + rel);
+        f.connect(padBus);
+        const lvl = 0.11 / notes.length;
+        for (const m of notes) {
+          const g = ac.createGain();
+          g.gain.setValueAtTime(0, t);
+          g.gain.linearRampToValueAtTime(lvl, t + att);
+          g.gain.setValueAtTime(lvl, t + dur);
+          g.gain.linearRampToValueAtTime(0, t + dur + rel);
+          const p = panner((Math.random() * 2 - 1) * 0.5);
+          g.connect(p);
+          p.connect(f);
+          for (const det of [-8, 8]) {
+            const o = ac.createOscillator();
+            o.type = "triangle";
+            o.frequency.value = hz(m);
+            o.detune.value = det;
+            o.connect(g);
+            o.start(t);
+            o.stop(t + dur + rel + 0.1);
+          }
+        }
+      }
+      function shepNote(deg) {
+        if (shepVoices >= 4) return;
+        const t = ac.currentTime + 0.02, w = shepWaves[deg], dur = 4.2;
+        const o = ac.createOscillator();
+        o.setPeriodicWave(w.wave);
+        o.frequency.value = w.f0;
+        const g = ac.createGain();
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(0.022, t + 0.7);
+        g.gain.setTargetAtTime(1e-4, t + 1.4, 0.9);
+        o.connect(g);
+        g.connect(shepBus);
+        o.start(t);
+        o.stop(t + dur);
+        shepVoices++;
+        voices++;
+        o.onended = () => {
+          shepVoices--;
+          voices--;
+        };
+      }
+      function bell(m, pan = 0, vel = 0.6, ratio = 3.5, decay = 3.2, delay = 0) {
+        if (!on2 || voices >= MAXV) return;
+        const t = ac.currentTime + 0.01 + delay, f = hz(m);
+        const car = ac.createOscillator();
+        car.frequency.value = f;
+        const mod = ac.createOscillator();
+        mod.frequency.value = f * ratio;
+        const mg = ac.createGain();
+        mg.gain.setValueAtTime(f * 1.6 * vel, t);
+        mg.gain.exponentialRampToValueAtTime(f * 0.02, t + decay * 0.5);
+        mod.connect(mg);
+        mg.connect(car.frequency);
+        const env = ac.createGain();
+        env.gain.setValueAtTime(0, t);
+        env.gain.linearRampToValueAtTime(0.16 * vel, t + 6e-3);
+        env.gain.exponentialRampToValueAtTime(1e-4, t + decay);
+        const p = panner(pan);
+        car.connect(env);
+        env.connect(p);
+        p.connect(fxBus);
+        car.start(t);
+        mod.start(t);
+        car.stop(t + decay + 0.05);
+        mod.stop(t + decay + 0.05);
+        voices++;
+        car.onended = () => {
+          voices--;
+        };
+      }
+      function rumble(pan) {
+        if (!on2 || voices >= MAXV - 1) return;
+        const t = ac.currentTime + 0.01;
+        const src = ac.createBufferSource();
+        src.buffer = noiseBuf;
+        src.loop = true;
+        const f = ac.createBiquadFilter();
+        f.type = "lowpass";
+        f.frequency.setValueAtTime(220, t);
+        f.frequency.exponentialRampToValueAtTime(50, t + 4.5);
+        const g = ac.createGain();
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(0.3, t + 1.2);
+        g.gain.exponentialRampToValueAtTime(1e-4, t + 5);
+        const o = ac.createOscillator();
+        o.frequency.setValueAtTime(hz(38), t);
+        o.frequency.exponentialRampToValueAtTime(hz(26), t + 4.5);
+        const og = ac.createGain();
+        og.gain.setValueAtTime(0, t);
+        og.gain.linearRampToValueAtTime(0.16, t + 1);
+        og.gain.exponentialRampToValueAtTime(1e-4, t + 5);
+        const p = panner(pan * 0.6);
+        src.connect(f);
+        f.connect(g);
+        g.connect(p);
+        o.connect(og);
+        og.connect(p);
+        p.connect(fxBus);
+        src.start(t);
+        o.start(t);
+        src.stop(t + 5.1);
+        o.stop(t + 5.1);
+        voices += 2;
+        src.onended = () => {
+          voices--;
+        };
+        o.onended = () => {
+          voices--;
+        };
+      }
+      return {
+        vol,
+        get on() {
+          return on2;
+        },
+        get voices() {
+          return voices;
+        },
+        get state() {
+          return ac ? ac.state : "未啟動";
+        },
+        async setOn(v) {
+          if (v) {
+            if (!ac && !init12()) return false;
+            try {
+              if (ac.state !== "running") await ac.resume();
+            } catch (e) {
+            }
+            on2 = true;
+            chordT = 0;
+            applyVol();
+          } else if (ac) {
+            on2 = false;
+            applyVol();
+            const my = ac;
+            setTimeout(() => {
+              if (!on2 && my.state === "running") my.suspend();
+            }, 900);
+          }
+          return on2;
+        },
+        setVol(k, v) {
+          vol[k] = v;
+          applyVol();
+        },
+        suspend() {
+          if (ac && ac.state === "running") ac.suspend();
+        },
+        resume() {
+          if (ac && on2 && ac.state !== "running") ac.resume();
+        },
+        tick(dtR, phaseTotal) {
+          if (!on2 || !ac || ac.state !== "running") return;
+          chordT -= dtR;
+          if (chordT <= 0) {
+            playChord(CHORDS[chordI % CHORDS.length]);
+            chordI++;
+            chordT = CH_DUR;
+          }
+          const step = Math.floor(phaseTotal * 7);
+          if (shepStep === null || step < shepStep || step - shepStep > 2) shepStep = step;
+          else if (step > shepStep) {
+            shepStep = step;
+            shepNote((step % 7 + 7) % 7);
+          }
+        },
+        birth(b, pan, near) {
+          if (!on2 || !ac) return;
+          const now = ac.currentTime;
+          if (isHab(b)) {
+            [74, 81, 88].forEach((m, i) => bell(m, pan, 0.55, 2, 4.2, i * 0.17));
+            return;
+          }
+          if (now < nextBell) return;
+          nextBell = now + 0.26;
+          bell(BELL[b.vac % BELL.length] + (near > 0.55 ? 0 : 12), pan, 0.3 + 0.5 * near, 3.5, 2.6 + near * 1.8);
+        },
+        collide(pan) {
+          if (!on2 || !ac) return;
+          const now = ac.currentTime;
+          if (now < nextCol) return;
+          nextCol = now + 0.45;
+          bell([80, 85, 88, 92][Math.random() * 4 | 0], pan, 0.2, 5.02, 1.4);
+        },
+        crunch(pan) {
+          if (!on2 || !ac) return;
+          const now = ac.currentTime;
+          if (now < nextCrunch) return;
+          nextCrunch = now + 3;
+          rumble(pan);
+        }
+      };
+    })();
+    musicBtn = $("musicBtn");
+    optMusic = $("optMusic");
+    musicBtn.addEventListener("click", () => setMusic(!Music.on));
+    optMusic.addEventListener("change", (e) => setMusic(e.target.checked));
+    buildSliders($("musicSliders"), [
+      { id: "mMaster", label: "總音量", min: 0, max: 1, step: 0.01, def: 0.7, fmt: (v) => `${Math.round(v * 100)}%`, note: "" },
+      { id: "mPad", label: "和聲鋪底", min: 0, max: 1.5, step: 0.01, def: 0.8, fmt: (v) => `${Math.round(v * 100)}%`, note: "持續的低鳴與緩慢輪轉的和弦。" },
+      { id: "mShep", label: "無盡上升音", min: 0, max: 1.5, step: 0.01, def: 0.8, fmt: (v) => `${Math.round(v * 100)}%`, note: "沿 D 利底亞音階逐級上升的謝帕德音階，每四次空間翻倍爬完一個八度。" },
+      { id: "mFx", label: "事件鐘聲", min: 0, max: 1.5, step: 0.01, def: 0.2, fmt: (v) => `${Math.round(v * 100)}%`, note: "泡泡誕生、碰撞與大擠壓的聲音。" }
+    ], (p, v) => Music.setVol({ mMaster: "master", mPad: "pad", mShep: "shep", mFx: "fx" }[p.id], v));
+    if (store.get("music") === "1") {
+      const resumeOnce = () => {
+        setMusic(true);
+        removeEventListener("pointerdown", resumeOnce, true);
+        removeEventListener("keydown", resumeOnce, true);
+      };
+      addEventListener("pointerdown", resumeOnce, true);
+      addEventListener("keydown", resumeOnce, true);
+      $("musicTxt").textContent = "音樂（點一下畫面）";
+    }
+  }
+
+  // src/ui/input.js
+  var pts = /* @__PURE__ */ new Map();
+  var down = null;
+  var pinch = null;
+  function endPointer(e) {
+    if (emitUntil("pointerup", e)) {
+      pts.delete(e.pointerId);
+      return;
+    }
+    if (!pts.has(e.pointerId)) return;
+    pts.delete(e.pointerId);
+    pinch = null;
+    if (pts.size === 0) {
+      cv.classList.remove("dragging");
+      if (down && !down.moved && performance.now() - down.t < 500) handleClick(e.clientX, e.clientY);
+      down = null;
+    }
+  }
+  function handleClick(x, y) {
+    const [px, py] = toP(x, y);
+    let best = S.U.ownerAt(px, py, S.tView);
+    if (!best) {
+      let bd = 8;
+      for (const v of S.vis) {
+        const d = Math.hypot(x - v.sx, y - v.sy) - v.sr;
+        if (d < bd) {
+          bd = d;
+          best = v;
+        }
+      }
+    }
+    if (best) {
+      openCard(best.b);
+      return;
+    }
+    card.hidden = true;
+    S.selected = null;
+    emit("select", null);
+  }
+  function init8() {
+    cv.addEventListener("pointerdown", (e) => {
+      if (emitUntil("pointerdown", e)) return;
+      cv.setPointerCapture(e.pointerId);
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 1) down = { x: e.clientX, y: e.clientY, t: performance.now(), moved: false };
+      else if (down) down.moved = true;
+      pinch = null;
+      S.zoomAnim = null;
+      cv.classList.add("dragging");
+    });
+    cv.addEventListener("pointermove", (e) => {
+      if (emitUntil("pointermove", e)) return;
+      if (!pts.has(e.pointerId)) return;
+      const prev = pts.get(e.pointerId), cur = { x: e.clientX, y: e.clientY };
+      pts.set(e.pointerId, cur);
+      if (pts.size === 1) {
+        P.x -= (cur.x - prev.x) / S.Z;
+        P.y -= (cur.y - prev.y) / S.Z;
+        clampCam();
+        if (down && Math.hypot(cur.x - down.x, cur.y - down.y) > 5) down.moved = true;
+      } else if (pts.size === 2) {
+        const [a, b] = [...pts.values()];
+        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, dist = Math.hypot(a.x - b.x, a.y - b.y);
+        if (pinch) {
+          zoomAbout(dist / (pinch.dist || 1), mid.x, mid.y);
+          P.x -= (mid.x - pinch.mid.x) / S.Z;
+          P.y -= (mid.y - pinch.mid.y) / S.Z;
+          clampCam();
+        }
+        pinch = { mid, dist };
+      }
+    });
+    cv.addEventListener("pointerup", endPointer);
+    cv.addEventListener("pointercancel", endPointer);
+    cv.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      if (emitUntil("wheel", e)) return;
+      S.zoomAnim = null;
+      const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+      zoomAbout(Math.exp(-dy * 15e-4), e.clientX, e.clientY);
+    }, { passive: false });
+    cv.addEventListener("dblclick", (e) => animateZoom(2, e.clientX, e.clientY));
+    addEventListener("keydown", (e) => {
+      const tag = (e.target.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "select") return;
+      if (emitUntil("keydown", e)) return;
+      if (e.key === " ") {
+        if (tag === "button") return;
+        togglePlay();
+        e.preventDefault();
+      } else if (e.key === "ArrowLeft") {
+        seek(S.tView - 5);
+        e.preventDefault();
+      } else if (e.key === "ArrowRight") {
+        seek(S.tView + 5);
+        e.preventDefault();
+      } else if (e.key === "l" || e.key === "L") goLive();
+      else if (e.key === "+" || e.key === "=") animateZoom(1.5);
+      else if (e.key === "-" || e.key === "_") animateZoom(1 / 1.5);
+      else if (e.key === "0") {
+        S.Z = defaultZoom();
+        P.x = 0;
+        P.y = 0;
+        clampCam();
+      } else if (e.key === "Escape") {
+        card.hidden = true;
+        S.selected = null;
+        emit("select", null);
+      } else if (e.key === "h" || e.key === "H") setUI(!body.classList.contains("ui-hidden"));
+      else if (e.key === "m" || e.key === "M") setMusic(!Music.on);
+    });
+    addEventListener("resize", resize);
+  }
+
+  // src/ui/perf.js
+  var bootAt = performance.now();
+  var slowT = 0;
+  var fastT = 0;
+  var lastDown = -1e9;
+  function autoQuality(dtR, now) {
+    if (S.qMode !== "auto") return;
+    const slow = S.workEma > 14 || S.fpsEma < S.fpsCap * 0.75;
+    const fast = S.workEma < 6 && S.fpsEma > S.fpsCap * 0.92;
+    if (slow) {
+      slowT += dtR;
+      fastT = 0;
+      if (slowT > 2 && S.qLevel > 0) {
+        S.qLevel--;
+        resize();
+        slowT = 0;
+        lastDown = now;
+      }
+    } else if (fast) {
+      fastT += dtR;
+      slowT = 0;
+      if (fastT > 8 && S.qLevel < 2 && now - lastDown > 2e4) {
+        S.qLevel++;
+        resize();
+        fastT = 0;
+      }
+    } else {
+      slowT = 0;
+      fastT = 0;
+    }
+  }
+  function updatePerf() {
+    if (body.classList.contains("ctl-closed") || body.classList.contains("ui-hidden")) return;
+    const mem = performance.memory ? `${(performance.memory.usedJSHeapSize / 1048576).toFixed(1)} MB` : "此瀏覽器不提供";
+    const estKB = (S.U.hist.length + S.U.longs.length) * 0.26 + S.U.buckets.length * 8e-3;
+    $("perf").innerHTML = `畫面更新 <b>${S.fpsShown} fps</b>，每格運算 <b>${S.workEma.toFixed(1)} ms</b><br>目前畫質 <b>${QL[S.qLevel].name}</b>${S.qMode === "auto" ? "（自動）" : ""}，解析度 ×${S.dpr.toFixed(1)}<br>記憶中的泡泡 <b>${(S.U.hist.length + S.U.longs.length).toLocaleString("zh-TW")}</b> 個（約 ${(estKB / 1024).toFixed(1)} MB）<br>模擬中 <b>${S.U.live.length}</b> 個，畫面中 <b>${S.vis.length}</b> 個<br>可回看 <b>${fmt(S.U.tLive - S.U.tStart)}</b>／保留上限 ${fmt(S.HIST)}<br>JS 記憶體 <b>${mem}</b><br>已連續運行 <b>${fmt((performance.now() - bootAt) / 1e3)}</b><br>音樂 <b>${Music.on ? `開（${Music.voices} 個發聲中）` : "關"}</b>`;
+  }
+  function init9() {
+    $("qSel").addEventListener("change", (e) => {
+      S.qMode = e.target.value;
+      store.set("q", S.qMode);
+      if (S.qMode !== "auto") {
+        S.qLevel = +S.qMode;
+        resize();
+      }
+    });
+    {
+      const q = store.get("q");
+      if (q && ["auto", "0", "1", "2"].includes(q)) {
+        S.qMode = q;
+        $("qSel").value = q;
+        if (q !== "auto") S.qLevel = +q;
+        resize();
+      }
+    }
+    $("fpsSel").addEventListener("change", (e) => {
+      S.fpsCap = +e.target.value;
+    });
+    $("histSel").addEventListener("change", (e) => {
+      S.HIST = +e.target.value;
+      S.U.window = S.HIST;
+      S.U.trim();
+      drawSpark();
+    });
+  }
+
+  // src/ui/status.js
+  var fvEma = 1;
+  function updateStats() {
+    const N = S.HUB * S.tView, lg = N / Math.LN10;
+    $("sT").textContent = S.tView.toFixed(1) + " s";
+    $("sN").textContent = N.toFixed(2);
+    $("sA").innerHTML = lg < 1 ? Math.exp(N).toFixed(2) : `10<sup>${lg.toFixed(2)}</sup>`;
+    $("sB").textContent = S.U.born(S.tView).toLocaleString("zh-TW");
+    let fv = 0;
+    const NS = 150;
+    for (let i = 0; i < NS; i++) {
+      const x = Math.random() * S.vw, y = Math.random() * S.vh;
+      let inb = false;
+      for (const v of S.vis) {
+        const dx = x - v.sx, dy = y - v.sy;
+        if (dx * dx + dy * dy < v.sr * v.sr) {
+          inb = true;
+          break;
+        }
+      }
+      if (!inb) fv++;
+    }
+    fvEma = fvEma * 0.6 + fv / NS * 0.4;
+    $("sF").textContent = Math.round(fvEma * 100) + "%";
+    updateObserver();
+    updateLandCounts();
+  }
+  function updateObserver() {
+    const st = S.U.observer(S.tView);
+    const el = $("sO");
+    if (st.kind === "false") el.textContent = "假真空（暴脹中）";
+    else if (st.kind === "crunch") el.textContent = `#${st.b.id} 大擠壓`;
+    else if (st.kind === "heat") el.textContent = `#${st.b.id} 熱寂`;
+    else el.textContent = `#${st.b.id} ${st.V.name}`;
+    const ended = st.kind === "crunch" || st.kind === "heat";
+    $("reseedBtn").hidden = !ended;
+    const key = ended ? st.kind + st.b.id : "";
+    if (ended && key !== S.obsEndKey && !body.classList.contains("ui-hidden")) {
+      const name = `#${st.b.id}（${S.U.VAC[st.b.vac].name}）`;
+      $("bannerTxt").textContent = st.kind === "crunch" ? `觀測者所在的口袋宇宙 ${name}已走到大擠壓，這條世界線在此終結。模擬仍在繼續：其他地方的暴脹不受影響，你可以回看它是怎麼被吞沒的，或換個種子，看看另一個宇宙的命運。` : `觀測者所在的口袋宇宙 ${name}已走入熱寂：恆星燃盡、星系遠離到視界之外，只剩下越來越冷、越來越空的空間。它會一直這樣下去，除非被鄰近宇宙的疇壁吞沒。你可以繼續觀看，或換個種子，看看另一個宇宙的命運。`;
+      $("banner").hidden = false;
+    }
+    S.obsEndKey = key;
+  }
+
+  // src/app/loop.js
+  var uiT = 0;
+  var spT = 0;
+  var pfT = 0;
+  function stepWorld(dtR, draw) {
+    const dt = dtR * S.speed;
+    S.U.advance(dt);
+    emit("frame", { dtR, dt, draw });
+    if (S.isLive) S.tView = S.U.tLive;
+    else if (S.playing && !S.scrubbing) {
+      S.tView += dt;
+      if (S.tView >= S.U.tLive) {
+        goLive();
+      }
+    }
+    S.pendingCol = [];
+    if (draw) {
+      stepZoomAnim();
+      render(S.tView);
+    } else if (Music.on) collect(S.tView);
+    if (Music.on) {
+      if (S.tView > S.prevT && S.tView - S.prevT < Math.max(0.5, dt * 1.2)) musicEvents(S.prevT, S.tView);
+      Music.tick(dtR, S.HUB * S.tView / Math.LN2 / 4);
+    }
+    S.prevT = S.tView;
+  }
+  function frame(now) {
+    requestAnimationFrame(frame);
+    if (document.hidden) return;
+    if (now - S.last < 1e3 / S.fpsCap - 2) return;
+    const dtR = Math.min(0.1, (now - S.last) / 1e3);
+    S.last = now;
+    const w0 = performance.now();
+    stepWorld(dtR, true);
+    updateTimeline();
+    uiT += dtR;
+    if (uiT > 0.2) {
+      uiT = 0;
+      updateStats();
+      updateCard();
+    }
+    spT += dtR;
+    if (spT > 0.5) {
+      spT = 0;
+      drawSpark();
+    }
+    const work = performance.now() - w0;
+    S.workEma += (work - S.workEma) * 0.08;
+    S.fpsEma += (1 / Math.max(dtR, 1e-3) - S.fpsEma) * 0.05;
+    S.frames++;
+    S.fpsClock += dtR;
+    if (S.fpsClock >= 1) {
+      S.fpsShown = Math.round(S.frames / S.fpsClock);
+      S.frames = 0;
+      S.fpsClock = 0;
+    }
+    autoQuality(dtR, now);
+    pfT += dtR;
+    if (pfT > 1) {
+      pfT = 0;
+      updatePerf();
+    }
+  }
+  function init10() {
+    resize();
+    S.Z = defaultZoom();
+    clampCam();
+    restart();
+    drawSpark();
+    S.prevT = S.tView;
+    requestAnimationFrame(frame);
+  }
+
+  // src/app/background.js
+  var bgLast = 0;
+  var bgInt = null;
+  var bgWorker = null;
+  var bgWorkerOk = true;
+  var bgRun;
+  function bgTick() {
+    if (!document.hidden) return;
+    const now = performance.now(), dtR = Math.min(120, (now - bgLast) / 1e3);
+    bgLast = now;
+    if (dtR > 0) stepWorld(dtR, false);
+  }
+  function startBg() {
+    bgLast = performance.now();
+    if (bgWorkerOk && !bgWorker) {
+      try {
+        const url = URL.createObjectURL(new Blob(["let id=null;onmessage=e=>{clearInterval(id);id=e.data>0?setInterval(()=>postMessage(0),e.data):null;}"], { type: "text/javascript" }));
+        bgWorker = new Worker(url);
+        bgWorker.onmessage = bgTick;
+        bgWorker.onerror = () => {
+          bgWorkerOk = false;
+          bgWorker = null;
+          if (document.hidden && !bgInt) bgInt = setInterval(bgTick, 250);
+        };
+      } catch (e) {
+        bgWorkerOk = false;
+        bgWorker = null;
+      }
+    }
+    if (bgWorker) bgWorker.postMessage(200);
+    else if (!bgInt) bgInt = setInterval(bgTick, 250);
+  }
+  function stopBg() {
+    if (bgWorker) bgWorker.postMessage(0);
+    if (bgInt) {
+      clearInterval(bgInt);
+      bgInt = null;
+    }
+  }
+  function init11() {
+    bgRun = store.get("bg") === "1";
+    $("optBg").checked = bgRun;
+    $("optBg").addEventListener("change", (e) => {
+      bgRun = e.target.checked;
+      store.set("bg", bgRun ? "1" : "0");
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        if (bgRun) startBg();
+        else Music.suspend();
+      } else {
+        if (bgInt || bgWorker) bgTick();
+        stopBg();
+        Music.resume();
+        S.last = performance.now();
+      }
+    });
+  }
+
+  // src/app/main.js
+  var started = false;
+  function startApp({ plugins = [] } = {}) {
+    if (started) throw new Error("startApp 只能呼叫一次");
+    started = true;
+    const api = createApi();
+    for (const p of plugins) {
+      try {
+        p.setup && p.setup(api);
+      } catch (e) {
+        console.error(`[plugin ${p.name || "?"}]`, e);
+      }
+    }
+    init2();
+    init();
+    init3();
+    init4();
+    init6();
+    init8();
+    init7();
+    init11();
+    init9();
+    init5();
+    init10();
+    for (const p of plugins) {
+      try {
+        p.ready && p.ready(api);
+      } catch (e) {
+        console.error(`[plugin ${p.name || "?"}]`, e);
+      }
+    }
+    return api;
+  }
+
+  // variants/base/main.js
+  startApp({ plugins: [] });
+})();
+
+</script>
+</body>
+</html>

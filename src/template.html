@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{TITLE}}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+{{CSS}}
+</style>
+
+</head>
+<body>
+<canvas id="sky" aria-label="永恆暴脹模擬畫面：假真空持續膨脹，口袋宇宙泡泡不斷誕生"></canvas>
+
+<h1 class="title">永恆暴脹<small>口袋宇宙觀測站（三）</small></h1>
+
+<header class="plate panel">
+  <p class="lede">假真空以指數速率膨脹，量子穿隧不斷開出口袋宇宙；仍在膨脹的口袋宇宙裡又會生出下一層。同種真空相遇就融合，不同真空之間的疇壁則被能量較低的一方推著走。</p>
+  <dl class="stats">
+    <dt>宇宙時間</dt><dd id="sT">0.0 s</dd>
+    <dt>膨脹 e-folds</dt><dd id="sN">0.0</dd>
+    <dt>尺度因子 a</dt><dd id="sA">1</dd>
+    <dt>已誕生口袋宇宙</dt><dd id="sB">0</dd>
+    <dt>視野中假真空</dt><dd id="sF">100%</dd>
+    <dt>觀測者所在</dt><dd id="sO">假真空</dd>
+    <dt>宇宙種子</dt><dd id="sS">—</dd>
+  </dl>
+  <div class="plate-foot"><button class="mini" id="reseedBtn" hidden>換個種子重新開始</button><button class="mini" id="ledeBtn" aria-expanded="true">收起說明</button></div>
+</header>
+
+<button class="panel-toggle panel" id="panelToggle" aria-expanded="true" aria-controls="controls">設定</button>
+
+<aside class="controls panel" id="controls">
+  <div class="ctl-head">
+    <h2>設定</h2>
+    <button class="mini" id="notesBtn" aria-pressed="true">隱藏說明文字</button>
+    <button class="mini" id="ctlHide">收起</button>
+  </div>
+  <details open>
+    <summary>顯示</summary>
+    <div class="tog-grid">
+      <label class="tog"><input type="checkbox" id="optGrid" checked><span>時空網格</span></label>
+      <label class="tog"><input type="checkbox" id="optWarp" checked><span>空間扭曲</span></label>
+      <label class="tog"><input type="checkbox" id="optHz" checked><span>哈伯視界</span></label>
+      <label class="tog"><input type="checkbox" id="optQ" checked><span>量子漲落</span></label>
+      <label class="tog"><input type="checkbox" id="optNeb" checked><span>能量雲</span></label>
+      <label class="tog"><input type="checkbox" id="optStars" checked><span>泡內星系</span></label>
+      <label class="tog"><input type="checkbox" id="optCol" checked><span>碰撞面</span></label>
+      <label class="tog"><input type="checkbox" id="optFlash" checked><span>誕生閃光</span></label>
+      <label class="tog"><input type="checkbox" id="optLbl" checked><span>宇宙編號</span></label>
+      <label class="tog"><input type="checkbox" id="optVig" checked><span>暗角</span></label>
+    </div>
+  </details>
+  <details open>
+    <summary>即時參數</summary>
+    <div id="liveSliders"></div>
+  </details>
+  <details>
+    <summary>宇宙參數（需重新開始）</summary>
+    <div class="sl"><label for="seedIn"><span>宇宙種子</span></label>
+      <div class="seed-row"><input id="seedIn" type="text" inputmode="numeric" maxlength="10" autocomplete="off" spellcheck="false"><button class="mini" id="seedRnd">換一個</button></div>
+      <p class="note">相同的種子與參數會重現同一個宇宙：每個泡泡誕生的時刻、位置與真空種類都一樣。執行中拖動「即時參數」會改變之後的演化。</p></div>
+    <div class="sl"><label for="obsSel"><span>觀測者模式</span></label>
+      <select id="obsSel"><option value="post" selected>後選：永遠留在暴脹區</option><option value="typical">典型：可能被泡泡吞沒</option></select>
+      <p class="note">後選模式只看一條永遠不被吞沒的世界線。典型模式不做挑選，中央的觀測者遲早會落入某個口袋宇宙，甚至遭遇大擠壓。</p></div>
+    <div id="uniSliders"></div>
+    <div class="derived" id="derived"></div>
+    <button class="apply" id="applyBtn">套用並重新開始</button>
+    <p class="note">這些參數決定整個時空的幾何，改變後既有的歷史就不再成立，所以會清空時間軸重新演化。</p>
+  </details>
+  <details open>
+    <summary>視角</summary>
+    <div class="btns"><button id="zin">放大</button><button id="zout">縮小</button><button id="zreset">重設</button></div>
+    <p class="note">滾輪或雙指縮放，拖曳平移，點擊泡泡查看它的物理常數。空白鍵暫停，← → 跳 5 秒，L 回到直播，H 隱藏所有面板，M 開關音樂。</p>
+  </details>
+  <details>
+    <summary>真空地景</summary>
+    <div id="landscape" class="land"></div>
+    <p class="note">每個種子都會生成一組真空。同一種真空的泡泡相遇時會融合；正真空能的真空內部會繼續穿隧到能量更低的真空；負真空能的真空會走向大擠壓，能量越負崩塌得越快。</p>
+  </details>
+  <details>
+    <summary>音樂</summary>
+    <label class="tog"><input type="checkbox" id="optMusic"><span>背景音樂〈第一秒的永恆〉</span></label>
+    <div id="musicSliders"></div>
+    <p class="note">這首曲子由模擬即時生成，不會重複。D 利底亞調式的和聲鋪底緩緩輪轉；一串柔和的長音沿著同一個音階一級一級往上爬，最高處悄悄淡出、底部又淡入，形成永無止境上升的謝帕德音階，對應空間不斷翻倍（暫停時它也會停住）；每個口袋宇宙在畫面上誕生時敲響一聲鐘，音高由它的色系決定，靠近視界的較低沉、遠方的較清亮；可能宜居的宇宙會奏出三音動機；泡泡相撞是玻璃般的輕響，大擠壓則是一陣低沉的轟鳴。</p>
+  </details>
+  <details>
+    <summary>效能與資源</summary>
+    <div class="sl"><label for="qSel"><span>畫質</span></label>
+      <select id="qSel"><option value="auto">自動調整</option><option value="2">高</option><option value="1" selected>中</option><option value="0">低</option></select>
+      <p class="note">自動模式會在運算吃緊時降低解析度、網格取樣與特效數量，順暢時再調回來。</p></div>
+    <label class="tog"><input type="checkbox" id="optBg"><span>離開頁面時繼續運行</span></label>
+    <p class="note" style="margin-bottom:10px">切到其他分頁或縮小視窗時，模擬與音樂照常進行（只是不繪製畫面）。回來時直播已經往前走，錯過的部分可以拖曳進度條回看。瀏覽器在背景會降低計時頻率，模擬會以較大的時間步補上；部分手機瀏覽器會直接凍結背景分頁，這時仍會暫停。</p>
+    <div class="sl"><label for="fpsSel"><span>影格率上限</span></label>
+      <select id="fpsSel"><option value="60" selected>60 fps</option><option value="30">30 fps（省電）</option></select></div>
+    <div class="sl"><label for="histSel"><span>回放保留時間</span></label>
+      <select id="histSel"><option value="300">5 分鐘</option><option value="600">10 分鐘</option><option value="1200" selected>20 分鐘</option><option value="1800">30 分鐘</option><option value="3600">60 分鐘</option></select>
+      <p class="note">像直播的 DVR 一樣，只保留最近這段時間可以回看。更早的歷史會被捨棄，所以記憶體有固定上限，可以長時間掛著運行。</p></div>
+    <div class="derived" id="perf"></div>
+  </details>
+  <details>
+    <summary>自我檢查與其他</summary>
+    <button class="apply" id="checkBtn">執行自我檢查</button>
+    <p class="note">用全新的宇宙實例驗證程式的不變式：可重現性、成核合法性、物理與畫面歸屬一致、繪製邊界、穿隧率、長時間數值、疇壁穩定與繪製效能。約需 10 秒，不影響正在播放的模擬。</p>
+    <ul class="checks" id="checkOut"></ul>
+    <button class="apply" id="resetAll" style="margin-top:10px">所有參數還原預設</button>
+  </details>
+  <details open>
+    <summary>圖例</summary>
+    <ul class="legend">
+      <li><span class="sw fv"></span><span><b>假真空</b>仍在暴脹的背景。網格隨膨脹不斷向外流動，新的網格線從中央長出。</span></li>
+      <li><span class="sw pk"></span><span><b>口袋宇宙</b>量子穿隧產生的泡泡。真空能為正的仍在暴脹，內部是隨膨脹流動的能量雲；真空能近乎為零或為負的才會冷卻出星系。</span></li>
+      <li><span class="sw col"></span><span><b>疇壁</b>不同真空相撞後各佔一側，兩側各帶自己的顏色。疇壁被真空能較低的一方推向較高的一方：能量差越大，線越粗越亮，朝輸家推出的漣漪也越快。相撞與融合的瞬間會沿交界發光，再逐漸平息。</span></li>
+      <li><span class="sw cr"></span><span><b>大擠壓</b>真空能為負的宇宙會停止膨脹並收縮。從外面看，熾熱的收縮區與黑色的奇點區由中心向外擴散，泡壁照常擴張。</span></li>
+      <li><span class="sw mg"></span><span><b>融合與巢狀</b>同種真空的泡泡相遇會融為一體，不留交界；仍在膨脹的口袋宇宙裡會長出更小的下一層泡泡。</span></li>
+      <li><span class="sw hd"></span><span><b>熱寂</b>真空能近乎為零的宇宙不再暴脹，會一直膨脹冷卻：星光熄滅、星系遠離，從中心向外陷入越來越暗的空曠。</span></li>
+      <li><span class="sw hz"></span><span><b>哈伯視界</b>在界外誕生的泡泡，永遠追不上中央的觀測者。</span></li>
+      <li><span class="sw q"></span><span><b>量子漲落</b>在視界內閃爍，被拉到界外後凍結成金色。</span></li>
+    </ul>
+  </details>
+</aside>
+
+<div class="banner panel" id="banner" hidden>
+  <p id="bannerTxt"></p>
+  <div class="btns"><button id="bannerNew">換個種子重新開始</button><button id="bannerClose">繼續觀看</button></div>
+</div>
+<div class="card panel" id="card" hidden>
+  <div class="card-head"><span class="swatch" id="cSw"></span><h2 id="cTitle">口袋宇宙</h2><button class="x" id="cClose" aria-label="關閉">×</button></div>
+  <p class="fate" id="cFate"></p>
+  <dl id="cList"></dl>
+  <button class="jump" id="cJump">回到它誕生的時刻</button>
+</div>
+
+<footer class="player panel">
+  <div class="scrub" id="scrub" role="slider" tabindex="0" aria-label="時間軸" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
+    <canvas id="spark"></canvas>
+    <div class="rail"></div>
+    <div class="played" id="played"></div>
+    <div class="mark" id="mark"></div>
+    <div class="thumb" id="thumb"></div>
+    <div class="tip" id="tip">0:00</div>
+  </div>
+  <div class="row">
+    <button class="ic" id="play" aria-label="暫停">
+      <svg class="i-pause" viewBox="0 0 24 24"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>
+      <svg class="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z"/></svg>
+    </button>
+    <button class="skip" id="back">−10 秒</button>
+    <button class="skip" id="fwd">+10 秒</button>
+    <button class="live on" id="live"><span class="dot"></span><span id="liveTxt">直播中</span></button>
+    <span class="time" id="timeLbl">0:00</span>
+    <span class="spacer"></span>
+    <label class="speed"><span>模擬速度</span>
+      <select id="speed">
+        <option value="0.25">0.25×</option>
+        <option value="0.5">0.5×</option>
+        <option value="1" selected>1×</option>
+        <option value="2">2×</option>
+        <option value="4">4×</option>
+        <option value="8">8×</option>
+      </select>
+    </label>
+    <button class="skip music" id="musicBtn" aria-pressed="false" title="背景音樂（M）"><span class="music-eq" aria-hidden="true"><i></i><i></i><i></i></span><span id="musicTxt">音樂</span></button>
+    <button class="skip" id="uiBtn" aria-pressed="false">隱藏面板</button>
+  </div>
+</footer>
+{{EXTRA_HTML}}
+<script>
+{{JS}}
+</script>
+</body>
+</html>
