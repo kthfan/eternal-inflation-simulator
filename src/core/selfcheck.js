@@ -39,7 +39,10 @@ export const SelfCheck = (() => {
         const eps = Math.max(.05, c.r*1e-4);
         const inn = rho > 2*eps ? Territory.drawContains(c, c.cx + ex*(rho - eps), c.cy + ey*(rho - eps)) : true;
         const out = rho < c.r - 2*eps ? !Territory.drawContains(c, c.cx + ex*(rho + eps), c.cy + ey*(rho + eps)) : true;
-        n++; if(!inn || !out) bad++;
+        // 邊界之後不應再有自己的地盤（領域有洞、不呈星形時，射線法會漏畫邊界之後的部分）
+        let beyond = true;
+        for(let j=1;j<=6 && beyond;j++){ const q = rho + (c.r - rho)*j/7; if(q > rho + 2*eps && q < c.r - 2*eps && Territory.drawContains(c, c.cx + ex*q, c.cy + ey*q)) beyond = false; }
+        n++; if(!inn || !out || !beyond) bad++;
       }
     }
     return { bad, n };
@@ -309,6 +312,23 @@ export const SelfCheck = (() => {
         if(cq && Math.hypot(cq.cx - cp.cx, cq.cy - cp.cy) + cp.r <= cq.r) contained = true;
       }
       return { pass: contained && maxDrop < .08 && P.ctl.fate === 'eaten', detail: `光錐${contained ? '已' : '未'}包住玩家；每步最多失去 ${(maxDrop*100).toFixed(1)}% 的地盤；${P.ctl.fate === 'eaten' ? '最終被吞沒' : '沒有被吞沒'}` };
+    }},
+    { name: '玩家宇宙：在同種真空的泡泡內', desc: '玩家走進自己用技能放下的同種真空泡泡：無縫融合、玩家保有自己的地盤，泡泡的其餘地盤要完整畫出（不能在玩家背後漏畫一片）', run(){
+      const U = createUniverse(baseP, baseT()); U.presim(20);
+      const V = U.VAC.filter(v => v.eps < 1).sort((a, b) => a.eps - b.eps), mid = V[Math.floor(V.length/2)];
+      spawnPlayer(U, mid.i, 28, .8); const P = U.player; let c = U.circleAt(P, U.tSim);
+      const a = U.act({ type: 'nucleate', by: 'player', x: c.cx + 70, y: c.cy, vac: mid.i }); U.advance(STEP);
+      U.act({ type: 'steer', dx: 1, dy: 0, rT: 28 }); U.presim(3); U.act({ type: 'steer', dx: 0, dy: 0, rT: 28 }); U.presim(1);
+      const t = U.tSim, { cs } = buildRules(U, t), Q = cs.find(x => x.b.id === a.result.id), pc = cs.find(x => x.b === P), r = mulberry32(17);
+      const inside = !!Q && !!pc && Math.hypot(Q.cx - pc.cx, Q.cy - pc.cy) + pc.r < Q.r;
+      let own = 0, miss = 0, mine = 0, n = 0;
+      if(Q) for(let i=0;i<3000;i++){
+        const th = r()*TAU, rr = Q.r*Math.sqrt(r()), x = Q.cx + Math.cos(th)*rr, y = Q.cy + Math.sin(th)*rr;
+        if(!Territory.drawContains(Q, x, y)) continue; own++;
+        if(rr > Territory.cellRay(Q, Math.cos(th), Math.sin(th), Q.r) + .5) miss++;     // 屬於泡泡卻不在畫出的多邊形內
+      }
+      for(let i=0;i<500;i++){ const th = r()*TAU, rr = pc.r*.95*Math.sqrt(r()), o = U.ownerAt(pc.cx + Math.cos(th)*rr, pc.cy + Math.sin(th)*rr, t); n++; if(o && o.b === P) mine++; }
+      return { pass: inside && own > 500 && miss/own < .005 && mine === n, detail: `玩家${inside ? '在' : '不在'}泡泡內；泡泡的地盤中漏畫 ${(miss/Math.max(1, own)*100).toFixed(1)}%；玩家圓內 ${n} 點中屬於玩家 ${mine} 點` };
     }},
     { name: '玩家宇宙：可重現與不在內部成核', desc: '含玩家誕生、操控與技能的動作紀錄重播後完全相同（泡泡、能量、軌跡）；其他泡泡不會在玩家宇宙內誕生（即使它內部的穿隧率很高）', run(){
       const A = playerUniverse(4242, 30, { innerMul: 3 }), T = A.tSim;

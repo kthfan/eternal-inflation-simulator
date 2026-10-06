@@ -49,8 +49,10 @@ export const Territory = (() => {
   /* 繪製鍵：自己與所有祖先的真空能最小值。一般的家族中子孫的真空能一定較低，所以就等於自己的真空能；
      向上穿隧的子泡泡（比母宇宙高）則沿用母宇宙的鍵，同鍵時較晚誕生者後畫 → 仍然畫在母宇宙之上 */
   const dkey = (F, b) => { let e = F.eps(b); for(let q = b.parent; q; q = q.parent){ const x = F.eps(q); if(x < e) e = x; } return e; };
-  /* 繪製順序：繪製鍵高的先畫；相同時較早誕生的先畫 */
-  const drawOrder = (F, a, b) => (dkey(F, b.b) - dkey(F, a.b)) || (a.b.tn - b.b.tn);
+  /* 繪製順序：繪製鍵高的先畫；相同時一般泡泡先畫、可控制的泡泡（玩家）後畫，再相同時較早誕生的先畫。
+     玩家與同種真空的泡泡同鍵：玩家若先畫，泡泡就得挖掉玩家的圓（lYield），玩家在泡泡內時領域變成有洞的圓環，
+     射線法（cellRay，假設領域對中心呈星形）畫不出玩家背後的那一片。玩家後畫則泡泡畫整圓、玩家蓋在上面，不會有洞 */
+  const drawOrder = (F, a, b) => (dkey(F, b.b) - dkey(F, a.b)) || ((a.b.ctl ? 1 : 0) - (b.b.ctl ? 1 : 0)) || (a.b.tn - b.b.tn);
 
   /* 推進前緣：以 W 的中心為圓心、半徑 R 的圓；輸家側 = 圓外。沿用 wallGeom 求出與輸家圓的交點（畫疇壁用），再改寫成這個圓 */
   function ringGeom(W, L, R){
