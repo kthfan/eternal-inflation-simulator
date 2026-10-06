@@ -69,6 +69,12 @@ export function stepZoomAnim(){
   if(Math.abs(S.zoomAnim.rem) < .002) S.zoomAnim = null;
 }
 
+/* 焦點跟隨重新置中（核心的 'rebase'）：原點換到新的共動點，攝影機跟著平移，畫面不動；背景錨點淡入淡出（見 scene.js 的 anchorList） */
+export function onRebase({ x, y, t }){
+  P.x -= x; P.y -= y;
+  S.anchorFade = { x: -x, y: -y, t, t0: performance.now() };
+}
+
 /* 每種真空的配色（只屬於畫面，模擬核心只提供色相） */
 export function buildPalettes(VAC){
   return VAC.map(V => {

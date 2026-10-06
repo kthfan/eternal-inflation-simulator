@@ -3,7 +3,7 @@ import { emit } from '../app/hooks.js';
 import { S } from '../app/state.js';
 import { K, colSeen, isHab, tune } from '../app/config.js';
 import { createUniverse } from '../core/universe.js';
-import { P, animateZoom, buildPalettes, clampCam, defaultZoom } from '../render/camera.js';
+import { P, animateZoom, buildPalettes, clampCam, defaultZoom, onRebase } from '../render/camera.js';
 import { opt, resetTemporal, rgba } from '../render/scene.js';
 import { card } from './card.js';
 import { $ } from './dom.js';
@@ -113,6 +113,7 @@ export function restart(opts = {}){
   S.U = createUniverse({ seed, H: uniVal.hub, RH: uniVal.rh, R0: uniVal.r0, RGEN: uniVal.rgen, typical: $('obsSel').value === 'typical',
     vacN: uniVal.vacN, crunchP: uniVal.crunchP, oddDimP: uniVal.oddDimP }, tune, { actions: opts.actions });
   S.U.window = S.HIST;
+  S.U.on('rebase', onRebase); S.anchorFade = null;
   S.HUB = S.U.p.H; S.RH = S.U.p.RH; S.R0 = S.U.p.R0; S.RGEN = S.U.p.RGEN;
   S.PAL = buildPalettes(S.U.VAC);
   $('landscape').innerHTML = landHTML(); $('sS').textContent = seed;

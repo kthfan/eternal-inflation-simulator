@@ -167,7 +167,6 @@ export function player(){
           ctx.fillStyle = '#f4ecff';
           ctx.fillText(`能量 ${C.E.toFixed(2)}　半徑 ${rr.toFixed(2)} R_H　最高速度 ${(um*100).toFixed(0)}% c`, x, y + 18);
           if(state){ ctx.fillStyle = '#ff9aa6'; ctx.fillText(state, x, y + 36); }
-          if(Math.hypot(c.cx, c.cy) > S.RGEN*.75){ ctx.fillStyle = 'rgba(255,214,140,.95)'; ctx.fillText('接近模擬範圍邊緣：目前只模擬觀測者周圍（跟隨焦點見路線圖 M4）', x, y + (state ? 54 : 36)); }
         } else {
           const last = api.U.hist.concat(api.U.longs).find(b => b.ctl && b.ctl.fate === 'eaten');
           ctx.fillStyle = 'rgba(10,6,24,.7)'; ctx.fillRect(x - 190, y - 14, 380, 28);

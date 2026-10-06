@@ -46,7 +46,8 @@ export function myPlugin(options){
 | `select` | 泡泡或 `null` | 點選泡泡或取消 | |
 
 可攔截的事件：處理函式回傳 `true`，核心就不再處理（例如拖曳泡泡時不要同時平移畫面）。
-`api.on` 回傳一個取消訂閱的函式。宇宙本身另有事件：`U.on('born', b => …)`、`U.on('retire', b => …)`、`U.on('act', a => …)`（動作已套用，結果在 `a.result`）。
+`api.on` 回傳一個取消訂閱的函式。宇宙本身另有事件：`U.on('born', b => …)`、`U.on('retire', b => …)`、`U.on('act', a => …)`（動作已套用，結果在 `a.result`）、
+`U.on('rebase', ({ x, y, t }) => …)`（焦點跟隨：原點換到此刻位於 (x, y) 的共動點，之前記下的物理座標都要減去它）。
 
 ## api 一覽
 

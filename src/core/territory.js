@@ -18,7 +18,7 @@ import { TAU } from './math.js';
    可控制的泡泡（玩家，b.ctl）的泡壁不以光速擴張，「光錐被包住」不再代表「早已被入侵」，所以與它有關的不同真空之間一律用「推進前緣」：
    · 玩家贏：它自己控制的泡壁就是交界，圓內全歸它；
    · 玩家輸：贏家的真空以疇壁速度從贏家中心向外推進（以贏家中心為圓心、半徑 F.ring(W, L) 的圓），玩家只失去圓內的部分。
-   同種真空仍是 merge。 */
+   同種真空：無縫融合（不畫疇壁），玩家保有自己泡壁內的地盤。 */
 export const Territory = (() => {
   const isAncestor = (a, b) => { for(let p = b.parent; p; p = p.parent) if(p === a) return true; return false; };
   const related = (a, b) => isAncestor(a, b) || isAncestor(b, a);
@@ -66,8 +66,10 @@ export const Territory = (() => {
     if(d >= A.r + B.r) return null;
     if(related(A.b, B.b)) return null;
     if(A.b.ctl || B.b.ctl){
-      if(A.b.vac === B.b.vac) return { kind:'merge', A, B };
-      const [W, L] = beats(F, A.b, B.b) ? [A, B] : [B, A];
+      // 同種真空：無縫融合，但玩家保有自己泡壁內的全部地盤（「泡壁先到」只對光錐有意義）；兩個都是可控制的泡泡時照常平分
+      const same = A.b.vac === B.b.vac;
+      if(same && A.b.ctl && B.b.ctl) return { kind:'merge', A, B };
+      const [W, L] = same ? (A.b.ctl ? [A, B] : [B, A]) : beats(F, A.b, B.b) ? [A, B] : [B, A];
       const R = { kind:'wall', W, L, g: ringGeom(W, L, W.b.ctl || !F.ring ? Infinity : F.ring(W.b, L.b)), ring: true };
       if(drawOrder(F, L, W) > 0){ R.lYield = true; R.cE = arrival(W, L.cx, L.cy) < 0 && !R.g.lSide(L.cx, L.cy); }
       return R;

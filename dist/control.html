@@ -435,6 +435,8 @@ details[open] summary::after{content:" －"}
     Z: 1,
     minZ: 0.3,
     zoomAnim: null,
+    anchorFade: null,
+    // 重新置中時背景錨點的淡入淡出 { x, y（舊原點在新座標中的位置，於時刻 t）, t, t0（開始的實際時間） }
     vis: [],
     maxPathCoord: 0,
     texLastT: null,
@@ -600,8 +602,9 @@ details[open] summary::after{content:" －"}
       if (d >= A.r + B.r) return null;
       if (related(A.b, B.b)) return null;
       if (A.b.ctl || B.b.ctl) {
-        if (A.b.vac === B.b.vac) return { kind: "merge", A, B };
-        const [W2, L2] = beats(F, A.b, B.b) ? [A, B] : [B, A];
+        const same = A.b.vac === B.b.vac;
+        if (same && A.b.ctl && B.b.ctl) return { kind: "merge", A, B };
+        const [W2, L2] = same ? A.b.ctl ? [A, B] : [B, A] : beats(F, A.b, B.b) ? [A, B] : [B, A];
         const R2 = { kind: "wall", W: W2, L: L2, g: ringGeom(W2, L2, W2.b.ctl || !F.ring ? Infinity : F.ring(W2.b, L2.b)), ring: true };
         if (drawOrder(F, L2, W2) > 0) {
           R2.lYield = true;
@@ -1017,7 +1020,7 @@ details[open] summary::after{content:" －"}
   var MAXB = 16e4;
   var FALSE_EPS = 1;
   var UP_EPS = 1.6;
-  var PLAYER = { E0: 5, eta: 0.8, k: 1.5, minE: 0.5, cell: 3.5, latticeMax: 16, downCost: 0.15, range: 1 };
+  var PLAYER = { E0: 5, eta: 0.8, k: 1.5, minE: 0.5, cell: 3.5, latticeMax: 16, downCost: 0.15, range: 1, recenter: 0.75 };
   var VNAMES = "子丑寅卯辰巳午未申酉戌亥甲乙丙丁";
   function makeLandscape(r, p) {
     const n = p.vacN, VAC = [];
@@ -1118,7 +1121,7 @@ details[open] summary::after{content:" －"}
       stepN: 0
     };
     Object.defineProperty(U, "tLive", { get: () => U.tSim + U.acc });
-    const listeners = { born: [], retire: [], act: [] };
+    const listeners = { born: [], retire: [], act: [], rebase: [] };
     U.on = (name, fn) => {
       listeners[name].push(fn);
       return () => {
@@ -1263,6 +1266,14 @@ details[open] summary::after{content:" －"}
       if (U.heatAt(o.b, 0, 0, t)) return { kind: "heat", b: o.b };
       return { kind: "pocket", b: o.b, V: VAC[o.b.vac] };
     };
+    function exitTime(s, d, r0, t0) {
+      if (s > 0) {
+        const den2 = d - r0 - p.RH;
+        return den2 > 0 ? t0 + Math.log((p.RGEN + 60 - p.RH) / den2) / p.H : Infinity;
+      }
+      const tc = r0 < p.RH ? t0 + Math.log(p.RH / (p.RH - r0)) / p.H : Infinity, den = d - r0 + p.RH;
+      return Math.min(tc, den > 0 ? t0 + Math.log((p.RGEN + 60 + p.RH) / den) / p.H : Infinity);
+    }
     function addBubble(x, y, d, t, parent, forced) {
       let vac = 0, seed;
       if (forced) {
@@ -1286,14 +1297,7 @@ details[open] summary::after{content:" －"}
         seed = rng();
       }
       const V = VAC[vac], s = forced ? forced.s : 1, r0 = forced ? forced.r0 : p.R0;
-      let texit;
-      if (s > 0) {
-        const den = d - r0 - p.RH;
-        texit = den > 0 ? t + Math.log((p.RGEN + 60 - p.RH) / den) / p.H : Infinity;
-      } else {
-        const tc = r0 < p.RH ? t + Math.log(p.RH / (p.RH - r0)) / p.H : Infinity, den = d - r0 + p.RH;
-        texit = Math.min(tc, den > 0 ? t + Math.log((p.RGEN + 60 + p.RH) / den) / p.H : Infinity);
-      }
+      let texit = exitTime(s, d, r0, t);
       if (forced && forced.ctl) texit = Infinity;
       const b = {
         id: U.nextId++,
@@ -1353,10 +1357,12 @@ details[open] summary::after{content:" －"}
       if (!n) return;
       const F = U.frame(t), circles = [];
       for (const b of U.live) if (b.texit > t) circles.push(U.circleAt(b, t));
+      const pc = U.player ? U.circleAt(U.player, t) : null;
       for (let i = 0; i < n; i++) {
         const rr = p.RGEN * Math.sqrt(rng()), ang = rng() * TAU, u = rng();
-        if (!p.typical && rr < p.RH + p.R0 + 3) continue;
+        if (!p.typical && !pc && rr < p.RH + p.R0 + 3) continue;
         const x = Math.cos(ang) * rr, y = Math.sin(ang) * rr;
+        if (!p.typical && pc && Math.hypot(x - pc.cx, y - pc.cy) < pc.r + p.RH + p.R0 + 3) continue;
         const own = Territory.ownerAt(F, circles, x, y);
         let rel = 1;
         if (own && own.b.player) continue;
@@ -1461,8 +1467,7 @@ details[open] summary::after{content:" －"}
       pushSeg(b, t, c.cx, c.cy, c.r, 0, 0, p.H * p.RH);
       b.ctl.free = true;
       b.ctl.releasedAt = t;
-      const den = Math.hypot(c.cx, c.cy) - c.r - p.RH;
-      b.texit = den > 0 ? t + Math.log((p.RGEN + 60 - p.RH) / den) / p.H : Infinity;
+      b.texit = exitTime(1, Math.hypot(c.cx, c.cy), c.r, t);
     }
     function pushSeg(b, t, x, y, r, ux, uy, w) {
       const C = b.ctl, n = C.t.length;
@@ -1589,6 +1594,54 @@ details[open] summary::after{content:" －"}
       }
     }
     U.player = null;
+    U.recenters = 0;
+    U.comoving = { x: 0, y: 0 };
+    function rebase(ax, ay, t) {
+      const H = p.H, seen = /* @__PURE__ */ new Set();
+      const move = (b) => {
+        if (seen.has(b)) return;
+        seen.add(b);
+        const e = Math.exp(H * (b.tn - t));
+        b.x -= ax * e;
+        b.y -= ay * e;
+        b.d = Math.hypot(b.x, b.y);
+        if (b.ctl) {
+          const C = b.ctl;
+          for (let i = 0; i < C.t.length; i++) {
+            const f = Math.exp(H * (C.t[i] - t));
+            C.x[i] -= ax * f;
+            C.y[i] -= ay * f;
+          }
+        }
+      };
+      for (const b of U.hist) move(b);
+      for (const b of U.longs) move(b);
+      for (const b of U.live) move(b);
+      for (const b of U.live) {
+        if (!(b.texit > t) || b.retired || b.player) continue;
+        if (b.ctl) {
+          const c = U.circleAt(b, t);
+          b.texit = exitTime(1, Math.hypot(c.cx, c.cy), c.r, t);
+        } else b.texit = exitTime(b.s, b.d, b.r0, b.tn);
+        if (b.texit <= t) b.texit = t + STEP / 2;
+        if (!b.long && !(b.texit - b.tn <= LONG)) {
+          b.long = true;
+          U.longs.push(b);
+        }
+      }
+      const e0 = Math.exp(-H * t);
+      U.comoving.x += ax * e0;
+      U.comoving.y += ay * e0;
+      U.recenters++;
+      for (const fn of listeners.rebase) fn({ x: ax, y: ay, t });
+    }
+    U.rebase = (ax, ay) => rebase(ax, ay, U.tSim);
+    function follow(t) {
+      const P2 = U.player;
+      if (!P2) return;
+      const c = U.circleAt(P2, t);
+      if (Math.hypot(c.cx, c.cy) > PLAYER.recenter * p.RH) rebase(c.cx, c.cy, t);
+    }
     function applyActions(step) {
       let k = 0;
       while (pendingAct < U.actions.length && U.actions[pendingAct].step <= step) {
@@ -1630,6 +1683,7 @@ details[open] summary::after{content:" －"}
           }
           if (gone) {
             b.texit = t + STEP / 2;
+            b.retired = true;
             notify("retire", b);
             break;
           }
@@ -1644,7 +1698,10 @@ details[open] summary::after{content:" －"}
         U.tSim += STEP;
         if (pendingAct < U.actions.length) applyActions(U.stepN + 1);
         nucleate();
-        if (U.player || U.anyCtl) playerStep(U.tSim);
+        if (U.player || U.anyCtl) {
+          playerStep(U.tSim);
+          follow(U.tSim);
+        }
         if (++U.stepN % 30 === 0) retire();
         n++;
       }
@@ -1691,6 +1748,7 @@ details[open] summary::after{content:" －"}
   }
 
   // src/core/selfcheck.js
+  var PLAYER_RECENTER = PLAYER.recenter;
   var SelfCheck = /* @__PURE__ */ (() => {
     const baseP = { seed: 4242, H: 0.25, RH: 140, R0: 3, RGEN: 3e3, typical: false, vacN: 12, crunchP: 0.25, oddDimP: 0.15 };
     const baseT = () => ({ gamma: 25e-7, innerMul: 1, wallK: 1 });
@@ -1781,6 +1839,26 @@ details[open] summary::after{content:" －"}
         U.presim(0.5);
       }
       return U;
+    }
+    function autopilot(U, secs, rT = 25) {
+      let dir = 0;
+      for (let s = 0; s < secs && U.player; s++) {
+        const P2 = U.player, c = U.circleAt(P2, U.tSim);
+        let best = null;
+        for (let k = 0; k < 16; k++) {
+          const a = dir + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * Math.PI / 8;
+          let free = 0;
+          for (const d of [1, 1.5, 2]) if (!U.ownerAt(c.cx + Math.cos(a) * (c.r + d * U.p.RH), c.cy + Math.sin(a) * (c.r + d * U.p.RH), U.tSim)) free++;
+          if (free === 3) {
+            best = a;
+            break;
+          }
+          if (best === null && free) best = a;
+        }
+        if (best !== null) dir = best;
+        U.act({ type: "steer", dx: Math.cos(dir), dy: Math.sin(dir), rT });
+        U.presim(1);
+      }
     }
     const tests = [
       { name: "可重現性", desc: "同一個種子、以不同的時間切分推進，前 25 秒的每個泡泡必須完全相同", run() {
@@ -2059,6 +2137,103 @@ details[open] summary::after{content:" －"}
           }
         }
         return { pass: rays > 100 && mis / n < 2e-3 && bad / rays < 0.01, detail: `${n} 個取樣點中 ${mis} 個不一致；玩家與鄰居 ${rays} 條射線中 ${bad} 條不吻合（${(bad / Math.max(1, rays) * 100).toFixed(2)}%）` };
+      } },
+      { name: "焦點跟隨：平移不變", desc: "把原點換到另一個共動點：所有圓只差一個平移、半徑不變，每一點的歸屬與換之前相同；仍在模擬範圍內的泡泡不會被丟棄", run() {
+        const U = createUniverse(baseP, baseT());
+        U.presim(40);
+        spawnPlayer(U, U.VAC.findIndex((v) => v.kind === "ds"), 30, 0.8);
+        U.act({ type: "steer", dx: 0.8, dy: -0.4, rT: 40 });
+        U.presim(3);
+        const t = U.tSim, r = mulberry32(3);
+        const before = new Map(U.aliveAt(t).map((b) => [b, U.circleAt(b, t)]));
+        const pts2 = [];
+        for (let i = 0; i < 1500; i++) {
+          const rr = 2e3 * Math.sqrt(r()), a = r() * TAU;
+          pts2.push([Math.cos(a) * rr, Math.sin(a) * rr]);
+        }
+        const own0 = pts2.map(([x, y]) => {
+          const o = U.ownerAt(x, y, t);
+          return o ? o.b : null;
+        });
+        const dx = 260, dy = -170;
+        U.rebase(dx, dy);
+        let geo = 0, mis = 0, dropped = 0;
+        for (const [b, c0] of before) {
+          const c1 = U.circleAt(b, t), tol = 1e-6 * (1 + Math.abs(c0.cx) + Math.abs(c0.cy) + c0.r);
+          if (Math.abs(c1.cx - (c0.cx - dx)) > tol || Math.abs(c1.cy - (c0.cy - dy)) > tol || Math.abs(c1.r - c0.r) > tol) geo++;
+          if (b.texit <= t + STEP && !b.retired && Math.hypot(c1.cx, c1.cy) - c1.r < U.p.RGEN - 200 && c1.r > 1) dropped++;
+        }
+        pts2.forEach(([x, y], i) => {
+          const o = U.ownerAt(x - dx, y - dy, t);
+          if ((o ? o.b : null) !== own0[i]) mis++;
+        });
+        return { pass: before.size > 100 && [...before.keys()].some((b) => b.ctl) && !geo && mis <= 1 && !dropped, detail: `${before.size} 個泡泡：幾何不符 ${geo}；${pts2.length} 個點中歸屬改變 ${mis}；誤丟仍在範圍內的泡泡 ${dropped}` };
+      } },
+      { name: "焦點跟隨：長途移動", desc: "玩家自動駕駛往假真空前進 150 秒：模擬區域跟著玩家（玩家附近持續有泡泡誕生、玩家離原點不超過置中門檻）、座標保持有限、被丟棄的泡泡離玩家泡壁超過 2·RH（永遠碰不到），且重播完全相同", run() {
+        const U = createUniverse({ ...baseP, seed: 4242 }, { ...baseT(), gamma: 4e-7 });
+        U.presim(20);
+        const vac = U.VAC.filter((v) => v.eps < 1).sort((a, b) => a.eps - b.eps)[0].i;
+        spawnPlayer(U, vac, 25, 0.8);
+        const P2 = U.player, t0 = U.tSim;
+        let far = 0;
+        U.on("rebase", () => {
+        });
+        for (let k = 0; k < 5; k++) {
+          autopilot(U, 30);
+          if (U.player) {
+            const c = U.circleAt(P2, U.tSim);
+            if (Math.hypot(c.cx, c.cy) > (PLAYER_RECENTER + 0.3) * U.p.RH) far++;
+          }
+        }
+        const T = U.tSim;
+        const near = [0, 0, 0, 0, 0];
+        for (const b of U.hist) {
+          if (b === P2 || b.tn < t0) continue;
+          const q = U.circleAt(P2, b.tn);
+          if (Math.hypot(b.x - q.cx, b.y - q.cy) < 3 * U.p.RH) near[Math.min(4, Math.floor((b.tn - t0) / 30))]++;
+        }
+        let bad = 0, n = 0, finite = true;
+        for (const b of U.hist) {
+          if (b === P2 || b.retired || b.ctl || !(b.texit < T) || b.tn < t0) continue;
+          const c = U.circleAt(b, b.texit);
+          if (b.s < 0 && c.r < 1) continue;
+          const pc = U.circleAt(P2, b.texit);
+          n++;
+          if (Math.hypot(c.cx - pc.cx, c.cy - pc.cy) - c.r - pc.r < 2 * U.p.RH) bad++;
+        }
+        for (const b of U.live) {
+          const c = U.circleAt(b, T);
+          if (!isFinite(c.cx) || !isFinite(c.cy) || !isFinite(c.r)) finite = false;
+        }
+        const B = createUniverse({ ...baseP, seed: 4242 }, { ...baseT(), gamma: 4e-7 }, { actions: U.actionLog() });
+        while (B.tSim < T - 1e-9) B.advance(Math.min(0.3711, T - B.tSim + 1e-9));
+        const same = B.fingerprint(T) === U.fingerprint(T) && B.recenters === U.recenters;
+        const ok = !!U.player && U.recenters > 50 && near.slice(0, 4).every((v) => v >= 2) && !far && n > 50 && !bad && finite && same;
+        return { pass: ok, detail: `置中 ${U.recenters} 次；每 30 秒在玩家附近誕生 ${near.join("、")}；離原點過遠 ${far} 次；丟棄 ${n} 個泡泡中可能再碰到的 ${bad} 個；重播${same ? "完全一致" : "不一致"}` };
+      } },
+      { name: "焦點跟隨：進入大泡泡", desc: "在玩家 1.3 個哈伯半徑外放一個泡泡（原本會在約 17 秒後流出模擬範圍），玩家飛進去並在裡面持續前進：只要它還包住玩家，就不能因為原點移動而被丟棄", run() {
+        const U = createUniverse({ ...baseP, seed: 4242 }, { ...baseT(), gamma: 0 });
+        U.presim(1);
+        const V = U.VAC.filter((v) => v.eps < 1).sort((a2, b) => a2.eps - b.eps);
+        spawnPlayer(U, V[0].i, 25, 0.8);
+        const P2 = U.player, c = U.circleAt(P2, U.tSim);
+        const a = U.act({ type: "nucleate", x: c.cx + 1.3 * U.p.RH, y: c.cy, vac: V[V.length - 1].i });
+        U.advance(STEP);
+        const Q = U.hist.find((b) => b.id === a.result.id), texit0 = Q.texit;
+        U.act({ type: "steer", dx: 1, dy: 0, rT: 25 });
+        let lost = 0, inside = 0;
+        for (let i = 0; i < 60; i++) {
+          U.presim(0.5);
+          const pc = U.circleAt(P2, U.tSim), qc = U.circleAt(Q, U.tSim), contains = Math.hypot(qc.cx - pc.cx, qc.cy - pc.cy) + pc.r < qc.r;
+          if (contains) {
+            inside++;
+            if (!U.live.includes(Q)) lost++;
+          }
+        }
+        return {
+          pass: isFinite(texit0) && U.tSim > texit0 + 5 && inside > 20 && !lost && U.recenters > 3,
+          detail: `泡泡原本的流出時刻 ${texit0.toFixed(1)} 秒（現在 ${U.tSim.toFixed(1)} 秒）；包住玩家的 ${inside} 次觀測中被丟棄 ${lost} 次；置中 ${U.recenters} 次`
+        };
       } },
       { name: "穿隧率正確", desc: "實際成核次數必須符合各區域真空的穿隧率（以隨機取樣估計預期值）", run() {
         const U = createUniverse(baseP, baseT());
@@ -2584,6 +2759,11 @@ details[open] summary::after{content:" －"}
     S.zoomAnim.rem -= s;
     if (Math.abs(S.zoomAnim.rem) < 2e-3) S.zoomAnim = null;
   }
+  function onRebase({ x, y, t }) {
+    P.x -= x;
+    P.y -= y;
+    S.anchorFade = { x: -x, y: -y, t, t0: performance.now() };
+  }
   function buildPalettes(VAC) {
     return VAC.map((V) => {
       const wall = hsl2rgb(V.hue, 95, 74);
@@ -2628,6 +2808,21 @@ details[open] summary::after{content:" －"}
   var WY = 0;
   var T_R = 0;
   var PH = 0;
+  var AW = 1;
+  var anchors = [];
+  function anchorList(t) {
+    const [ax, ay] = toS(0, 0), out = [{ sx: ax, sy: ay, w: 1 }], F = S.anchorFade;
+    if (!F) return out;
+    const f = (performance.now() - F.t0) / 600;
+    if (f >= 1 || f < 0) {
+      S.anchorFade = null;
+      return out;
+    }
+    const e = Math.exp(S.HUB * (t - F.t)), [ox, oy] = toS(F.x * e, F.y * e), s = f * f * (3 - 2 * f);
+    out[0].w = s;
+    out.push({ sx: ox, sy: oy, w: 1 - s });
+    return out;
+  }
   var warpList = [];
   function screenCircle(b, t) {
     const c = S.U.circleAt(b, t);
@@ -2897,7 +3092,7 @@ details[open] summary::after{content:" －"}
       const a0 = axis ? AY : AX, len = axis ? S.vw : S.vh, span2 = axis ? S.vh : S.vw;
       const n0 = Math.floor((-40 - a0) / sig), n1 = Math.ceil((span2 + 40 - a0) / sig);
       for (let n = n0; n <= n1; n++) {
-        const w = Math.min(v2(n), 5) + ph, al = Math.min(0.3, 0.055 * w);
+        const w = Math.min(v2(n), 5) + ph, al = Math.min(0.3, 0.055 * w) * AW;
         if (al < 5e-3) continue;
         const p = a0 + n * sig;
         ctx.strokeStyle = `rgba(196,176,255,${al})`;
@@ -2926,10 +3121,10 @@ details[open] summary::after{content:" －"}
       const ang = hash(k, i, 12) * TAU, rr = (0.12 + 0.83 * Math.sqrt(hash(k, i, 13))) * S.RH;
       const E = Math.exp(S.HUB * age), px = Math.cos(ang) * rr * E, py = Math.sin(ang) * rr * E;
       const rad = (3 + hash(k, i, 14) * 9) * E * S.Z;
-      const [sx, sy] = toS(px, py);
+      const sx = AX + px * S.Z, sy = AY + py * S.Z;
       if (sx < -rad || sy < -rad || sx > S.vw + rad || sy > S.vh + rad) continue;
       const out = rr * E > S.RH;
-      let a = Math.pow(1 - age / L, 1.6) * Math.min(1, age * 4) * 0.55;
+      let a = Math.pow(1 - age / L, 1.6) * Math.min(1, age * 4) * 0.55 * AW;
       if (!out && !reduceMotion) a *= 0.6 + 0.4 * Math.sin(age * 11 + k);
       const col = out ? "255,212,140" : "255,128,222";
       ctx.strokeStyle = `rgba(${col},${a})`;
@@ -2941,6 +3136,8 @@ details[open] summary::after{content:" －"}
     }
   }
   function drawHorizon() {
+    ctx.save();
+    ctx.globalAlpha = AW;
     ctx.globalCompositeOperation = "source-over";
     const g = ctx.createRadialGradient(AX, AY, 0, AX, AY, RHS);
     g.addColorStop(0, "rgba(255,220,160,.05)");
@@ -2986,6 +3183,7 @@ details[open] summary::after{content:" －"}
       ctx.fillStyle = "rgba(242,226,190,.7)";
       ctx.fillText("觀測者", AX, AY + 12);
     }
+    ctx.restore();
   }
   var rgba = (c, a) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
   var mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
@@ -3169,10 +3367,10 @@ details[open] summary::after{content:" －"}
           const sp = 2 + 6 * Math.sqrt(V.eps), ang = V.i * 2.39996, dx = Math.cos(ang) * sp * T_R, dy = Math.sin(ang) * sp * T_R;
           const uN = texPh("n" + V.i, S.HUB * Math.sqrt(V.eps) / Math.LN2, V.i, sp) + Math.log2(S.Z), phN = uN - Math.floor(uN);
           ctx.globalCompositeOperation = "lighter";
-          for (let k = 0; k < 2; k++) {
+          for (const A of anchors) for (let k = 0; k < 2; k++) {
             const x = phN + k, w = Math.pow(Math.sin(Math.PI * x / 2), 2), scl = 1.25 * Math.pow(2, x - 1);
-            pal.neb.setTransform(new DOMMatrix().translateSelf(AX + dx, AY + dy).rotateSelf(V.i * 47).scaleSelf(scl));
-            ctx.globalAlpha = Math.min(1, w * 0.72 * K.neb) * Math.min(1, sr / 40) * tf;
+            pal.neb.setTransform(new DOMMatrix().translateSelf(A.sx + dx, A.sy + dy).rotateSelf(V.i * 47).scaleSelf(scl));
+            ctx.globalAlpha = Math.min(1, w * 0.72 * K.neb) * Math.min(1, sr / 40) * tf * A.w;
             ctx.fillStyle = pal.neb;
             cellPath(v);
             ctx.fill();
@@ -3184,19 +3382,19 @@ details[open] summary::after{content:" －"}
         if (a > 0.02) {
           const uS = texPh("s" + V.i, 1 / 60, V.i) + Math.log2(S.Z), phS = uS - Math.floor(uS);
           ctx.globalCompositeOperation = "lighter";
-          for (let k = 0; k < 2; k++) {
+          for (const A of anchors) for (let k = 0; k < 2; k++) {
             const x = phS + k, w = Math.pow(Math.sin(Math.PI * x / 2), 2), scl = 0.9 * Math.pow(2, x - 1);
-            starPat.setTransform(new DOMMatrix().translateSelf(AX, AY).rotateSelf(V.i * 47).scaleSelf(scl));
-            ctx.globalAlpha = a * Math.min(1, w * 1.4);
+            starPat.setTransform(new DOMMatrix().translateSelf(A.sx, A.sy).rotateSelf(V.i * 47).scaleSelf(scl));
+            ctx.globalAlpha = a * Math.min(1, w * 1.4) * A.w;
             ctx.fillStyle = starPat;
             cellPath(v);
             ctx.fill();
           }
           if (cg && cg.xt * sr > 4) {
-            for (let k = 0; k < 2; k++) {
+            for (const A of anchors) for (let k = 0; k < 2; k++) {
               const x = phS + k, w = Math.pow(Math.sin(Math.PI * x / 2), 2);
-              starPat.setTransform(new DOMMatrix().translateSelf(AX, AY).rotateSelf(V.i * 47 + 37).scaleSelf(0.45 * Math.pow(2, x - 1)));
-              ctx.globalAlpha = Math.min(1, a * (0.5 + cg.heat) * Math.min(1, w * 1.4));
+              starPat.setTransform(new DOMMatrix().translateSelf(A.sx, A.sy).rotateSelf(V.i * 47 + 37).scaleSelf(0.45 * Math.pow(2, x - 1)));
+              ctx.globalAlpha = Math.min(1, a * (0.5 + cg.heat) * Math.min(1, w * 1.4)) * A.w;
               cellPath(v, cg.xt * sr);
               ctx.fill();
             }
@@ -3383,13 +3581,14 @@ details[open] summary::after{content:" －"}
     RHS = S.RH * S.Z;
     TQ = t;
     T_R = t;
+    anchors = anchorList(t);
     const u = S.HUB * t / Math.LN2 + Math.log2(S.Z), ph = u - Math.floor(u);
     PH = ph;
     ctx.globalCompositeOperation = "lighter";
-    if (opt.neb && K.neb > 0) for (let k = 0; k < 3; k++) {
+    if (opt.neb && K.neb > 0) for (const A of anchors) for (let k = 0; k < 3; k++) {
       const x = ph + k, w = Math.pow(Math.sin(Math.PI * x / 3), 2), s = 1.7 * Math.pow(2, x - 1);
-      nebPat.setTransform(new DOMMatrix().translateSelf(AX, AY).rotateSelf(x * 8).scaleSelf(s));
-      ctx.globalAlpha = Math.min(1, w * 0.52 * K.neb);
+      nebPat.setTransform(new DOMMatrix().translateSelf(A.sx, A.sy).rotateSelf(x * 8).scaleSelf(s));
+      ctx.globalAlpha = Math.min(1, w * 0.52 * K.neb) * A.w;
       ctx.fillStyle = nebPat;
       ctx.fillRect(0, 0, S.vw, S.vh);
     }
@@ -3410,9 +3609,17 @@ details[open] summary::after{content:" －"}
       });
       if (warpList.length > QL[S.qLevel].warp) break;
     }
-    if (opt.grid) drawGrid(ph);
-    if (opt.q) drawRipples(t);
-    if (opt.hz) drawHorizon();
+    const keep = [AX, AY];
+    for (const A of anchors) {
+      AX = A.sx;
+      AY = A.sy;
+      AW = A.w;
+      if (opt.grid) drawGrid(ph);
+      if (opt.q) drawRipples(t);
+      if (opt.hz) drawHorizon();
+    }
+    [AX, AY] = keep;
+    AW = 1;
     drawBubbles(F);
     emit("render:world", { ctx, t });
     ctx.globalCompositeOperation = "source-over";
@@ -3771,6 +3978,8 @@ details[open] summary::after{content:" －"}
       oddDimP: uniVal.oddDimP
     }, tune, { actions: opts.actions });
     S.U.window = S.HIST;
+    S.U.on("rebase", onRebase);
+    S.anchorFade = null;
     S.HUB = S.U.p.H;
     S.RH = S.U.p.RH;
     S.R0 = S.U.p.R0;
@@ -3927,6 +4136,80 @@ details[open] summary::after{content:" －"}
           S.texLastT = keep.last;
         }
         return { pass: S.texSpeedSeen <= TEX_VMAX + 0.01, detail: `觀測到的最大移動速度 ${S.texSpeedSeen.toFixed(1)} 像素／秒` };
+      } }, { name: "重新置中淡入的繪製效能", desc: "焦點跟隨重新置中時，背景（能量雲、網格、漣漪、視界、泡內紋理）在新舊兩個錨點各畫一次並交叉淡入：這段期間每格仍應低於 16 毫秒", run() {
+        const keep = S.anchorFade;
+        let ms = 0;
+        try {
+          S.anchorFade = { x: 1.2 * S.RH, y: -0.4 * S.RH, t: S.tView, t0: performance.now() };
+          render(S.tView);
+          const t0 = performance.now();
+          for (let i = 0; i < 10; i++) {
+            S.anchorFade.t0 = performance.now() - 300;
+            render(S.tView);
+          }
+          ms = (performance.now() - t0) / 10;
+        } finally {
+          S.anchorFade = keep;
+        }
+        return { pass: ms < 16, detail: `淡入期間平均每格 ${ms.toFixed(1)} 毫秒（畫質：${QL[S.qLevel].name}）` };
+      } }, { name: "重新置中時畫面連續", desc: "玩家前進觸發焦點跟隨（原點換到新的共動點）的那一格，畫面變化不應明顯大於一般的一格（背景錨點交叉淡入）", run() {
+        const keep = { U: S.U, PAL: S.PAL, HUB: S.HUB, RH: S.RH, R0: S.R0, RGEN: S.RGEN, Z: S.Z, px: P.x, py: P.y, fade: S.anchorFade, tv: S.tView };
+        const at = [], other = [];
+        try {
+          const T = createUniverse({ seed: 4242, H: 0.25, RH: 140, R0: 3, RGEN: 3e3, typical: false, vacN: 12, crunchP: 0.25, oddDimP: 0.15 }, { gamma: 25e-7, innerMul: 1, wallK: 1 });
+          T.presim(20);
+          T.on("rebase", onRebase);
+          S.U = T;
+          S.PAL = buildPalettes(T.VAC);
+          S.HUB = T.p.H;
+          S.RH = T.p.RH;
+          S.R0 = T.p.R0;
+          S.RGEN = T.p.RGEN;
+          S.Z = defaultZoom();
+          S.anchorFade = null;
+          T.act({ type: "spawn", x: 0, y: 0, vac: T.VAC.filter((v) => v.eps < 1).sort((a, b) => a.eps - b.eps)[0].i, r: 25 });
+          T.advance(2 / 30);
+          const Pl = T.player;
+          if (!Pl) throw new Error("玩家誕生失敗");
+          T.act({ type: "steer", dx: 0, dy: -1, rT: 25 });
+          const g = $("sky").getContext("2d");
+          let prev = null, rec = T.recenters;
+          for (let i = 0; i < 150; i++) {
+            T.advance(1 / 30);
+            S.tView = T.tLive;
+            const c = T.circleAt(Pl, S.tView);
+            P.x = c.cx;
+            P.y = c.cy;
+            render(S.tView);
+            const W = $("sky").width, H = $("sky").height, d = g.getImageData(0, 0, W, H).data;
+            if (prev) {
+              let sum2 = 0, n = 0;
+              for (let k = 0; k < d.length; k += 4 * 53) {
+                sum2 += Math.abs(d[k] - prev[k]) + Math.abs(d[k + 1] - prev[k + 1]) + Math.abs(d[k + 2] - prev[k + 2]);
+                n++;
+              }
+              (T.recenters !== rec ? at : other).push(sum2 / n);
+            }
+            rec = T.recenters;
+            prev = d;
+          }
+        } catch (e) {
+          return { pass: false, detail: "發生錯誤：" + e.message };
+        } finally {
+          S.U = keep.U;
+          S.PAL = keep.PAL;
+          S.HUB = keep.HUB;
+          S.RH = keep.RH;
+          S.R0 = keep.R0;
+          S.RGEN = keep.RGEN;
+          S.Z = keep.Z;
+          P.x = keep.px;
+          P.y = keep.py;
+          S.anchorFade = keep.fade;
+          S.tView = keep.tv;
+        }
+        const med = other.slice().sort((a, b) => a - b)[other.length >> 1] || 1, worst = Math.max(0, ...at);
+        return { pass: at.length > 0 && worst < 2.5 * med, detail: `重新置中 ${at.length} 次，那一格的畫面變化最大 ${worst.toFixed(1)}（一般一格的中位數 ${med.toFixed(1)}）` };
       } }, { name: "繪製效能", desc: "目前畫面的單格繪製時間應低於 16 毫秒（每秒 60 格的預算）", run() {
         const t0 = performance.now();
         for (let i = 0; i < 10; i++) render(S.tView);

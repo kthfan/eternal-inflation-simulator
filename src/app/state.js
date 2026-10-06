@@ -27,6 +27,7 @@ export const S = {
   Z: 1,
   minZ: .3,
   zoomAnim: null,
+  anchorFade: null,   // 重新置中時背景錨點的淡入淡出 { x, y（舊原點在新座標中的位置，於時刻 t）, t, t0（開始的實際時間） }
   vis: [],
   maxPathCoord: 0,
   texLastT: null,

@@ -29,6 +29,20 @@ export let walls = [];
 
 export let AX = 0, AY = 0, RHS = 0, TQ = 0, WX = 0, WY = 0, T_R = 0, PH = 0;
 
+/* 背景的錨點：能量雲、網格、量子漣漪、哈伯視界、泡內紋理都以原點（觀測者／焦點）為中心縮放流動。
+   焦點跟隨重新置中時（核心的 'rebase'），原點換到新的共動點：舊錨點在 0.6 秒內淡出、新錨點淡入，畫面不會跳動。
+   AW 為目前繪製中的錨點權重。 */
+export let AW = 1, anchors = [];
+export function anchorList(t){
+  const [ax, ay] = toS(0, 0), out = [{ sx: ax, sy: ay, w: 1 }], F = S.anchorFade;
+  if(!F) return out;
+  const f = (performance.now() - F.t0)/600;
+  if(f >= 1 || f < 0){ S.anchorFade = null; return out; }
+  const e = Math.exp(S.HUB*(t - F.t)), [ox, oy] = toS(F.x*e, F.y*e), s = f*f*(3 - 2*f);
+  out[0].w = s; out.push({ sx: ox, sy: oy, w: 1 - s });
+  return out;
+}
+
 export const warpList = [];
 
 export function screenCircle(b, t){
@@ -227,7 +241,7 @@ export function drawGrid(ph){
     const a0 = axis ? AY : AX, len = axis ? S.vw : S.vh, span = axis ? S.vh : S.vw;
     const n0 = Math.floor((-40-a0)/sig), n1 = Math.ceil((span+40-a0)/sig);
     for(let n=n0; n<=n1; n++){
-      const w = Math.min(v2(n),5) + ph, al = Math.min(.3, .055*w);
+      const w = Math.min(v2(n),5) + ph, al = Math.min(.3, .055*w)*AW;
       if(al < .005) continue;
       const p = a0 + n*sig;
       ctx.strokeStyle = `rgba(196,176,255,${al})`;
@@ -254,10 +268,10 @@ export function drawRipples(t){
     const ang = hash(k,i,12)*TAU, rr = (.12 + .83*Math.sqrt(hash(k,i,13)))*S.RH;
     const E = Math.exp(S.HUB*age), px = Math.cos(ang)*rr*E, py = Math.sin(ang)*rr*E;
     const rad = (3 + hash(k,i,14)*9)*E*S.Z;
-    const [sx,sy] = toS(px,py);
+    const sx = AX + px*S.Z, sy = AY + py*S.Z;      // 相對目前的錨點
     if(sx < -rad || sy < -rad || sx > S.vw+rad || sy > S.vh+rad) continue;
     const out = rr*E > S.RH;
-    let a = Math.pow(1-age/L, 1.6)*Math.min(1, age*4)*.55;
+    let a = Math.pow(1-age/L, 1.6)*Math.min(1, age*4)*.55*AW;
     if(!out && !reduceMotion) a *= .6 + .4*Math.sin(age*11 + k);
     const col = out ? '255,212,140' : '255,128,222';
     ctx.strokeStyle = `rgba(${col},${a})`;
@@ -267,6 +281,7 @@ export function drawRipples(t){
 }
 
 export function drawHorizon(){
+  ctx.save(); ctx.globalAlpha = AW;
   ctx.globalCompositeOperation = 'source-over';
   const g = ctx.createRadialGradient(AX,AY,0,AX,AY,RHS);
   g.addColorStop(0,'rgba(255,220,160,.05)'); g.addColorStop(.85,'rgba(255,220,160,.02)'); g.addColorStop(1,'rgba(255,220,160,0)');
@@ -284,6 +299,7 @@ export function drawHorizon(){
   const gg = ctx.createRadialGradient(AX,AY,0,AX,AY,10); gg.addColorStop(0,'rgba(255,240,200,.9)'); gg.addColorStop(1,'rgba(255,240,200,0)');
   ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(AX,AY,10,0,TAU); ctx.fill();
   if(RHS > 70){ ctx.globalCompositeOperation = 'source-over'; ctx.textBaseline = 'top'; ctx.font = '12px "Noto Sans TC", sans-serif'; ctx.fillStyle = 'rgba(242,226,190,.7)'; ctx.fillText('觀測者', AX, AY + 12); }
+  ctx.restore();
 }
 
 export const rgba = (c,a) => `rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`;
@@ -461,10 +477,10 @@ export function drawBubbles(F){
         // 口袋宇宙內部以自己的膨脹率 H√ε 暴脹（比外面的假真空慢），所以雲的流動也較慢
         const uN = texPh('n' + V.i, S.HUB*Math.sqrt(V.eps)/Math.LN2, V.i, sp) + Math.log2(S.Z), phN = uN - Math.floor(uN);
         ctx.globalCompositeOperation = 'lighter';
-        for(let k=0;k<2;k++){
+        for(const A of anchors) for(let k=0;k<2;k++){
           const x = phN + k, w = Math.pow(Math.sin(Math.PI*x/2), 2), scl = 1.25*Math.pow(2, x - 1);
-          pal.neb.setTransform(new DOMMatrix().translateSelf(AX + dx, AY + dy).rotateSelf(V.i*47).scaleSelf(scl));
-          ctx.globalAlpha = Math.min(1, w*.72*K.neb)*Math.min(1, sr/40)*tf; ctx.fillStyle = pal.neb; cellPath(v); ctx.fill();
+          pal.neb.setTransform(new DOMMatrix().translateSelf(A.sx + dx, A.sy + dy).rotateSelf(V.i*47).scaleSelf(scl));
+          ctx.globalAlpha = Math.min(1, w*.72*K.neb)*Math.min(1, sr/40)*tf*A.w; ctx.fillStyle = pal.neb; cellPath(v); ctx.fill();
         }
         ctx.globalAlpha = 1;
       }
@@ -476,17 +492,17 @@ export function drawBubbles(F){
            只保留非常緩慢的擴張（約 60 秒才放大一倍），所有同種真空共用、與泡泡大小無關、不會跳動 */
         const uS = texPh('s' + V.i, 1/60, V.i) + Math.log2(S.Z), phS = uS - Math.floor(uS);
         ctx.globalCompositeOperation = 'lighter';
-        for(let k=0;k<2;k++){
+        for(const A of anchors) for(let k=0;k<2;k++){
           const x = phS + k, w = Math.pow(Math.sin(Math.PI*x/2), 2), scl = .9*Math.pow(2, x - 1);
-          starPat.setTransform(new DOMMatrix().translateSelf(AX, AY).rotateSelf(V.i*47).scaleSelf(scl));
-          ctx.globalAlpha = a*Math.min(1, w*1.4); ctx.fillStyle = starPat; cellPath(v); ctx.fill();
+          starPat.setTransform(new DOMMatrix().translateSelf(A.sx, A.sy).rotateSelf(V.i*47).scaleSelf(scl));
+          ctx.globalAlpha = a*Math.min(1, w*1.4)*A.w; ctx.fillStyle = starPat; cellPath(v); ctx.fill();
         }
         if(cg && cg.xt*sr > 4){
           // 收縮區：星系彼此靠攏（更密）、光被藍移變亮
-          for(let k=0;k<2;k++){
+          for(const A of anchors) for(let k=0;k<2;k++){
             const x = phS + k, w = Math.pow(Math.sin(Math.PI*x/2), 2);
-            starPat.setTransform(new DOMMatrix().translateSelf(AX, AY).rotateSelf(V.i*47 + 37).scaleSelf(.45*Math.pow(2, x - 1)));
-            ctx.globalAlpha = Math.min(1, a*(.5 + cg.heat)*Math.min(1, w*1.4)); cellPath(v, cg.xt*sr); ctx.fill();
+            starPat.setTransform(new DOMMatrix().translateSelf(A.sx, A.sy).rotateSelf(V.i*47 + 37).scaleSelf(.45*Math.pow(2, x - 1)));
+            ctx.globalAlpha = Math.min(1, a*(.5 + cg.heat)*Math.min(1, w*1.4))*A.w; cellPath(v, cg.xt*sr); ctx.fill();
           }
         }
         ctx.globalAlpha = 1;
@@ -627,14 +643,15 @@ export function render(t){
   ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
   ctx.fillStyle = '#0c0820'; ctx.fillRect(0,0,S.vw,S.vh);
   [AX,AY] = toS(0,0); RHS = S.RH*S.Z; TQ = t; T_R = t;
+  anchors = anchorList(t);
   const u = S.HUB*t/Math.LN2 + Math.log2(S.Z), ph = u - Math.floor(u); PH = ph;
 
   // 假真空：三層無限縮放的能量雲，隨膨脹向外流動
   ctx.globalCompositeOperation = 'lighter';
-  if(opt.neb && K.neb > 0) for(let k=0;k<3;k++){
+  if(opt.neb && K.neb > 0) for(const A of anchors) for(let k=0;k<3;k++){
     const x = ph + k, w = Math.pow(Math.sin(Math.PI*x/3), 2), s = 1.7*Math.pow(2, x-1);
-    nebPat.setTransform(new DOMMatrix().translateSelf(AX,AY).rotateSelf(x*8).scaleSelf(s));
-    ctx.globalAlpha = Math.min(1, w*.52*K.neb); ctx.fillStyle = nebPat; ctx.fillRect(0,0,S.vw,S.vh);
+    nebPat.setTransform(new DOMMatrix().translateSelf(A.sx,A.sy).rotateSelf(x*8).scaleSelf(s));
+    ctx.globalAlpha = Math.min(1, w*.52*K.neb)*A.w; ctx.fillStyle = nebPat; ctx.fillRect(0,0,S.vw,S.vh);
   }
   ctx.globalAlpha = 1;
 
@@ -648,9 +665,14 @@ export function render(t){
     if(warpList.length > QL[S.qLevel].warp) break;
   }
 
-  if(opt.grid) drawGrid(ph);
-  if(opt.q) drawRipples(t);
-  if(opt.hz) drawHorizon();
+  const keep = [AX, AY];
+  for(const A of anchors){
+    AX = A.sx; AY = A.sy; AW = A.w;
+    if(opt.grid) drawGrid(ph);
+    if(opt.q) drawRipples(t);
+    if(opt.hz) drawHorizon();
+  }
+  [AX, AY] = keep; AW = 1;
   drawBubbles(F);
   emit('render:world', { ctx, t });
 

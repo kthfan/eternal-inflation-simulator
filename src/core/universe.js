@@ -17,8 +17,8 @@ export const BUCKET = 0.5, MAXB = 160000, FALSE_EPS = 1;
 export const UP_EPS = 1.6;
 /* 玩家宇宙（docs/ROADMAP.md D3、D4、D9 M3）：
    E0 初始能量（單位：Δε·RH²）、eta 能量轉換效率、k 半徑控制的回復率（1/秒）、minE 力竭後恢復控制所需的能量、
-   cell 能量帳取樣格點的間距（像素）、latticeMax 格點半徑格數上限（巨大的玩家宇宙改用較粗的格點）、downCost 向下穿隧技能的固定成本（向上穿隧的成本 = Δε × 區域面積） */
-export const PLAYER = { E0: 5, eta: .8, k: 1.5, minE: .5, cell: 3.5, latticeMax: 16, downCost: .15, range: 1 };   // 激發態假真空：比假真空更高，只能由向上穿隧（使用者動作）產生，見 docs/ROADMAP.md D5、D6
+   recenter 玩家離原點超過幾個哈伯半徑就重新置中（焦點跟隨，D9 M4）、cell 能量帳取樣格點的間距（像素）、latticeMax 格點半徑格數上限（巨大的玩家宇宙改用較粗的格點）、downCost 向下穿隧技能的固定成本（向上穿隧的成本 = Δε × 區域面積） */
+export const PLAYER = { E0: 5, eta: .8, k: 1.5, minE: .5, cell: 3.5, latticeMax: 16, downCost: .15, range: 1, recenter: .75 };   // 激發態假真空：比假真空更高，只能由向上穿隧（使用者動作）產生，見 docs/ROADMAP.md D5、D6
 
 export const VNAMES = '子丑寅卯辰巳午未申酉戌亥甲乙丙丁';
 
@@ -69,8 +69,8 @@ export function createUniverse(p, tune, opts = {}){
   const U = { p, tune, VAC, tSim: 0, acc: 0, tStart: 0, trimmed: 0, hist: [], longs: [], live: [],
     buckets: [], bucketBase: 0, vacCount: VAC.map(() => 0), window: 1200, nextId: 1, stepN: 0 };
   Object.defineProperty(U, 'tLive', { get: () => U.tSim + U.acc });
-  /* 事件：'born'（新泡泡誕生）、'retire'（永久泡泡退場）、'act'（動作已套用）。只通知、不影響演化，所以不破壞可重現性 */
-  const listeners = { born: [], retire: [], act: [] };
+  /* 事件：'born'（新泡泡誕生）、'retire'（永久泡泡退場）、'act'（動作已套用）、'rebase'（原點換到新的共動點，{ x, y, t }）。只通知、不影響演化，所以不破壞可重現性 */
+  const listeners = { born: [], retire: [], act: [], rebase: [] };
   U.on = (name, fn) => { listeners[name].push(fn); return () => { const a = listeners[name], i = a.indexOf(fn); if(i >= 0) a.splice(i, 1); }; };
   const notify = (name, b) => { for(const fn of listeners[name]) fn(b); };
 
@@ -172,6 +172,14 @@ export function createUniverse(p, tune, opts = {}){
     return { kind:'pocket', b:o.b, V:VAC[o.b.vac] };
   };
 
+  /* 何時流出模擬範圍（或縮成一點）：泡泡在 t0 時中心離原點 d、半徑 r0、泡壁方向 s，之後中心隨哈伯流、泡壁以光速。
+     · 擴張：近側邊緣 = E·(d − r0 − RH) + RH，超過 RGEN + 60 就流出；d < r0 + RH 的泡泡會吞沒原點，永遠不會流出
+     · 收縮：r0 < RH 時在 (1/H)·ln(RH/(RH−r0)) 後縮成一點；近側邊緣 = E·(d − r0 + RH) − RH */
+  function exitTime(s, d, r0, t0){
+    if(s > 0){ const den = d - r0 - p.RH; return den > 0 ? t0 + Math.log((p.RGEN + 60 - p.RH)/den)/p.H : Infinity; }
+    const tc = r0 < p.RH ? t0 + Math.log(p.RH/(p.RH - r0))/p.H : Infinity, den = d - r0 + p.RH;
+    return Math.min(tc, den > 0 ? t0 + Math.log((p.RGEN + 60 + p.RH)/den)/p.H : Infinity);
+  }
   /* forced（使用者動作）：{ vac, s, r0, seed }，直接指定真空與幾何，不消耗主亂數序列 */
   function addBubble(x, y, d, t, parent, forced){
     let vac = 0, seed;
@@ -185,13 +193,7 @@ export function createUniverse(p, tune, opts = {}){
       seed = rng();
     }
     const V = VAC[vac], s = forced ? forced.s : 1, r0 = forced ? forced.r0 : p.R0;
-    let texit;
-    if(s > 0){ const den = d - r0 - p.RH; texit = den > 0 ? t + Math.log((p.RGEN + 60 - p.RH)/den)/p.H : Infinity; }   // 會吞沒觀測者的泡泡永遠不會流出
-    else {
-      // 收縮泡泡：r0 < RH 時在 (1/H)·ln(RH/(RH−r0)) 後縮成一點；否則永遠縮不掉，只會隨膨脹流出（近側邊緣 = E·(d − r0 + RH) − RH）
-      const tc = r0 < p.RH ? t + Math.log(p.RH/(p.RH - r0))/p.H : Infinity, den = d - r0 + p.RH;
-      texit = Math.min(tc, den > 0 ? t + Math.log((p.RGEN + 60 + p.RH)/den)/p.H : Infinity);
-    }
+    let texit = exitTime(s, d, r0, t);
     if(forced && forced.ctl) texit = Infinity;     // 玩家宇宙：一直保留（之後由焦點跟隨處理，見 D9 M4）
     const b = { id: U.nextId++, tn: t, x, y, d, vac, seed, parent: parent || null, depth: parent ? parent.depth + 1 : 0, s, r0,
       crunch: V.kind === 'ads', crunchT: V.crunchT, heatT: V.hdT, texit };
@@ -218,10 +220,15 @@ export function createUniverse(p, tune, opts = {}){
     if(!n) return;
     const F = U.frame(t), circles = [];
     for(const b of U.live) if(b.texit > t) circles.push(U.circleAt(b, t));
+    const pc = U.player ? U.circleAt(U.player, t) : null;
     for(let i=0;i<n;i++){
       const rr = p.RGEN*Math.sqrt(rng()), ang = rng()*TAU, u = rng();
-      if(!p.typical && rr < p.RH + p.R0 + 3) continue;      // 後選模式：會吞沒觀測者的泡泡不在這條世界線的過去
+      // 後選模式：會吞沒觀測者的泡泡不在這條世界線的過去。有玩家宇宙時原點跟著玩家（焦點跟隨），等於後選「玩家附近仍在暴脹」的世界線：
+      // 否則典型的世界線幾乎必然落入某個口袋宇宙 —— 泡壁以光速擴張，比光速慢的玩家逃不掉，整個區域很快變成不再暴脹的死寂宇宙
+      if(!p.typical && !pc && rr < p.RH + p.R0 + 3) continue;
       const x = Math.cos(ang)*rr, y = Math.sin(ang)*rr;
+      // 有玩家時，後選的對象是玩家：誕生點離玩家泡壁不到一個哈伯半徑的泡泡（玩家靜止時會被它吞沒）不在這條世界線的過去
+      if(!p.typical && pc && Math.hypot(x - pc.cx, y - pc.cy) < pc.r + p.RH + p.R0 + 3) continue;
       const own = Territory.ownerAt(F, circles, x, y);
       let rel = 1;
       if(own && own.b.player) continue;                      // 不在玩家宇宙內成核
@@ -328,8 +335,7 @@ export function createUniverse(p, tune, opts = {}){
     const c = U.circleAt(b, t);
     pushSeg(b, t, c.cx, c.cy, c.r, 0, 0, p.H*p.RH);
     b.ctl.free = true; b.ctl.releasedAt = t;
-    const den = Math.hypot(c.cx, c.cy) - c.r - p.RH;
-    b.texit = den > 0 ? t + Math.log((p.RGEN + 60 - p.RH)/den)/p.H : Infinity;
+    b.texit = exitTime(1, Math.hypot(c.cx, c.cy), c.r, t);
   }
   function pushSeg(b, t, x, y, r, ux, uy, w){
     const C = b.ctl, n = C.t.length;
@@ -416,6 +422,40 @@ export function createUniverse(p, tune, opts = {}){
   }
   U.player = null;
 
+  /* ---------- 焦點跟隨（D9 M4）----------
+     平直切片的德西特時空對共動座標的平移是對稱的：把原點換到「此刻位於 (ax, ay) 的共動點」，
+     所有泡泡的中心一起平移、半徑不變，物理完全相同（circleAt 的結果只差一個平移）。
+     · 泡泡的誕生位置 (x, y) 是誕生時的物理座標，該共動點在 tn 時位於 (ax, ay)·e^{H(tn−t)}，所以減去它；玩家的每一段軌跡同理
+     · 流出時刻改以新原點重算；已流出（被丟棄）的泡泡不會回來 —— 它們離原點超過 RGEN（遠大於 2·RH），永遠碰不到（D2）
+     · 已退場的泡泡維持退場（退場判斷用的範圍多留了 200，足以涵蓋每次最多 recenter·RH 的平移）
+     · 在步進的最後執行；動作一律在步進開頭套用，所以動作的座標永遠屬於套用當下的座標系，重播時完全一致 */
+  U.recenters = 0;
+  U.comoving = { x: 0, y: 0 };    // 目前原點的共動座標（以 t = 0 時的物理長度為單位），累計平移量
+  function rebase(ax, ay, t){
+    const H = p.H, seen = new Set();
+    const move = b => {
+      if(seen.has(b)) return; seen.add(b);
+      const e = Math.exp(H*(b.tn - t)); b.x -= ax*e; b.y -= ay*e; b.d = Math.hypot(b.x, b.y);
+      if(b.ctl){ const C = b.ctl; for(let i=0;i<C.t.length;i++){ const f = Math.exp(H*(C.t[i] - t)); C.x[i] -= ax*f; C.y[i] -= ay*f; } }
+    };
+    for(const b of U.hist) move(b); for(const b of U.longs) move(b); for(const b of U.live) move(b);
+    for(const b of U.live){
+      if(!(b.texit > t) || b.retired || b.player) continue;
+      if(b.ctl){ const c = U.circleAt(b, t); b.texit = exitTime(1, Math.hypot(c.cx, c.cy), c.r, t); }
+      else b.texit = exitTime(b.s, b.d, b.r0, b.tn);
+      if(b.texit <= t) b.texit = t + STEP/2;
+      if(!b.long && !(b.texit - b.tn <= LONG)){ b.long = true; U.longs.push(b); }
+    }
+    const e0 = Math.exp(-H*t); U.comoving.x += ax*e0; U.comoving.y += ay*e0; U.recenters++;
+    for(const fn of listeners.rebase) fn({ x: ax, y: ay, t });
+  }
+  U.rebase = (ax, ay) => rebase(ax, ay, U.tSim);     // 測試用：在目前的步進邊界手動平移
+  function follow(t){
+    const P = U.player; if(!P) return;
+    const c = U.circleAt(P, t);
+    if(Math.hypot(c.cx, c.cy) > PLAYER.recenter*p.RH) rebase(c.cx, c.cy, t);
+  }
+
   function applyActions(step){
     let k = 0;
     while(pendingAct < U.actions.length && U.actions[pendingAct].step <= step){
@@ -461,14 +501,14 @@ export function createUniverse(p, tune, opts = {}){
             else gone = !!R.free;      // o 在 b 的光錐內且不受 b 限制，又已覆蓋整個範圍：b 再也拿不到地盤
           }
         }
-        if(gone){ b.texit = t + STEP/2; notify('retire', b); break; }   // 從下一步起退場（這一步誕生的泡泡仍看得到它）
+        if(gone){ b.texit = t + STEP/2; b.retired = true; notify('retire', b); break; }   // 從下一步起退場（這一步誕生的泡泡仍看得到它）
       }
     }
   }
   U.advance = dt => {
     U.acc += dt;
     let n = 0;
-    while(U.acc >= STEP && n < 20000){ U.acc -= STEP; U.tSim += STEP; if(pendingAct < U.actions.length) applyActions(U.stepN + 1); nucleate(); if(U.player || U.anyCtl) playerStep(U.tSim); if(++U.stepN % 30 === 0) retire(); n++; }
+    while(U.acc >= STEP && n < 20000){ U.acc -= STEP; U.tSim += STEP; if(pendingAct < U.actions.length) applyActions(U.stepN + 1); nucleate(); if(U.player || U.anyCtl){ playerStep(U.tSim); follow(U.tSim); } if(++U.stepN % 30 === 0) retire(); n++; }
     if(U.live.some(b => b.texit <= U.tSim)) U.live = U.live.filter(b => b.texit > U.tSim);
     const k = Math.floor(U.tLive/BUCKET) - U.bucketBase; while(U.buckets.length <= k) U.buckets.push(0);
     U.trim();
