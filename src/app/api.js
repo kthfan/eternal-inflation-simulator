@@ -3,7 +3,7 @@
 import { S } from './state.js';
 import { on, emit, emitUntil } from './hooks.js';
 import { Territory } from '../core/territory.js';
-import { createUniverse, STEP } from '../core/universe.js';
+import { createUniverse, STEP, PLAYER } from '../core/universe.js';
 import { mulberry32, hsl2rgb, TAU } from '../core/math.js';
 import { SelfCheck } from '../core/selfcheck.js';
 import { P, cv, ctx, toS, toP, clampCam, defaultZoom, zoomAbout, animateZoom, MAXZ } from '../render/camera.js';
@@ -26,7 +26,7 @@ export function createApi(){
     get tView(){ return S.tView; },
     tune, K, renderOpt,
     // 核心
-    Territory, createUniverse, STEP, mulberry32, hsl2rgb, TAU, SelfCheck,
+    Territory, createUniverse, STEP, PLAYER, mulberry32, hsl2rgb, TAU, SelfCheck,
     // 攝影機與座標（物理座標 ↔ 螢幕座標）
     camera: {
       P, cv, get Z(){ return S.Z; }, MAXZ,

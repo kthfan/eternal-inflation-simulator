@@ -14,7 +14,11 @@ export const EMAX = 1e13;   // 單一泡泡的膨脹倍數上限（只是最後�
 export const LONG = 90;   // 壽命超過此值（含永遠不會流出者）的泡泡另外保存，回放時一律納入
 
 export const BUCKET = 0.5, MAXB = 160000, FALSE_EPS = 1;
-export const UP_EPS = 1.6;   // 激發態假真空：比假真空更高，只能由向上穿隧（使用者動作）產生，見 docs/ROADMAP.md D5、D6
+export const UP_EPS = 1.6;
+/* 玩家宇宙（docs/ROADMAP.md D3、D4、D9 M3）：
+   E0 初始能量（單位：Δε·RH²）、eta 能量轉換效率、k 半徑控制的回復率（1/秒）、minE 力竭後恢復控制所需的能量、
+   cell 能量帳取樣格點的間距（像素）、latticeMax 格點半徑格數上限（巨大的玩家宇宙改用較粗的格點）、downCost 向下穿隧技能的固定成本（向上穿隧的成本 = Δε × 區域面積） */
+export const PLAYER = { E0: 5, eta: .8, k: 1.5, minE: .5, cell: 3.5, latticeMax: 16, downCost: .15, range: 1 };   // 激發態假真空：比假真空更高，只能由向上穿隧（使用者動作）產生，見 docs/ROADMAP.md D5、D6
 
 export const VNAMES = '子丑寅卯辰巳午未申酉戌亥甲乙丙丁';
 
@@ -73,7 +77,19 @@ export function createUniverse(p, tune, opts = {}){
   const E = (b, t) => Math.min(EMAX, Math.exp(p.H*(t - b.tn)));
   U.E = E;
   /* 泡壁以光速擴張：r = R0·E + RH·(E−1)；收縮泡泡（s = −1，內部真空能比周圍高）：r = r0·E − RH·(E−1)，縮到 0 為止 */
-  U.circleAt = (b, t) => { const e = E(b, t); return { b, cx: b.x*e, cy: b.y*e, r: b.s < 0 ? Math.max(0, b.r0*e - p.RH*(e - 1)) : p.R0*e + p.RH*(e - 1) }; };
+  U.circleAt = (b, t) => {
+    if(b.ctl) return ctlCircle(b, t);
+    const e = E(b, t); return { b, cx: b.x*e, cy: b.y*e, r: b.s < 0 ? Math.max(0, b.r0*e - p.RH*(e - 1)) : p.R0*e + p.RH*(e - 1) };
+  };
+  /* 可控制的泡泡（玩家）：每一步的控制 (ux, uy, w) 固定，中心與半徑有解析解（逐段解析）。
+     c(t) = (c₀ + u/H)·e^{HΔt} − u/H，r(t) = (r₀ + w/H)·e^{HΔt} − w/H；最後一段之後沿用最後的控制外推 */
+  function ctlCircle(b, t){
+    const C = b.ctl, T = C.t;
+    let lo = 0, hi = T.length - 1;
+    while(lo < hi){ const m = (lo + hi + 1) >> 1; if(T[m] <= t) lo = m; else hi = m - 1; }
+    const i = lo, H = p.H, e = Math.min(EMAX, Math.exp(H*(t - T[i]))), ux = C.ux[i]/H, uy = C.uy[i]/H, w = C.w[i]/H;
+    return { b, cx: (C.x[i] + ux)*e - ux, cy: (C.y[i] + uy)*e - uy, r: Math.max(0, (C.r[i] + w)*e - w) };
+  }
   U.eps = b => VAC[b.vac].eps;
 
   /* 兩泡泡第一次相撞的時刻（二分法，快取；只取決於兩個泡泡本身） */
@@ -101,11 +117,31 @@ export function createUniverse(p, tune, opts = {}){
   /* 疇壁位移（物理長度，W 佔上風為正）：v = 0.85c·Δε/(|Δε|+0.25)，再隨背景膨脹拉長 */
   U.shift = (W, L, t) => {
     if(W.vac === L.vac) return 0;
-    const D = U.eps(L) - U.eps(W), tc = U.collideTime(W, L);
+    const D = U.eps(L) - U.eps(W), tc = U.contactStart(W, L, t);
     if(t <= tc) return 0;
     return .85*D/(Math.abs(D) + .25)*tune.wallK*p.RH*(Math.min(EMAX, Math.exp(p.H*(t - tc))) - 1);
   };
-  U.frame = (t, scale = 1, circ) => ({ t, eps: U.eps, shift: (W, L) => U.shift(W, L, t)*scale, circ: circ || (b => U.circleAt(b, t)) });
+  /* 疇壁從何時開始推進：一般泡泡是第一次相撞的時刻；可控制的泡泡（玩家）可能分開又再接觸，取 t 所在那一段接觸的開始時刻 */
+  U.contactStart = (a, b, t) => {
+    const P = a.ctl ? a : b.ctl ? b : null;
+    if(!P) return U.collideTime(a, b);
+    const arr = P.ctl.contacts.get((P === a ? b : a).id);
+    if(!arr) return Infinity;
+    for(let i = arr.length - 1; i >= 0; i--) if(arr[i][0] <= t + 1e-9) return t <= arr[i][1] + 1e-9 ? arr[i][0] : Infinity;
+    return Infinity;
+  };
+  /* 推進前緣的半徑（玩家輸的時候）：從接觸那一刻贏家中心到輸家圓的距離起算，以疇壁速度 v 相對當地空間向外推進：
+     ρ(t) = (ρ₀ + v/H)·e^{HΔt} − v/H。還沒有接觸紀錄（兩步之間剛碰到）時，前緣就在輸家圓上，輸家尚未失去地盤 */
+  U.ringR = (W, L, t) => {
+    const P = W.ctl ? W : L, arr = P.ctl.contacts.get((P === W ? L : W).id);
+    let iv = null;
+    if(arr) for(let i = arr.length - 1; i >= 0; i--) if(arr[i][0] <= t + 1e-9){ if(t <= arr[i][1] + 1e-9) iv = arr[i]; break; }
+    if(!iv){ const a = U.circleAt(W, t), b = U.circleAt(L, t); return Math.hypot(a.cx - b.cx, a.cy - b.cy) - b.r; }
+    if(iv[2] === undefined){ const a = U.circleAt(W, iv[0]), b = U.circleAt(L, iv[0]); iv[2] = Math.hypot(a.cx - b.cx, a.cy - b.cy) - b.r; }
+    const D = U.eps(L) - U.eps(W), vH = .85*D/(Math.abs(D) + .25)*tune.wallK*p.RH;   // v/H，v = 0.85c·Δε/(|Δε|+0.25)（與 U.shift 相同）
+    return (iv[2] + vH)*Math.min(EMAX, Math.exp(p.H*(t - iv[0]))) - vH;
+  };
+  U.frame = (t, scale = 1, circ) => ({ t, eps: U.eps, shift: (W, L) => U.shift(W, L, t)*scale, ring: (W, L) => U.ringR(W, L, t)*scale, circ: circ || (b => U.circleAt(b, t)) });
 
   U.bornBy = t => { const h = U.hist; let lo = 0, hi = h.length; while(lo < hi){ const m = (lo + hi) >> 1; if(h[m].tn <= t) lo = m + 1; else hi = m; } return lo; };
   U.born = t => U.trimmed + U.bornBy(t);
@@ -156,9 +192,18 @@ export function createUniverse(p, tune, opts = {}){
       const tc = r0 < p.RH ? t + Math.log(p.RH/(p.RH - r0))/p.H : Infinity, den = d - r0 + p.RH;
       texit = Math.min(tc, den > 0 ? t + Math.log((p.RGEN + 60 + p.RH)/den)/p.H : Infinity);
     }
+    if(forced && forced.ctl) texit = Infinity;     // 玩家宇宙：一直保留（之後由焦點跟隨處理，見 D9 M4）
     const b = { id: U.nextId++, tn: t, x, y, d, vac, seed, parent: parent || null, depth: parent ? parent.depth + 1 : 0, s, r0,
       crunch: V.kind === 'ads', crunchT: V.crunchT, heatT: V.hdT, texit };
     if(forced) b.act = true;
+    if(forced && forced.ctl){
+      // 玩家宇宙的內部時間無法再用光錐的雙曲面公式（D7）；輕鬆模式下先不會大擠壓、熱寂
+      b.crunch = false; b.heatT = Infinity;
+      b.ctl = { t: [], x: [], y: [], r: [], ux: [], uy: [], w: [], contacts: new Map(),
+        in: { dx: 0, dy: 0, rT: r0 }, eta: forced.eta, mode: forced.mode, E: PLAYER.E0, exhausted: false, gain: 0, loss: 0 };
+      pushSeg(b, t, x, y, r0, 0, 0, 0);
+      U.anyCtl = true;
+    }
     b.long = !(b.texit - t <= LONG);
     U.hist.push(b); U.live.push(b); if(b.long) U.longs.push(b);
     U.vacCount[vac]++;
@@ -179,6 +224,7 @@ export function createUniverse(p, tune, opts = {}){
       const x = Math.cos(ang)*rr, y = Math.sin(ang)*rr;
       const own = Territory.ownerAt(F, circles, x, y);
       let rel = 1;
+      if(own && own.b.player) continue;                      // 不在玩家宇宙內成核
       if(own){
         if(Territory.arrival(own, x, y) > -p.R0*2) continue;   // 太貼近泡壁的地方不成核
         rel = VAC[own.b.vac].grel*tune.innerMul;
@@ -205,7 +251,7 @@ export function createUniverse(p, tune, opts = {}){
   };
   U.act = a => queueAct({ ...a, step: U.stepN + 1, t: undefined, result: undefined });
   /* 可序列化的動作紀錄（重播、匯出用） */
-  U.actionLog = () => U.actions.map(({ step, type, x, y, vac, r }) => ({ step, type, x, y, vac, r }));
+  U.actionLog = () => U.actions.map(({ t, result, seq, ...rest }) => rest);
   for(const a of (opts.actions || []).slice().sort((p1, p2) => p1.step - p2.step)) queueAct({ ...a, t: undefined, result: undefined });
 
   function actNucleate(a, t, k){
@@ -214,7 +260,15 @@ export function createUniverse(p, tune, opts = {}){
     const F = U.frame(t), circles = [];
     for(const b of U.live) if(b.texit > t) circles.push(U.circleAt(b, t));
     const own = Territory.ownerAt(F, circles, a.x, a.y), pe = own ? VAC[own.b.vac].eps : FALSE_EPS;
+    if(own && own.b.player) return { ok: false, reason: '不能放在玩家宇宙裡' };
     if(own && U.crunchedAt(own.b, a.x, a.y, t)) return { ok: false, reason: '這裡已走到大擠壓，時空已經結束' };
+    const P = a.by === 'player' ? U.player : null;
+    if(a.by === 'player'){
+      if(!P) return { ok: false, reason: '沒有玩家宇宙' };
+      if(P.ctl.exhausted) return { ok: false, reason: '力竭中，無法施放' };
+      const pc = U.circleAt(P, t);
+      if(Math.hypot(a.x - pc.cx, a.y - pc.cy) - pc.r > PLAYER.range*p.RH) return { ok: false, reason: '超出影響範圍（泡壁外一個哈伯半徑）' };
+    }
     if(V.eps === pe) return { ok: false, reason: '這裡已經是這種真空' };
     const up = V.eps > pe;
     let r0 = p.R0;
@@ -230,15 +284,147 @@ export function createUniverse(p, tune, opts = {}){
         if((o ? o.b : null) !== (own ? own.b : null)) return { ok: false, reason: '範圍跨越了其他宇宙的地盤' };
       }
     }
+    // 玩家技能的成本：向上穿隧 = 把該區域推高所需的能量 Δε × 面積；向下穿隧 = 固定的活化成本
+    const cost = P ? (up ? (V.eps - pe)*Math.PI*r0*r0/(p.RH*p.RH) : PLAYER.downCost) : 0;
+    if(P && P.ctl.E < cost) return { ok: false, reason: `能量不足（需要 ${cost.toFixed(2)}）` };
     const b = addBubble(a.x, a.y, Math.hypot(a.x, a.y), t, own ? own.b : null, { vac: a.vac, s: up ? -1 : 1, r0, seed: hash(p.seed, a.step, k) });
-    return { ok: true, id: b.id, up };
+    if(P){ P.ctl.E -= cost; P.ctl.loss += cost; }
+    return { ok: true, id: b.id, up, cost };
   }
+  /* · spawn { x, y, vac, r, eta, mode }：在假真空中誕生玩家宇宙。mode：'relaxed'（輕鬆，預設：能量可以透支，只限制技能）
+       或 'survival'（生存：能量耗盡就力竭，泡壁回到以光速自由膨脹）（同時只有一個；舊的會被放手，之後像一般泡泡一樣以光速擴張）
+     · steer { dx, dy, rT }：玩家的輸入 —— 前進方向（長度 ≤ 1）與目標半徑；核心依此決定每一步的 (u, w)，見 playerStep */
+  function actSpawn(a, t, k){
+    const V = VAC[a.vac];
+    if(!V || !(V.eps < FALSE_EPS)) return { ok: false, reason: '玩家宇宙必須是比假真空低的真空' };
+    if(!isFinite(a.x) || !isFinite(a.y)) return { ok: false, reason: '參數錯誤' };
+    const r0 = a.r === undefined ? .3*p.RH : +a.r;
+    if(!(r0 >= 2*p.R0 && r0 <= .8*p.RH)) return { ok: false, reason: '玩家宇宙的大小不合理' };
+    const F = U.frame(t), circles = [];
+    for(const b of U.live) if(b.texit > t) circles.push(U.circleAt(b, t));
+    if(Territory.ownerAt(F, circles, a.x, a.y)) return { ok: false, reason: '玩家宇宙要誕生在假真空中' };
+    for(let j=0;j<24;j++){
+      const th = TAU*j/24;
+      if(Territory.ownerAt(F, circles, a.x + Math.cos(th)*(r0 + 2), a.y + Math.sin(th)*(r0 + 2))) return { ok: false, reason: '範圍內已有其他宇宙' };
+    }
+    if(U.player) release(U.player, t);
+    const eta = a.eta === undefined ? PLAYER.eta : Math.max(.05, Math.min(1, +a.eta));
+    const mode = a.mode === 'survival' ? 'survival' : 'relaxed';
+    const b = addBubble(a.x, a.y, Math.hypot(a.x, a.y), t, null, { vac: a.vac, s: 1, r0, seed: hash(p.seed, a.step, k), ctl: true, eta, mode });
+    b.player = true; U.player = b;
+    decide(b, t);
+    return { ok: true, id: b.id };
+  }
+  function actSteer(a){
+    const P = U.player; if(!P) return { ok: false, reason: '沒有玩家宇宙' };
+    let dx = +a.dx || 0, dy = +a.dy || 0; const m = Math.hypot(dx, dy); if(m > 1){ dx /= m; dy /= m; }
+    const rT = a.rT === undefined ? P.ctl.in.rT : Math.max(2*p.R0, Math.min(.95*p.RH, +a.rT));
+    P.ctl.in = { dx, dy, rT };
+    return { ok: true };
+  }
+  /* 放手：玩家宇宙變回一般的泡泡（泡壁以光速擴張、不再移動），之後依一般規則流出模擬範圍 */
+  function release(b, t){
+    b.player = false; if(U.player === b) U.player = null;
+    const c = U.circleAt(b, t);
+    pushSeg(b, t, c.cx, c.cy, c.r, 0, 0, p.H*p.RH);
+    b.ctl.free = true; b.ctl.releasedAt = t;
+    const den = Math.hypot(c.cx, c.cy) - c.r - p.RH;
+    b.texit = den > 0 ? t + Math.log((p.RGEN + 60 - p.RH)/den)/p.H : Infinity;
+  }
+  function pushSeg(b, t, x, y, r, ux, uy, w){
+    const C = b.ctl, n = C.t.length;
+    if(n && C.t[n-1] === t){ C.x[n-1] = x; C.y[n-1] = y; C.r[n-1] = r; C.ux[n-1] = ux; C.uy[n-1] = uy; C.w[n-1] = w; return; }
+    C.t.push(t); C.x.push(x); C.y.push(y); C.r.push(r); C.ux.push(ux); C.uy.push(uy); C.w.push(w);
+  }
+  /* 決定下一步 [t, t+STEP] 的控制：以 w 把半徑拉向目標（維持大小需 w = −H·r），剩下的光速額度給前進：|u| ≤ c − |w|。
+     力竭時泡壁回到自然狀態：以光速擴張（w = c、u = 0），吞入假真空會補回能量。半徑 ≥ RH 時連維持大小都做不到（D4） */
+  function decide(b, t){
+    const C = b.ctl, c = p.H*p.RH, cur = U.circleAt(b, t);
+    let w, ux = 0, uy = 0;
+    // 力竭期間目標半徑跟著實際半徑：恢復控制時維持當下的大小，而不是立刻花大量能量縮回去（縮小由玩家自己決定）。
+    // 大於哈伯半徑時連大小都維持不住（需要 w < −c）：失控，泡壁回到自然狀態
+    if(C.exhausted || cur.r >= p.RH){ w = c; C.in.rT = Math.max(2*p.R0, Math.min(.95*p.RH, cur.r)); }
+    else {
+      w = Math.max(-c, Math.min(c, -p.H*cur.r + PLAYER.k*(C.in.rT - cur.r)));
+      const um = c - Math.abs(w), m = Math.hypot(C.in.dx, C.in.dy);
+      if(m > 0){ const f = Math.min(1, m)*um/m; ux = C.in.dx*f; uy = C.in.dy*f; }
+    }
+    pushSeg(b, t, cur.cx, cur.cy, cur.r, ux, uy, w);
+  }
+  /* 能量帳（D3）：在 [t−STEP, t] 期間，玩家宇宙與其他宇宙（或假真空）之間轉手的地盤 × 真空能差。
+     以隨哈伯流移動的格點取樣（背景膨脹本身不算），歸屬一律由 Territory.ownerAt 判斷。
+     · 吞入真空能較高的地盤：得到 Δε × 面積 × η
+     · 退回給真空能較高者（收縮、移動時的後方）：付出 Δε × 面積 ÷ η
+     · 被真空能較低者奪走：被奪走 Δε × 面積
+     · 硬擠進真空能較低者：付出 Δε × 面積 ÷ η */
+  function ledger(b, t){
+    const t0 = t - STEP; if(b.tn > t0 + 1e-9) return;
+    const C = b.ctl, c0 = U.circleAt(b, t0), c1 = U.circleAt(b, t), e = Math.exp(p.H*STEP);
+    const Rs = Math.max(c0.r, c1.r) + 6, n = Math.max(4, Math.min(PLAYER.latticeMax, Math.ceil(Rs/PLAYER.cell))), sp = Rs/n;
+    const near = (tt, cx, cy, R) => { const out = []; for(const o of U.live) if(o.tn <= tt && o.texit > tt){ const c = U.circleAt(o, tt); if(Math.hypot(c.cx - cx, c.cy - cy) < c.r + R) out.push(c); } return out; };
+    const own0 = Territory.locator(U.frame(t0), near(t0, c0.cx, c0.cy, Rs + 2)), own1 = Territory.locator(U.frame(t), near(t, c0.cx*e, c0.cy*e, Rs*e + 2));
+    // 格點偏移以黃金比例逐步變化：長時間平均不偏
+    const ox = ((U.stepN*.6180339887) % 1)*sp, oy = ((U.stepN*.7548776662) % 1)*sp, wA = sp*sp*e*e/(p.RH*p.RH);
+    const eP = VAC[b.vac].eps, eOf = o => o ? VAC[o.b.vac].eps : FALSE_EPS;
+    let own = 0;
+    for(let i=-n-1;i<=n;i++) for(let j=-n-1;j<=n;j++){
+      const dx = i*sp + ox, dy = j*sp + oy; if(dx*dx + dy*dy > Rs*Rs) continue;
+      const x = c0.cx + dx, y = c0.cy + dy;
+      const o0 = own0(x, y), o1 = own1(x*e, y*e);
+      const a0 = o0 ? o0.b : null, a1 = o1 ? o1.b : null;
+      if(a1 === b) own++;
+      if(a0 === a1 || (a0 !== b && a1 !== b)) continue;
+      let dE;
+      if(a1 === b){ const d = (eOf(o0) - eP)*wA; dE = d > 0 ? d*C.eta : d/C.eta; }
+      else { const d = (eOf(o1) - eP)*wA; dE = d > 0 ? -d/C.eta : d; }
+      C.E += dE; if(dE > 0) C.gain += dE; else C.loss -= dE;
+    }
+    if(C.mode === 'survival'){
+      if(C.E <= 0) C.exhausted = true;
+      else if(C.E >= PLAYER.minE) C.exhausted = false;
+    }
+    // 地盤全部被奪走（連續 0.5 秒取樣不到自己）：玩家宇宙被吞沒，放手
+    C.gone = own ? 0 : (C.gone || 0) + STEP;
+    if(C.gone >= .5){ C.fate = 'eaten'; release(b, t); b.texit = t + STEP/2; }   // 已經沒有地盤：從下一步起移除（不會再「復活」）
+  }
+  /* 接觸紀錄：可控制的泡泡與其他泡泡的接觸區間 [開始, 結束]（疇壁位移從每段接觸的開始算起） */
+  function contacts(b, t){
+    const C = b.ctl, cb = U.circleAt(b, t), t0 = t - STEP;
+    for(const o of U.live){
+      if(o === b || o.tn > t || o.texit <= t) continue;
+      const co = U.circleAt(o, t), ov = Math.hypot(cb.cx - co.cx, cb.cy - co.cy) < cb.r + co.r;
+      let arr = C.contacts.get(o.id); const open = arr && arr[arr.length - 1][1] === Infinity;
+      if(ov === !!open) continue;
+      const f = tt => { const A = U.circleAt(b, tt), B = U.circleAt(o, tt); return Math.hypot(A.cx - B.cx, A.cy - B.cy) - A.r - B.r; };
+      let lo = Math.max(t0, b.tn, o.tn), hi = t;
+      if(ov){
+        if(f(lo) <= 0) hi = lo;
+        else for(let i=0;i<30;i++){ const m = (lo + hi)/2; if(f(m) > 0) lo = m; else hi = m; }
+        if(!arr) C.contacts.set(o.id, arr = []);
+        arr.push([hi, Infinity]);
+      } else {
+        for(let i=0;i<30;i++){ const m = (lo + hi)/2; if(f(m) <= 0) lo = m; else hi = m; }
+        arr[arr.length - 1][1] = lo;
+      }
+    }
+  }
+  /* 每一步：更新所有可控制泡泡的接觸；玩家宇宙結算能量帳並決定下一步的控制 */
+  function playerStep(t){
+    for(const b of U.live) if(b.ctl && b.texit > t) contacts(b, t);
+    const P = U.player;
+    if(P){ ledger(P, t); if(U.player === P) decide(P, t); }
+  }
+  U.player = null;
+
   function applyActions(step){
     let k = 0;
     while(pendingAct < U.actions.length && U.actions[pendingAct].step <= step){
       const a = U.actions[pendingAct++];
       a.t = U.tSim;
-      a.result = a.type === 'nucleate' ? actNucleate(a, U.tSim, k++) : { ok: false, reason: '未知的動作' };
+      a.result = a.type === 'nucleate' ? actNucleate(a, U.tSim, k++)
+        : a.type === 'spawn' ? actSpawn(a, U.tSim, k++)
+        : a.type === 'steer' ? actSteer(a)
+        : { ok: false, reason: '未知的動作' };
       for(const fn of listeners.act) fn(a);
     }
   }
@@ -256,7 +442,7 @@ export function createUniverse(p, tune, opts = {}){
     const ring = []; for(let k=0;k<48;k++) ring.push([Math.cos(TAU*k/48)*Rg, Math.sin(TAU*k/48)*Rg]); ring.push([0, 0]);
     const F = U.frame(t);
     for(const b of live){
-      if(isFinite(b.texit)) continue;
+      if(isFinite(b.texit) || b.player) continue;          // 玩家宇宙不退場
       const cb = C.get(b);
       for(const o of live){
         if(o === b) continue;
@@ -282,7 +468,7 @@ export function createUniverse(p, tune, opts = {}){
   U.advance = dt => {
     U.acc += dt;
     let n = 0;
-    while(U.acc >= STEP && n < 20000){ U.acc -= STEP; U.tSim += STEP; if(pendingAct < U.actions.length) applyActions(U.stepN + 1); nucleate(); if(++U.stepN % 30 === 0) retire(); n++; }
+    while(U.acc >= STEP && n < 20000){ U.acc -= STEP; U.tSim += STEP; if(pendingAct < U.actions.length) applyActions(U.stepN + 1); nucleate(); if(U.player || U.anyCtl) playerStep(U.tSim); if(++U.stepN % 30 === 0) retire(); n++; }
     if(U.live.some(b => b.texit <= U.tSim)) U.live = U.live.filter(b => b.texit > U.tSim);
     const k = Math.floor(U.tLive/BUCKET) - U.bucketBase; while(U.buckets.length <= k) U.buckets.push(0);
     U.trim();
@@ -298,6 +484,11 @@ export function createUniverse(p, tune, opts = {}){
     const idx = U.bornBy(cut - LONG - 1);
     if(idx > 0){ U.hist.splice(0, idx); U.trimmed += idx; }
     if(U.longs.some(b => b.texit <= cut)) U.longs = U.longs.filter(b => b.texit > cut);
+    for(const b of U.longs) if(b.ctl){
+      const C = b.ctl; let k = 0; while(k + 1 < C.t.length && C.t[k + 1] <= cut - 1) k++;
+      if(k) for(const key of ['t', 'x', 'y', 'r', 'ux', 'uy', 'w']) C[key].splice(0, k);
+      for(const [id, arr] of C.contacts){ const kept = arr.filter(iv => iv[1] >= cut - LONG); if(kept.length) C.contacts.set(id, kept); else C.contacts.delete(id); }
+    }
     const kb = Math.floor(cut/BUCKET) - U.bucketBase;
     if(kb > 0){ U.buckets.splice(0, kb); U.bucketBase += kb; }
   };

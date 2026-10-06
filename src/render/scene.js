@@ -553,7 +553,7 @@ export function drawBubbles(F){
     const seen = new Set();
     for(const R of walls){
       const isWall = R.kind === 'wall', A = isWall ? R.W : R.A, Bv = isWall ? R.L : R.B;
-      const age = T_R - S.U.collideTime(A.b, Bv.b), flash = age >= 0 && age < 3 ? (1 - age/3)**2 : 0;
+      const age = T_R - S.U.contactStart(A.b, Bv.b, T_R), flash = age >= 0 && age < 3 ? (1 - age/3)**2 : 0;
       // 融合處的短暫發光（同種真空相撞釋放的能量）
       if(!isWall && flash > .01){
         const sm = Territory.mergeCurve(R, mergeCands(A, Bv), viewBox(), 1.5, true);

@@ -1,7 +1,7 @@
 /* 核心｜自我檢查：用全新的宇宙實例驗證不變式。瀏覽器內的「自我檢查」按鈕與 npm test 執行的是同一組。 */
 import { TAU, mulberry32 } from './math.js';
 import { Territory } from './territory.js';
-import { STEP, createUniverse } from './universe.js';
+import { STEP, createUniverse, PLAYER } from './universe.js';
 
 /* ---------- 自我檢查：用全新的宇宙實例驗證不變式（不影響正在執行的模擬） ---------- */
 export const SelfCheck = (() => {
@@ -57,6 +57,41 @@ export const SelfCheck = (() => {
         if(V) U.act({ type: 'nucleate', x, y, vac: V.i, r: 40 + r()*120 });
       }
       U.advance(STEP);
+    }
+    return U;
+  }
+  /* 在 (x0, y0) 附近找一個假真空的位置誕生玩家宇宙 */
+  function spawnPlayer(U, vac, r, eta, x0 = 0, y0 = 0, mode){
+    for(let k=0;k<400;k++){
+      const a = k*2.399, rr = 20 + k*6, x = x0 + Math.cos(a)*rr, y = y0 + Math.sin(a)*rr;
+      if(U.ownerAt(x, y, U.tSim)) continue;
+      const act = U.act({ type: 'spawn', x, y, vac, r, eta, mode }); U.advance(STEP);
+      if(act.result.ok) return act;
+    }
+    return null;
+  }
+  /* 有玩家宇宙的宇宙：預先演化 20 秒，在觀測者附近誕生玩家，之後每 0.5 秒隨機改變輸入（方向、目標半徑），偶爾施放技能 */
+  const puCache = new Map();   // 只讀取的檢查共用同一個（確定性的）宇宙，節省時間
+  function playerUniverse(seed, secs = 40, extra = {}){
+    const key = JSON.stringify([seed, secs, extra]);
+    if(!puCache.has(key)) puCache.set(key, makePlayerUniverse(seed, secs, extra));
+    return puCache.get(key);
+  }
+  function makePlayerUniverse(seed, secs, extra){
+    const U = createUniverse({ ...baseP, seed }, { ...baseT(), ...extra }), r = mulberry32(seed*13 + 5);
+    U.presim(20);
+    const vacs = U.VAC.filter(v => v.eps < 1);
+    spawnPlayer(U, vacs[(r()*vacs.length)|0].i, 30 + r()*40);
+    for(let i=0;i<secs*2;i++){
+      const a = r()*TAU, m = r() < .2 ? 0 : r();
+      U.act({ type: 'steer', dx: Math.cos(a)*m, dy: Math.sin(a)*m, rT: 15 + r()*90 });
+      if(U.player && r() < .15){
+        const c = U.circleAt(U.player, U.tSim), th = r()*TAU, d = c.r + 20 + r()*100, x = c.cx + Math.cos(th)*d, y = c.cy + Math.sin(th)*d;
+        const own = U.ownerAt(x, y, U.tSim), pe = own ? U.VAC[own.b.vac].eps : 1, up = r() < .5;
+        const list = U.VAC.filter(v => up ? v.eps > pe : v.eps < pe), V = list[(r()*list.length)|0];
+        if(V) U.act({ type: 'nucleate', by: 'player', x, y, vac: V.i, r: 30 + r()*40 });
+      }
+      U.presim(.5);
     }
     return U;
   }
@@ -165,6 +200,127 @@ export const SelfCheck = (() => {
       }
       return { pass: lyN > 0 && rays > 100 && sides > 50 && mis/n < .002 && bad/rays < .01 && !sideBad,
         detail: `輸家後畫的情況 ${lyN} 次（疇壁兩側取樣 ${sides} 點，歸屬錯誤 ${sideBad}）；${n} 個取樣點中 ${mis} 個不一致；${rays} 條射線中 ${bad} 條不吻合（${(bad/Math.max(1,rays)*100).toFixed(2)}%）` };
+    }},
+    { name: '玩家宇宙：泡壁不超光速', desc: '隨機操控玩家宇宙 40 秒：每一步泡壁各點相對當地空間的速度 |u| + |w| 不超過光速，軌跡在各段交界處連續', run(){
+      let over = 0, jump = 0, n = 0, worst = 0;
+      for(const seed of [4242, 99]){
+        const U = playerUniverse(seed), P = U.hist.find(b => b.ctl) || U.longs.find(b => b.ctl), C = P.ctl, c = U.p.H*U.p.RH;
+        for(let i=0;i<C.t.length;i++){
+          n++; const v = Math.hypot(C.ux[i], C.uy[i]) + Math.abs(C.w[i]); worst = Math.max(worst, v/c);
+          if(v > c*(1 + 1e-9)) over++;
+          if(i > 0){
+            const e = Math.exp(U.p.H*(C.t[i] - C.t[i-1])), H = U.p.H;
+            const px = (C.x[i-1] + C.ux[i-1]/H)*e - C.ux[i-1]/H, pr = (C.r[i-1] + C.w[i-1]/H)*e - C.w[i-1]/H;
+            if(Math.abs(px - C.x[i]) > 1e-6*(1 + Math.abs(px)) || Math.abs(pr - C.r[i]) > 1e-6*(1 + pr)) jump++;
+          }
+        }
+      }
+      return { pass: n > 500 && !over && !jump, detail: `${n} 段軌跡：超光速 ${over} 段（最大 ${(worst*100).toFixed(1)}% c）、不連續 ${jump} 處` };
+    }},
+    { name: '玩家宇宙：移動的能量收支', desc: '均勻假真空中（不成核）：維持大小的花費符合 2π·H·Δε·r²；效率 η = 1 時移動本身淨收支為零（與靜止相同），η < 1 時移動較耗能', run(){
+      const run = (eta, move) => {
+        const U = createUniverse({ ...baseP, seed: 5 }, { ...baseT(), gamma: 0 });
+        U.presim(1);
+        const vac = U.VAC.findIndex(v => v.kind === 'ds'), act = spawnPlayer(U, vac, 40, eta), P = U.player, E0 = P.ctl.E;
+        for(let i=0;i<24;i++){ const a = i*.7; U.act({ type: 'steer', dx: move ? Math.cos(a) : 0, dy: move ? Math.sin(a) : 0, rT: 40 }); U.presim(.5); }
+        return { loss: E0 - P.ctl.E, gross: P.ctl.gain + P.ctl.loss, d: 1 - U.VAC[vac].eps, T: U.tSim - act.t, r: U.circleAt(P, U.tSim).r };
+      };
+      const s1 = run(1, false), m1 = run(1, true), m8 = run(.8, true), s8 = run(.8, false);
+      const theory = 2*Math.PI*baseP.H*s1.d*(40/baseP.RH)**2*s1.T;
+      const okHold = Math.abs(s1.loss - theory) < .05*theory, okMove = Math.abs(m1.loss - s1.loss) < .05*s1.loss, okEta = m8.loss > s8.loss*1.05;
+      // 移動額外造成的地盤進出（前方吞入、後方退回）要夠多，「淨收支為零」才有意義：淨差須小於這個量的 5%
+      const flux = m1.gross - s1.gross, okMove2 = flux > .3 && Math.abs(m1.loss - s1.loss) < .05*flux;
+      return { pass: okHold && okMove && okMove2 && okEta,
+        detail: `維持大小 12 秒：花費 ${s1.loss.toFixed(3)}（理論 ${theory.toFixed(3)}）；η=1 移動 ${m1.loss.toFixed(3)}（移動造成的進出 ${(m1.gross - s1.gross).toFixed(2)}）；η=0.8 移動 ${m8.loss.toFixed(3)}、靜止 ${s8.loss.toFixed(3)}` };
+    }},
+    { name: '玩家宇宙：力竭與失控', desc: '生存模式在均勻假真空中持續維持大小：能量耗盡就力竭（泡壁以光速自由膨脹、不能移動），恢復控制時不會每一步來回切換；大於哈伯半徑必定失控。輕鬆模式能量可以透支、不會力竭', run(){
+      const run = mode => {
+        const U = createUniverse({ ...baseP, seed: 5 }, { ...baseT(), gamma: 0 });
+        U.presim(1);
+        const vac = U.VAC.filter(v => v.eps < 1).sort((a, b) => a.eps - b.eps)[0].i;
+        spawnPlayer(U, vac, 40, .8, 0, 0, mode); const P = U.player, C = P.ctl;
+        U.act({ type: 'steer', dx: 1, dy: 0, rT: 40 });
+        let flips = 0, prev = false, exh = 0, badFree = 0, badLost = 0, minE = Infinity, lastFlip = -Infinity, minGap = Infinity;
+        for(let i=0;i<30*40 && U.player;i++){
+          U.advance(STEP);
+          const n = C.t.length - 1, c = U.circleAt(P, U.tSim), free = C.w[n] === U.p.H*U.p.RH && !C.ux[n] && !C.uy[n];
+          if(C.exhausted !== prev){ flips++; prev = C.exhausted; minGap = Math.min(minGap, U.tSim - lastFlip); lastFlip = U.tSim; }
+          if(C.exhausted){ exh++; if(!free) badFree++; }
+          if(C.r[n] >= U.p.RH && !free) badLost++;
+          minE = Math.min(minE, C.E);
+        }
+        return { flips, exh, badFree, badLost, minE, minGap };
+      };
+      const sv = run('survival'), rx = run('relaxed');
+      const ok = sv.exh > 0 && sv.minGap >= .1 && !sv.badFree && !sv.badLost && !rx.exh && rx.minE < 0 && !rx.badLost;
+      return { pass: ok, detail: `生存：力竭 ${(sv.exh*STEP).toFixed(1)} 秒、狀態切換 ${sv.flips} 次（最短間隔 ${sv.minGap.toFixed(2)} 秒）、力竭時仍受控制 ${sv.badFree} 步、失控時仍受控制 ${sv.badLost} 步；輕鬆：力竭 ${rx.exh} 步、最低能量 ${rx.minE.toFixed(2)}` };
+    }},
+    { name: '玩家宇宙：吞食與被奪走', desc: '在玩家旁邊放一個泡泡：真空能比玩家高的被吞食，玩家得到能量；比玩家低的會逐步奪走玩家的地盤與能量（與沒有放泡泡時比較），持續靠近終將被吞沒', run(){
+      const run = (pVac, qVac, secs) => {
+        const U = createUniverse({ ...baseP, seed: 5 }, { ...baseT(), gamma: 0 });
+        U.presim(1); spawnPlayer(U, pVac, 30, .8, 0, 0);
+        const P = U.player, c = U.circleAt(P, U.tSim);
+        if(qVac !== null) U.act({ type: 'nucleate', x: c.cx + c.r + 20, y: c.cy, vac: qVac });
+        U.act({ type: 'steer', dx: .6, dy: 0, rT: 30 });
+        U.presim(secs);
+        return P;
+      };
+      const V = createUniverse(baseP, baseT()).VAC.filter(v => v.eps < 1).sort((a, b) => a.eps - b.eps);
+      const lo = V[0].i, hi = V[V.length - 1].i;
+      const eatBase = run(lo, null, 3).ctl.E, eat = run(lo, hi, 3).ctl.E, hurtBase = run(hi, null, 2).ctl.E, hurt = run(hi, lo, 2).ctl.E;
+      const end = run(hi, lo, 12), eaten = end.ctl.fate === 'eaten';
+      return { pass: eat > eatBase + .02 && hurt < hurtBase - .02 && eaten,
+        detail: `低能量玩家吞食高能量泡泡：能量 ${eat.toFixed(2)}（沒有泡泡時 ${eatBase.toFixed(2)}）；高能量玩家碰上低能量泡泡：${hurt.toFixed(2)}（沒有泡泡時 ${hurtBase.toFixed(2)}），持續靠近${eaten ? '最終被吞沒' : '沒有被吞沒'}` };
+    }},
+    { name: '玩家宇宙：被吞食是連續的', desc: '玩家的泡壁比光速慢，較低真空的泡泡光錐很快就會整個包住玩家；玩家仍只能被疇壁逐步吃掉（每一步失去的地盤不超過 8%），不能瞬間消失', run(){
+      const U = createUniverse({ ...baseP, seed: 5 }, { ...baseT(), gamma: 0 }); U.presim(1);
+      const V = U.VAC.filter(v => v.eps < 1).sort((a, b) => a.eps - b.eps);
+      spawnPlayer(U, V[V.length - 1].i, 40, .8);
+      const P = U.player, c = U.circleAt(P, U.tSim);
+      U.act({ type: 'nucleate', x: c.cx + c.r + 15, y: c.cy, vac: V[0].i });
+      const frac = () => {
+        const t = U.tSim, c = U.circleAt(P, t); let n = 0, k = 0;
+        for(let i=-12;i<=12;i++) for(let j=-12;j<=12;j++){
+          const x = c.cx + i*c.r/12, y = c.cy + j*c.r/12; if((x - c.cx)**2 + (y - c.cy)**2 > c.r*c.r) continue;
+          k++; const o = U.ownerAt(x, y, t); if(o && o.b === P) n++;
+        }
+        return n/k;
+      };
+      let prev = frac(), maxDrop = 0, contained = false;
+      for(let i=0;i<30*10 && U.player;i++){
+        U.advance(STEP); const f = frac(); maxDrop = Math.max(maxDrop, prev - f); prev = f;
+        const q = U.hist.find(b => b.act && !b.ctl), cq = q && U.circleAt(q, U.tSim), cp = U.circleAt(P, U.tSim);
+        if(cq && Math.hypot(cq.cx - cp.cx, cq.cy - cp.cy) + cp.r <= cq.r) contained = true;
+      }
+      return { pass: contained && maxDrop < .08 && P.ctl.fate === 'eaten', detail: `光錐${contained ? '已' : '未'}包住玩家；每步最多失去 ${(maxDrop*100).toFixed(1)}% 的地盤；${P.ctl.fate === 'eaten' ? '最終被吞沒' : '沒有被吞沒'}` };
+    }},
+    { name: '玩家宇宙：可重現與不在內部成核', desc: '含玩家誕生、操控與技能的動作紀錄重播後完全相同（泡泡、能量、軌跡）；其他泡泡不會在玩家宇宙內誕生（即使它內部的穿隧率很高）', run(){
+      const A = playerUniverse(4242, 30, { innerMul: 3 }), T = A.tSim;
+      const B = createUniverse(baseP, { ...baseT(), innerMul: 3 }, { actions: A.actionLog() });
+      while(B.tSim < T - 1e-9) B.advance(Math.min(.3711, T - B.tSim + 1e-9));
+      const st = U => { const P = U.hist.find(b => b.ctl); const c = U.circleAt(P, T); return `${P.ctl.E.toFixed(9)}:${c.cx.toFixed(6)}:${c.cy.toFixed(6)}:${c.r.toFixed(6)}:${P.ctl.t.length}`; };
+      const same = A.fingerprint(T) === B.fingerprint(T) && st(A) === st(B);
+      let inside = 0, expect = 0;
+      for(const U of [A, playerUniverse(99, 30, { innerMul: 3, gamma: 6e-6 })]){
+        const P = U.hist.find(b => b.ctl);
+        for(const b of U.hist) if(b.parent && b.parent.ctl && !(b.tn >= b.parent.ctl.releasedAt)) inside++;   // 放手之後就是一般的泡泡
+        // 若沒有禁止，玩家宇宙內部預期會有多少次成核（以它的穿隧率與存活期間的面積估計）
+        for(let t = P.tn; t < U.tSim; t += .5){ const c = U.circleAt(P, t); expect += U.tune.gamma*U.VAC[P.vac].grel*U.tune.innerMul*Math.PI*c.r*c.r*.5; }
+      }
+      const acts = A.actions.filter(a => a.result && a.result.ok).length;
+      return { pass: same && !inside && acts > 30, detail: `${A.actions.length} 個動作（成功 ${acts}）重播${same ? '完全一致' : '不一致'}；玩家宇宙內的成核 ${inside} 次（若不禁止，預期約 ${expect.toFixed(0)} 次）` };
+    }},
+    { name: '玩家宇宙：歸屬一致', desc: '有玩家宇宙在泡泡間移動時：物理與畫面歸屬一致、射線邊界與逐點判斷吻合', run(){
+      let mis = 0, n = 0, bad = 0, rays = 0;
+      for(const seed of [4242, 99]){
+        const U = playerUniverse(seed), r = mulberry32(seed + 9), P = U.hist.find(b => b.ctl);
+        for(let t = P.tn + 1; t <= U.tSim; t += 2){
+          mis += ownerMismatch(U, t, r, 500); n += 500;
+          const { cs } = buildRules(U, t), pc = cs.find(c => c.b === P);
+          const m = rayMismatch(cs, r, c => c === pc || (pc && c.rules.some(R => Territory.otherOf(R, c) === pc)), 24); bad += m.bad; rays += m.n;
+        }
+      }
+      return { pass: rays > 100 && mis/n < .002 && bad/rays < .01, detail: `${n} 個取樣點中 ${mis} 個不一致；玩家與鄰居 ${rays} 條射線中 ${bad} 條不吻合（${(bad/Math.max(1,rays)*100).toFixed(2)}%）` };
     }},
     { name: '穿隧率正確', desc: '實際成核次數必須符合各區域真空的穿隧率（以隨機取樣估計預期值）', run(){
       const U = createUniverse(baseP, baseT()); U.presim(90);

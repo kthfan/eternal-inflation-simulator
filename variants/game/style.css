@@ -1,0 +1,3 @@
+/* 遊戲版：遊戲進行中不能回看，停用時間軸的回看操作（暫停改由空白鍵暫停演化） */
+#scrub{pointer-events:none}
+#play,#back,#fwd{display:none}

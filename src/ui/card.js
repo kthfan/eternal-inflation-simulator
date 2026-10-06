@@ -14,6 +14,10 @@ export function lamStr(V){ return `${V.lsign < 0 ? '−' : '+'}${V.lman.toFixed(
 
 export function fateText(b, v){
   const V = S.U.VAC[b.vac];
+  if(b.ctl){
+    if(b.player) return '這是你：一個有自我意識的口袋宇宙。控制膨脹的方向來移動，吞入真空能比你高的地盤得到能量；越大越慢，超過哈伯半徑就無法控制。';
+    return b.ctl.fate === 'eaten' ? '曾經有自我意識的宇宙，已被真空能更低的鄰居吞沒。' : '曾經有自我意識的宇宙。放手之後，它的泡壁回到以光速擴張。';
+  }
   if(b.s < 0){
     const tc = Math.log(S.RH/(S.RH - b.r0))/S.HUB;
     return `向上穿隧產生的區域：它的真空能比周圍高，泡壁被周圍往內推而收縮，放出的能量歸吃掉它的一方。` +
@@ -53,8 +57,8 @@ export function updateCard(){
   if(S.tView < b.tn) state = `<dt>狀態</dt><dd>尚未誕生（${(b.tn - S.tView).toFixed(1)} 秒後）</dd>`;
   else if(S.tView >= b.texit) state = `<dt>狀態</dt><dd>已流出觀測範圍</dd>`;
   else {
-    const E = S.U.E(b, S.tView), r = S.U.circleAt(b, S.tView).r;
-    state = `<dt>年齡</dt><dd>${(S.tView-b.tn).toFixed(1)} s</dd><dt>物理半徑</dt><dd>${(r/S.RH).toFixed(2)} R<sub>H</sub></dd><dt>與觀測者距離</dt><dd>${(b.d*E/S.RH).toFixed(2)} R<sub>H</sub></dd>`;
+    const c = S.U.circleAt(b, S.tView);
+    state = `<dt>年齡</dt><dd>${(S.tView-b.tn).toFixed(1)} s</dd><dt>物理半徑</dt><dd>${(c.r/S.RH).toFixed(2)} R<sub>H</sub></dd><dt>與觀測者距離</dt><dd>${(Math.hypot(c.cx, c.cy)/S.RH).toFixed(2)} R<sub>H</sub></dd>`;
   }
   $('cFate').textContent = fateText(b, v);
   const gone = b.tn < S.U.tStart;

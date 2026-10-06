@@ -61,6 +61,23 @@ check(/回看中無法操作/.test(await page.textContent('#ctlMsg')), '控制�
 await page.keyboard.press('l');
 check(!errors.length, '控制版操作過程沒有錯誤' + (errors.length ? '：' + errors[0] : ''));
 
+// 5. 遊戲版雛形：誕生玩家宇宙、移動、施放技能、暫停；外掛自己的自我檢查
+errors.length = 0;
+await page.goto(url('game') + '#seed=4242'); await page.waitForTimeout(1200);
+await page.keyboard.press('n'); await page.waitForTimeout(400);
+await page.keyboard.down('d'); await page.waitForTimeout(1200); await page.keyboard.up('d');
+await page.keyboard.down('e'); await page.waitForTimeout(400); await page.keyboard.up('e');
+await page.mouse.move(760, 430); await page.keyboard.press('2'); await page.waitForTimeout(300);
+await page.keyboard.press(' '); const tA = await page.textContent('#sT'); await page.waitForTimeout(500); const tB = await page.textContent('#sT'); await page.keyboard.press(' ');
+check(tA === tB, '遊戲版：空白鍵暫停演化');
+await page.evaluate(() => { document.getElementById('checkBtn').closest('details').open = true; });
+await page.click('#checkBtn');
+await page.waitForFunction(() => document.querySelector('#checkOut .sum'), null, { timeout: 300000 });
+const gl = await page.$$eval('#checkOut li', ls => ls.map(l => l.className + '|' + l.querySelector('b').textContent));
+const pl = gl.find(l => l.includes('外掛：玩家宇宙'));
+check(!!pl && pl.startsWith('ok'), '遊戲版：外掛自我檢查（誕生與移動）');
+check(!errors.length, '遊戲版操作過程沒有錯誤' + (errors.length ? '：' + errors[0] : ''));
+
 await browser.close();
 console.log(failed ? `\n${failed} 項失敗` : '\n全部通過');
 process.exit(failed ? 1 : 0);

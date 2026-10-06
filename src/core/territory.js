@@ -14,7 +14,11 @@ import { TAU } from './math.js';
              否則 X 與 Y 的交界沿用 Y 與「X 最近一個不在 Y 光錐內的祖先 D」之間的疇壁。
    有親緣關係的泡泡之間沒有規則：子泡泡永遠蓋在母泡泡之上。
    向上穿隧（使用者動作）會產生真空能比母宇宙「高」的子泡泡；繪製順序因此改用「繪製鍵」（見 drawOrder），
-   當輸家因而畫在贏家之後，輸家要明確讓出贏家那一側（R.lYield）。沒有向上穿隧時，行為與原本完全相同。 */
+   當輸家因而畫在贏家之後，輸家要明確讓出贏家那一側（R.lYield）。沒有向上穿隧時，行為與原本完全相同。
+   可控制的泡泡（玩家，b.ctl）的泡壁不以光速擴張，「光錐被包住」不再代表「早已被入侵」，所以與它有關的不同真空之間一律用「推進前緣」：
+   · 玩家贏：它自己控制的泡壁就是交界，圓內全歸它；
+   · 玩家輸：贏家的真空以疇壁速度從贏家中心向外推進（以贏家中心為圓心、半徑 F.ring(W, L) 的圓），玩家只失去圓內的部分。
+   同種真空仍是 merge。 */
 export const Territory = (() => {
   const isAncestor = (a, b) => { for(let p = b.parent; p; p = p.parent) if(p === a) return true; return false; };
   const related = (a, b) => isAncestor(a, b) || isAncestor(b, a);
@@ -48,10 +52,26 @@ export const Territory = (() => {
   /* 繪製順序：繪製鍵高的先畫；相同時較早誕生的先畫 */
   const drawOrder = (F, a, b) => (dkey(F, b.b) - dkey(F, a.b)) || (a.b.tn - b.b.tn);
 
+  /* 推進前緣：以 W 的中心為圓心、半徑 R 的圓；輸家側 = 圓外。沿用 wallGeom 求出與輸家圓的交點（畫疇壁用），再改寫成這個圓 */
+  function ringGeom(W, L, R){
+    const d = Math.hypot(L.cx - W.cx, L.cy - W.cy), RR = Math.max(0, Math.min(R, d + L.r + W.r + 1));
+    const g = (d > 0 && wallGeom(W.cx, W.cy, RR, L.cx, L.cy, L.r, Infinity)) || { wx: W.cx, wy: W.cy, ux: 1, uy: 0, xc: 0, h: 0, xv: RR };
+    g.line = false; g.cx = W.cx; g.cy = W.cy; g.R = RR; g.sig = 1; g.full = d + RR <= L.r;
+    if(!(RR > d - L.r)) g.h = 0;                      // 前緣還沒碰到輸家：沒有疇壁
+    g.lSide = (x, y) => (x - W.cx)**2 + (y - W.cy)**2 >= RR*RR;
+    return g;
+  }
   function rule(F, A, B){
     const d = Math.hypot(B.cx - A.cx, B.cy - A.cy);
     if(d >= A.r + B.r) return null;
     if(related(A.b, B.b)) return null;
+    if(A.b.ctl || B.b.ctl){
+      if(A.b.vac === B.b.vac) return { kind:'merge', A, B };
+      const [W, L] = beats(F, A.b, B.b) ? [A, B] : [B, A];
+      const R = { kind:'wall', W, L, g: ringGeom(W, L, W.b.ctl || !F.ring ? Infinity : F.ring(W.b, L.b)), ring: true };
+      if(drawOrder(F, L, W) > 0){ R.lYield = true; R.cE = arrival(W, L.cx, L.cy) < 0 && !R.g.lSide(L.cx, L.cy); }
+      return R;
+    }
     if(d <= Math.abs(A.r - B.r)){
       const [X, Y] = A.r < B.r ? [A, B] : [B, A];
       let D = null;
@@ -93,7 +113,7 @@ export const Territory = (() => {
       if(R.kind === 'merge'){ if(arrival(otherOf(R, v), x, y) < arrival(v, x, y)) return false; }
       else if(R.kind === 'wall'){
         if(R.W === v){ if(arrival(R.L, x, y) < 0 && R.g.lSide(x, y)) return false; }
-        else if(R.lYield){ if(R.cE || (arrival(R.W, x, y) < 0 && !R.g.lSide(x, y))) return false; }
+        else if(R.lYield){ if(arrival(R.W, x, y) < 0 && (R.cE || !R.g.lSide(x, y))) return false; }   // 只在贏家圓內讓出（與 ownerAt 只看涵蓋該點的泡泡一致）
       }
       else if(R.X === v && !R.free){ if(!R.g || !R.g.lSide(x, y)) return false; }
     }
@@ -124,6 +144,14 @@ export const Territory = (() => {
     let own = null;
     for(const c of cands) if(drawContains(c, x, y)) own = c;
     return own ? own.src : null;
+  }
+  /* 對同一組圓查很多點時用：規則只建一次。規則都是兩兩之間、只影響兩者都涵蓋的點，所以結果與逐點呼叫 ownerAt 相同 */
+  function locator(F, circles){
+    const cs = circles.map(c => ({ b: c.b, cx: c.cx, cy: c.cy, r: c.r, src: c }));
+    cs.sort((a, b) => a.b.tn - b.b.tn || a.b.id - b.b.id);
+    buildRules(cs, F);
+    cs.sort((a, b) => drawOrder(F, a, b));
+    return (x, y) => { let own = null; for(const c of cs) if(drawContains(c, x, y)) own = c; return own ? own.src : null; };
   }
   /* drawContains 的解析版本：沿射線方向 (ex,ey) 求出領域的邊界距離（領域對中心呈星形） */
   function cellRay(v, ex, ey, lim){
@@ -299,9 +327,10 @@ export const Territory = (() => {
   /* box（可省略）：只計算落在這個矩形附近的部分，畫面用它避免為畫面外的疇壁做大量取樣 */
   function domainWall(R, cands, box, e = 1.5){
     const { W, L, g } = R;
-    if(!(g.h > .5)) return null;
+    if(!(g.h > .5) && !g.full) return null;
     let P, arc = null;
-    if(g.line) P = t => [g.p1x + (g.p2x - g.p1x)*t, g.p1y + (g.p2y - g.p1y)*t];
+    if(g.full){ arc = { a1: 0, a2: TAU }; P = t => [g.cx + Math.cos(TAU*t)*g.R, g.cy + Math.sin(TAU*t)*g.R]; }   // 推進前緣整圈都在輸家圓內
+    else if(g.line) P = t => [g.p1x + (g.p2x - g.p1x)*t, g.p1y + (g.p2y - g.p1y)*t];
     else {
       const a1 = Math.atan2(g.p1y - g.cy, g.p1x - g.cx), vx = g.wx + g.ux*g.xv, vy = g.wy + g.uy*g.xv;
       const norm = a => { while(a < a1) a += TAU; while(a >= a1 + TAU) a -= TAU; return a; };
@@ -346,5 +375,5 @@ export const Territory = (() => {
     const ok = t => { const [x, y] = P(t), [nx, ny] = N(t); return wallBetween(R, rel.cs, x, y, nx, ny, e); };
     return { P, N, arc, g, segs: sampleSegs(ok, T0, T1, curveSamples(P, T0, T1)) };
   }
-  return { isAncestor, related, insideOf, arrival, wallGeom, beats, rule, otherOf, ownerIn, takes, buildRules, ownerAt, drawOrder, drawContains, cellRay, wallTaken, displayOwner, shellVisible, boxWedge, domainWall, mergeCurve };
+  return { isAncestor, related, insideOf, arrival, wallGeom, beats, rule, otherOf, ownerIn, takes, buildRules, ownerAt, locator, drawOrder, drawContains, cellRay, wallTaken, displayOwner, shellVisible, boxWedge, domainWall, mergeCurve };
 })();

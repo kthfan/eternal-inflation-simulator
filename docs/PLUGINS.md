@@ -54,7 +54,7 @@ export function myPlugin(options){
 |---|---|
 | `S`、`U`、`tView` | 共用狀態、目前宇宙、畫面顯示的時刻 |
 | `tune`、`K`、`renderOpt` | 演化參數、畫面參數、顯示開關 |
-| `Territory`、`createUniverse`、`STEP`、`mulberry32`、`SelfCheck` | 核心 |
+| `Territory`、`createUniverse`、`STEP`、`PLAYER`、`mulberry32`、`SelfCheck` | 核心（`PLAYER`：玩家宇宙的參數） |
 | `camera.toScreen(x,y)`、`camera.toPhysical(sx,sy)` | 物理 ↔ 螢幕座標 |
 | `camera.set(x, y, Z)`、`camera.zoomAbout`、`camera.animateZoom`、`camera.P`、`camera.Z`、`camera.cv` | 攝影機 |
 | `ctx`、`render(t)`、`rgba`、`mix`、`resetTemporal()` | 繪製 |
@@ -80,12 +80,16 @@ api.restart({ actions: api.U.actionLog() });               // 以相同種子重
 - `nucleate`：擁有者由核心決定。目標真空比所在處低 → 一般泡泡；比所在處高 → 收縮泡泡（初始半徑 `r`）。
   大擠壓區、太靠近泡壁、範圍跨越其他宇宙地盤、同種真空都會被拒絕（拒絕也會記錄，重播時結果相同）。
 - 回看過去時（`api.S.isLive` 為 false）不應送出動作：動作一律在直播時刻套用。
+- `spawn { x, y, vac, r, eta, mode }`：在假真空中誕生玩家宇宙（`api.U.player`）；`steer { dx, dy, rT }`：玩家輸入（方向、目標半徑），只在變化時送出。
+  玩家宇宙的狀態在 `api.U.player.ctl`（`E` 能量、`exhausted`、`in`、`fate`……）。
+- `nucleate { …, by: 'player' }`：玩家技能，限影響範圍並扣除能量（`a.result.cost`）。
 - 需要新的動作類型時，在 `src/core/universe.js` 的動作紀錄區加入（所有版本共用），並補上自我檢查。
 
 ## 範例
 
 - `plugins/inspector/index.js`（版本 `variants/inspector`）：overlay 繪製、宇宙事件、面板、攔截按鍵、自我檢查。
 - `plugins/control/index.js`（版本 `variants/control`）：動作紀錄（放置泡泡、重播、匯出匯入）、攔截滑鼠、暫停演化。
+- `plugins/player/index.js`（版本 `variants/game`）：玩家宇宙（誕生、鍵盤操控、技能、鏡頭跟隨、HUD、停用回看）。
 
 ## 注意
 
