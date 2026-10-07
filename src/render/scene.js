@@ -79,6 +79,22 @@ export function collect(t){
    因此一律只產生「看得到的那一小段」：射線只掃過畫面所在的角度範圍，弧線改用畫面內的折線，漸層改用沿半徑方向的線性近似。 */
 export const BIG = 2e4;
 
+/* 上一格實際畫出的順序（drawBubbles 記下）。paintedAt：螢幕上一點最後是被哪個泡泡畫到（用 drawBubbles 實際用過的路徑、剪掉的洞與略過的範圍），
+   供自我檢查比對核心的 ownerAt */
+let drawn = { order: [], first: 0 };
+export function paintedAt(sx, sy){
+  const { order, first } = drawn, X = sx*S.dpr, Y = sy*S.dpr;
+  for(let i=order.length - 1;i>=first;i--){
+    const v = order[i];
+    ctx.save(); ctx.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
+    cellPath(v); let inside = ctx.isPointInPath(X, Y);
+    if(inside) for(const pts of v.clipHoles || []){ ctx.beginPath(); polyPath(pts); if(ctx.isPointInPath(X, Y)){ inside = false; break; } }
+    ctx.restore();
+    if(inside) return v;
+  }
+  return null;
+}
+
 export function viewBox(){ return { x0: -40, y0: -40, x1: S.vw + 40, y1: S.vh + 40 }; }
 
 export const viewWedge = (cx, cy) => Territory.boxWedge(cx, cy, viewBox());
@@ -110,7 +126,7 @@ export const C4 = (c, a) => [c[0], c[1], c[2], a];
 export function cellPath(v, cap){
   ctx.beginPath();
   const lim = cap === undefined ? Math.max(.6, v.r) : Math.min(v.r, cap);
-  const constrained = v.rules && v.rules.some(R => R.kind === 'merge' || (R.kind === 'wall' && (R.W === v || R.lYield)) || (R.kind === 'inherit' && R.X === v && !R.free));
+  const constrained = v.rules && v.rules.some(R => R.kind === 'merge' || (R.kind === 'wall' && ((R.W === v && !Territory.isHole(R, v)) || R.lYield)) || (R.kind === 'inherit' && R.X === v && !R.free));
   const wedge = viewWedge(v.cx, v.cy);
   if(!constrained && cap === undefined && v.full){ ctx.rect(-10, -10, S.vw + 20, S.vh + 20); return; }
   if(!constrained && !wedge && lim < BIG){ ctx.arc(v.cx, v.cy, lim, 0, TAU); return; }
@@ -140,6 +156,38 @@ export function cellPath(v, cap){
   for(let k=0;k<pts.length;k+=2) S.maxPathCoord = Math.max(S.maxPathCoord, Math.abs(pts[k]), Math.abs(pts[k+1]));
   ctx.moveTo(pts[0], pts[1]); for(let k=2;k<pts.length;k+=2) ctx.lineTo(pts[k], pts[k+1]); ctx.closePath();
 }
+
+/* 領域中的洞（見 Territory.isHole）：以輸家（玩家）的中心沿射線求出洞的多邊形 —— 外緣依角度順序、內緣倒序，
+   輸家中心在前緣外時內緣就是中心一點。只處理碰到畫面的洞 */
+function holePoly(R){
+  const L = R.L, vb = viewBox();
+  if(L.cx + L.r < vb.x0 || L.cx - L.r > vb.x1 || L.cy + L.r < vb.y0 || L.cy - L.r > vb.y1) return null;
+  const N = Math.pow(2, Math.ceil(Math.log2(Math.max(32, Math.min(512, L.r*TAU/4))))), out = [], inn = [];
+  let any = false, ring = false;
+  for(let k=0;k<=N;k++){                              // 頭尾同一個角度：外緣與內緣都是閉合的，接縫處沒有縫隙
+    const th = TAU*k/N, ex = Math.cos(th), ey = Math.sin(th), [a, b] = Territory.holeSpan(R, ex, ey);
+    if(b > a) any = true; if(a > 0) ring = true;
+    out.push(L.cx + ex*b, L.cy + ey*b); inn.push(L.cx + ex*a, L.cy + ey*a);
+  }
+  if(!any) return null;
+  if(!ring) return out;                               // 內緣只是中心一點：外緣本身就是洞
+  for(let k=inn.length - 2;k>=0;k-=2) out.push(inn[k], inn[k+1]);
+  return out;
+}
+const holesOf = v => (v.rules || []).filter(R => Territory.isHole(R, v));
+const polyPath = pts => { ctx.moveTo(pts[0], pts[1]); for(let k=2;k<pts.length;k+=2) ctx.lineTo(pts[k], pts[k+1]); ctx.closePath(); };
+/* 畫 v 之前呼叫：把畫面上的洞剪掉（每個洞各剪一次，剪裁區取交集 = 扣掉所有洞的聯集）。有剪裁時回傳 true，畫完要 ctx.restore() */
+export function holeClip(v){
+  const ps = holesOf(v).map(holePoly).filter(Boolean);
+  v.clipHoles = null;
+  if(!ps.length) return false;
+  ctx.save();
+  for(const pts of ps){ ctx.beginPath(); ctx.rect(-50, -50, S.vw + 100, S.vh + 100); polyPath(pts); ctx.clip('evenodd'); }
+  v.clipHoles = ps;                                   // 記下實際剪掉的洞（paintedAt 用）
+  return true;
+}
+/* 有洞落在畫面上的泡泡，不能當成「蓋住整個畫面」（洞可能比 drawBubbles 的取樣格子還小） */
+const holeOnScreen = v => holesOf(v).some(R => holePoly(R));
 
 /* 在 [a0,a1] 角度範圍內，沿半徑 r 的圓畫出 ok(角度) 為真的部分；小圓用真正的圓弧，巨大的圓用畫面內的折線 */
 export function arcRuns(cx, cy, r, a0, a1, ok, M){
@@ -434,8 +482,10 @@ export function drawBubbles(F){
     const v = order[i]; if(!v.full) continue;
     let all = true;
     for(let gx=0;gx<=15 && all;gx++) for(let gy=0;gy<=9 && all;gy++) if(!Territory.drawContains(v, S.vw*gx/15, S.vh*gy/9)) all = false;
+    if(all && holeOnScreen(v)) all = false;
     if(all){ first = i; break; }
   }
+  drawn = { order, first };
   /* 紋理流速上限：紋理以觀測者為中心縮放，畫面上的移動速度 = 縮放率 × 與觀測者的距離。
      泡泡流到遠處、或畫面放大時，距離變大，看起來就越流越快。
      這裡依「各真空在畫面上可見部分離觀測者最遠的距離」限制縮放率，讓任何一點的移動都不超過 TEX_VMAX 像素／秒。
@@ -459,6 +509,7 @@ export function drawBubbles(F){
   for(let oi=first; oi<order.length; oi++){
     const v = order[oi];
     const pal = S.PAL[v.b.vac], sr = Math.max(.6, v.sr), sx = v.sx, sy = v.sy;
+    const clipped = holeClip(v);
     ctx.globalCompositeOperation = 'source-over';
     const s1 = Math.max(0, 1-90/sr), s2 = Math.max(s1, 1-16/sr);
     ctx.fillStyle = radialGrad(sx, sy, 0, sr, [[0, ...C4(pal.core,.985)], [s1, ...C4(mix(pal.core,pal.rim,.3),.98)], [s2, ...C4(pal.rim,.96)], [1, ...C4(pal.wall,.97)]]);
@@ -539,6 +590,7 @@ export function drawBubbles(F){
         }
       }
     }
+    if(clipped) ctx.restore();
   }
   // 泡壁（只畫仍面向假真空或母宇宙的部分）與疇壁
   ctx.globalCompositeOperation = 'lighter';

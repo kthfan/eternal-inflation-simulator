@@ -449,6 +449,37 @@ export function buildSelfCheck(extraP = {}){
       }
       return { pass: !returns && maxEternal <= 3, detail: `5 個宇宙、${n} 個時間點：跳回 ${returns} 次；最後同時存在的永久泡泡最多 ${maxEternal} 個` };
     }},
+    { name: '玩家宇宙：在較低真空的泡泡內（領域中的洞）', desc: '較低真空的泡泡 X 的光錐包住玩家、推進前緣還沒到時，X 的領域中間有一個洞（玩家）。畫面把它拆成「射線多邊形（不理會洞）」扣掉「洞（從玩家中心沿射線求出）」：在 X 的圓內取點，拆解的結果必須與 drawContains 相同（射線法若被洞擋住，玩家背後整片會漏畫）', run(){
+      const U = createUniverse(baseP, { ...baseT(), gamma: 0 }); U.presim(1);
+      const V = U.VAC.filter(v => v.eps < 1 && v.kind !== 'up').sort((a, b) => a.eps - b.eps);
+      const pv = V[Math.floor(V.length*.6)], xv = V.filter(v => v.eps < pv.eps).pop();
+      spawnPlayer(U, pv.i, 25, 1, 0, 0, 'relaxed'); const P = U.player; if(!P) return { pass: false, detail: '玩家誕生失敗' };
+      const c = U.circleAt(P, U.tSim), xa = U.act({ type: 'nucleate', x: c.cx + 70, y: c.cy, vac: xv.i }); U.advance(STEP);
+      const r = mulberry32(17); let frames = 0, n = 0, bad = 0;
+      for(let i=0;i<60 && U.player;i++){
+        U.advance(.1);
+        const { cs } = buildRules(U, U.tSim), X = cs.find(q => q.b.id === xa.result.id); if(!X) continue;
+        const holes = X.rules.filter(R => Territory.isHole(R, X)); if(!holes.length) continue;
+        frames++;
+        const L = holes[0].L;
+        for(let k=0;k<300;k++){
+          // 一半的點取在玩家附近（洞與洞的「影子」），一半取在整個 X 內
+          const near = k < 150, rr = near ? L.r*4*Math.sqrt(r()) : X.r*Math.sqrt(r()), a = r()*TAU;
+          const ox = near ? L.cx : X.cx, oy = near ? L.cy : X.cy, x = ox + Math.cos(a)*rr, y = oy + Math.sin(a)*rr;
+          const dx = x - X.cx, dy = y - X.cy, d = Math.hypot(dx, dy); if(d < 1e-6 || d >= X.r) continue;
+          const rho = Territory.cellRay(X, dx/d, dy/d, X.r);
+          if(Math.abs(d - rho) < 1e-6*X.r) continue;
+          let inHole = false;
+          for(const R of holes){ const hx = x - R.L.cx, hy = y - R.L.cy, s = Math.hypot(hx, hy); if(s >= R.L.r) continue;
+            const [h0, h1] = s > 0 ? Territory.holeSpan(R, hx/s, hy/s) : Territory.holeSpan(R, 1, 0);
+            if(Math.abs(s - h0) < 1e-6*R.L.r || Math.abs(s - h1) < 1e-6*R.L.r) { inHole = null; break; }
+            if(s >= h0 && s < h1) inHole = true; }
+          if(inHole === null) continue;
+          n++; if((d < rho && !inHole) !== Territory.drawContains(X, x, y)) bad++;
+        }
+      }
+      return { pass: frames >= 5 && n > 1000 && !bad, detail: `有洞的時刻 ${frames} 個；${n} 個點中 ${bad} 個與 drawContains 不一致` };
+    }},
     { name: '交界線連續', desc: '沿多條掃描線找出畫面上所有「兩種不同真空（或真空與假真空）相鄰」的地方，每一處都必須有泡壁或疇壁線經過，特別是三個泡泡的交會處', run(){
       let total = 0, miss = 0;
       for(const seed of [99, 7]){

@@ -157,10 +157,28 @@ export const Territory = (() => {
     cs.sort((a, b) => drawOrder(F, a, b));
     return (x, y) => { let own = null; for(const c of cs) if(drawContains(c, x, y)) own = c; return own ? own.src : null; };
   }
-  /* drawContains 的解析版本：沿射線方向 (ex,ey) 求出領域的邊界距離（領域對中心呈星形） */
+  /* ---------- 領域中的「洞」 ----------
+     玩家（可控制的泡泡）被真空能較低的泡泡 W 的光錐整個包住、W 的推進前緣卻還沒掃到玩家時，W 要讓出「玩家圓內、前緣外」的部分。
+     這一塊完全在 W 的圓內、不碰 W 的泡壁，W 的領域因此不是對中心呈星形的：射線法（cellRay）碰到它就停，玩家背後整片都會漏畫
+     （畫面上從玩家到 W 的泡壁之間露出背景）。所以畫面改為：W 的射線不理會這種規則（cellRay 略過），另外把洞挖掉；
+     洞的形狀以玩家的中心沿射線求出（holeSpan）。歸屬（drawContains、ownerAt）完全不變。 */
+  const isHole = (R, v) => R.kind === 'wall' && !!R.ring && R.W === v && Math.hypot(R.L.cx - v.cx, R.L.cy - v.cy) + R.L.r < v.r;
+  /* 洞沿著「從輸家中心出發、方向 (ex,ey)」的射線所佔的區間 [a, b]（a = b 表示這個方向沒有洞）。
+     前緣是以 W 中心為圓心、半徑 g.R 的圓，洞 = 輸家圓內、前緣圓外。前緣圓遠大於玩家，射線在玩家圓內最多穿過它一次 */
+  function holeSpan(R, ex, ey){
+    const L = R.L, g = R.g, gx = L.cx - g.cx, gy = L.cy - g.cy, bb = ex*gx + ey*gy, c0 = gx*gx + gy*gy - g.R*g.R, dd = bb*bb - c0;
+    if(c0 >= 0){                                      // 輸家中心在前緣外：從中心到碰上前緣（或輸家泡壁）為止
+      if(dd > 0){ const t1 = -bb - Math.sqrt(dd); if(t1 > 0) return [0, Math.min(L.r, t1)]; }
+      return [0, L.r];
+    }
+    const t2 = -bb + Math.sqrt(Math.max(0, dd));      // 輸家中心已在前緣內：剩下前緣外的一彎
+    return t2 < L.r ? [t2, L.r] : [L.r, L.r];
+  }
+  /* drawContains 的解析版本：沿射線方向 (ex,ey) 求出領域的邊界距離（領域對中心呈星形）。洞（isHole）不算在內，由畫面另外挖掉 */
   function cellRay(v, ex, ey, lim){
     let rho = lim;
     for(const R of v.rules || []){
+      if(isHole(R, v)) continue;
       if(R.kind === 'merge'){
         const o = otherOf(R, v), wx = o.cx - v.cx, wy = o.cy - v.cy, w2 = wx*wx + wy*wy, kk = v.r - o.r, den = 2*(ex*wx + ey*wy - kk);
         if(den > 0){ const r = (w2 - kk*kk)/den; if(r < rho) rho = r; }
@@ -379,5 +397,5 @@ export const Territory = (() => {
     const ok = t => { const [x, y] = P(t), [nx, ny] = N(t); return wallBetween(R, rel.cs, x, y, nx, ny, e); };
     return { P, N, arc, g, segs: sampleSegs(ok, T0, T1, curveSamples(P, T0, T1)) };
   }
-  return { isAncestor, related, insideOf, arrival, wallGeom, beats, rule, otherOf, ownerIn, takes, buildRules, ownerAt, locator, drawOrder, drawContains, cellRay, wallTaken, displayOwner, shellVisible, boxWedge, domainWall, mergeCurve };
+  return { isAncestor, related, insideOf, arrival, wallGeom, beats, rule, otherOf, ownerIn, takes, buildRules, ownerAt, locator, drawOrder, drawContains, cellRay, isHole, holeSpan, wallTaken, displayOwner, shellVisible, boxWedge, domainWall, mergeCurve };
 })();

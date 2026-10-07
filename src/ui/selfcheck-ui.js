@@ -4,10 +4,23 @@ import { QL } from '../app/config.js';
 import { SelfCheck } from '../core/selfcheck.js';
 import { createUniverse } from '../core/universe.js';
 import { MAXZ, P, buildPalettes, clampCam, defaultZoom, onRebase } from '../render/camera.js';
-import { TEX_VMAX, render } from '../render/scene.js';
+import { TEX_VMAX, render, paintedAt } from '../render/scene.js';
+import { Territory } from '../core/territory.js';
 import { $ } from './dom.js';
 
 
+
+/* 「玩家在較低真空的泡泡內」繪製檢查用的真實情境（種子 7、原本的模型；實際遊玩時錄下的動作紀錄，約 60 秒時出現問題）：
+   玩家（卯型）放下同種真空的泡泡並走進去，之後被其中誕生的較低真空（丑型）的光錐包住、推進前緣還沒到。
+   steer 以「步數:方向」記錄（方向 0 停、1 右、2 左、3 下、4 上；rT 固定 28） */
+const HOLE_SCENE = { seed: 7, t: 60.19999999999914,
+  steer: '601:1 617:0 622:1 639:0 647:1 663:0 665:1 682:0 687:1 702:0 708:1 725:0 728:1 745:0 755:1 770:0 772:1 790:0 793:1 807:0 813:3 830:0 833:3 849:0 858:3 873:0 877:3 894:0 899:3 914:0 920:3 938:0 942:3 958:0 966:3 982:0 985:3 1002:0 1006:3 1022:0 1027:2 1043:0 1047:2 1064:0 1078:2 1094:0 1099:2 1117:0 1122:2 1133:0 1139:2 1156:0 1160:2 1177:0 1189:2 1206:0 1210:2 1224:0 1230:2 1247:0 1251:4 1269:0 1273:4 1290:0 1304:4 1320:0 1325:4 1341:0 1346:4 1360:0 1365:4 1380:0 1385:4 1402:0 1416:4 1432:0 1438:4 1454:0 1460:4 1475:0 1480:1 1497:0 1500:1 1516:0 1533:1 1548:0 1581:1 1595:0 1626:1 1642:0 1672:1 1688:0 1693:1 1709:0 1725:1 1737:0 1743:1 1759:0 1765:1 1780:0 1785:3 1801:0',
+  other: [{"type": "spawn", "x": 0, "y": 0, "vac": 3, "r": 28, "mode": "relaxed", "step": 582}, {"type": "nucleate", "by": "player", "x": 203.19049194556575, "y": 0, "vac": 3, "r": 42, "step": 644}, {"type": "nucleate", "by": "player", "x": 190.40108486136805, "y": 20, "vac": 12, "r": 42, "step": 752}, {"type": "nucleate", "by": "player", "x": 30.00006037956308, "y": 222.93960991403034, "vac": 12, "r": 42, "step": 964}, {"type": "nucleate", "by": "player", "x": -156.3201155667093, "y": 20.000060264285597, "vac": 12, "r": 42, "step": 1184}, {"type": "nucleate", "by": "player", "x": -3.216786585696026e-05, "y": -120.00796133287696, "vac": 12, "r": 42, "step": 1412}, {"type": "nucleate", "by": "player", "x": 216.32776770720494, "y": 20.00000000076008, "vac": 12, "r": 42, "step": 1719}] };
+const holeSceneActions = () => {
+  const dirs = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]];
+  const st = HOLE_SCENE.steer.split(' ').map(w => { const [step, k] = w.split(':').map(Number); return { type: 'steer', dx: dirs[k][0], dy: dirs[k][1], rT: 28, step }; });
+  return [...HOLE_SCENE.other, ...st].sort((a, b) => a.step - b.step);
+};
 
 /* 外掛可以加入自己的檢查項目（格式同 SelfCheck.tests：{ name, desc, run() → { pass, detail } }） */
 export const extraChecks = [];
@@ -78,6 +91,30 @@ export function init(){
       finally { S.U = keep.U; S.PAL = keep.PAL; S.HUB = keep.HUB; S.RH = keep.RH; S.R0 = keep.R0; S.RGEN = keep.RGEN; S.Z = keep.Z; P.x = keep.px; P.y = keep.py; S.anchorFade = keep.fade; S.tView = keep.tv; }
       const med = other.slice().sort((a, b) => a - b)[other.length >> 1] || 1, worst = Math.max(0, ...at);
       return { pass: at.length > 0 && worst < 2.5*med, detail: `重新置中 ${at.length} 次，那一格的畫面變化最大 ${worst.toFixed(1)}（一般一格的中位數 ${med.toFixed(1)}）` };
+    }}, { name: '玩家在較低真空的泡泡內的繪製', desc: '較低真空的泡泡光錐包住玩家、推進前緣還沒到時，它的領域中間有個洞（玩家）。畫面上玩家附近每一點最後畫到的宇宙（paintedAt）必須等於核心的 ownerAt：之前射線法被洞擋住，從玩家到泡壁之間露出背景；「蓋住整個畫面」的判斷也漏掉了比取樣格子小的玩家，玩家本身變成背景色', run(){
+      const keep = { U: S.U, PAL: S.PAL, HUB: S.HUB, RH: S.RH, R0: S.R0, RGEN: S.RGEN, Z: S.Z, px: P.x, py: P.y, fade: S.anchorFade, tv: S.tView };
+      let n = 0, bad = 0, scene = '';
+      try {
+        const T = createUniverse({ seed: HOLE_SCENE.seed, H: .25, RH: 140, R0: 3, RGEN: 3000, typical: false, vacN: 12, crunchP: .25, oddDimP: .15 }, { gamma: 2.5e-6, innerMul: 1, wallK: 1 }, { actions: holeSceneActions() });
+        T.presim(HOLE_SCENE.t);
+        S.U = T; S.PAL = buildPalettes(T.VAC); S.HUB = T.p.H; S.RH = T.p.RH; S.R0 = T.p.R0; S.RGEN = T.p.RGEN; S.anchorFade = null; S.tView = T.tSim;
+        const Pl = T.player; if(!Pl) throw new Error('情境失效：玩家不存在（核心改變後請重新錄製情境）');
+        for(const z of [1, 2.5]){
+          const c = T.circleAt(Pl, S.tView); S.Z = z; P.x = c.cx; P.y = c.cy;
+          render(S.tView);
+          const vP = S.vis.find(v => v.b === Pl), host = S.vis.find(v => v !== vP && (v.rules || []).some(R => Territory.isHole(R, v)));
+          if(!vP || !host) throw new Error('情境失效：玩家不在任何泡泡的洞裡（核心改變後請重新錄製情境）');
+          if(z === 1) scene = `玩家在 #${host.b.id} 的洞裡${host.full ? '（該泡泡蓋住整個畫面）' : ''}`;
+          for(let k=0;k<48;k++) for(const f of [.3, .7, 1.15, 1.6, 2.5, 4, 7]){
+            const a = Math.PI*2*k/48, sx = vP.cx + Math.cos(a)*vP.r*f, sy = vP.cy + Math.sin(a)*vP.r*f;
+            if(sx < 0 || sy < 0 || sx > S.vw || sy > S.vh || Math.abs(Math.hypot(sx - vP.cx, sy - vP.cy) - vP.r) < 3) continue;
+            const pv = paintedAt(sx, sy), o = T.ownerAt(P.x + (sx - S.vw/2)/S.Z, P.y + (sy - S.vh/2)/S.Z, S.tView);
+            n++; if((pv ? pv.b : null) !== (o ? o.b : null)) bad++;
+          }
+        }
+      } catch(e){ return { pass: false, detail: '發生錯誤：' + e.message }; }
+      finally { S.U = keep.U; S.PAL = keep.PAL; S.HUB = keep.HUB; S.RH = keep.RH; S.R0 = keep.R0; S.RGEN = keep.RGEN; S.Z = keep.Z; P.x = keep.px; P.y = keep.py; S.anchorFade = keep.fade; S.tView = keep.tv; }
+      return { pass: n > 300 && !bad, detail: `${scene}；${n} 個點中 ${bad} 個畫面與歸屬不一致` };
     }}, { name: '方案 B 的繪製效能', desc: '同一組種子分別以「單一膨脹率」與「各區域各自的膨脹率（方案 B）」演化後繪製。以每格時間的中位數比較（無頭瀏覽器偶爾會有與內容無關的數秒停頓）：預設縮放下方案 B 仍應低於 16 毫秒；縮到最小只列出供參考（方案 B 的口袋內兄弟泡泡較擁擠、疇壁較多）', run(){
       const keep = { U: S.U, PAL: S.PAL, HUB: S.HUB, RH: S.RH, R0: S.R0, RGEN: S.RGEN, Z: S.Z, px: P.x, py: P.y, fade: S.anchorFade, tv: S.tView };
       const ms = { off: [0, 0], on: [0, 0] };
