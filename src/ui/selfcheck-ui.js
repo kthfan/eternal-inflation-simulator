@@ -78,6 +78,25 @@ export function init(){
       finally { S.U = keep.U; S.PAL = keep.PAL; S.HUB = keep.HUB; S.RH = keep.RH; S.R0 = keep.R0; S.RGEN = keep.RGEN; S.Z = keep.Z; P.x = keep.px; P.y = keep.py; S.anchorFade = keep.fade; S.tView = keep.tv; }
       const med = other.slice().sort((a, b) => a - b)[other.length >> 1] || 1, worst = Math.max(0, ...at);
       return { pass: at.length > 0 && worst < 2.5*med, detail: `重新置中 ${at.length} 次，那一格的畫面變化最大 ${worst.toFixed(1)}（一般一格的中位數 ${med.toFixed(1)}）` };
+    }}, { name: '方案 B 的繪製效能', desc: '同一組種子分別以「單一膨脹率」與「各區域各自的膨脹率（方案 B）」演化後繪製。以每格時間的中位數比較（無頭瀏覽器偶爾會有與內容無關的數秒停頓）：預設縮放下方案 B 仍應低於 16 毫秒；縮到最小只列出供參考（方案 B 的口袋內兄弟泡泡較擁擠、疇壁較多）', run(){
+      const keep = { U: S.U, PAL: S.PAL, HUB: S.HUB, RH: S.RH, R0: S.R0, RGEN: S.RGEN, Z: S.Z, px: P.x, py: P.y, fade: S.anchorFade, tv: S.tView };
+      const ms = { off: [0, 0], on: [0, 0] };
+      try {
+        for(const [seed, typical, T] of [[4242, false, 120], [99, false, 90], [7, false, 60], [23, true, 30]]) for(const localH of [false, true]){
+          const U = createUniverse({ seed, H: .25, RH: 140, R0: 3, RGEN: 3000, typical, localH, vacN: 12, crunchP: .25, oddDimP: .15 }, { gamma: 2.5e-6, innerMul: 1, wallK: 1 });
+          U.presim(T);
+          S.U = U; S.PAL = buildPalettes(U.VAC); S.HUB = U.p.H; S.RH = U.p.RH; S.R0 = U.p.R0; S.RGEN = U.p.RGEN; S.anchorFade = null; S.tView = U.tSim;
+          const k = localH ? 'on' : 'off';
+          [defaultZoom(), S.minZ].forEach((z, zi) => {
+            S.Z = z; P.x = 0; P.y = 0; clampCam(); render(S.tView);
+            const f = []; for(let i=0;i<9;i++){ const t0 = performance.now(); render(S.tView - (i%3)*.03); f.push(performance.now() - t0); }
+            ms[k][zi] = Math.max(ms[k][zi], f.sort((a, b) => a - b)[4]);
+          });
+        }
+      } catch(e){ return { pass: false, detail: '發生錯誤：' + e.message }; }
+      finally { S.U = keep.U; S.PAL = keep.PAL; S.HUB = keep.HUB; S.RH = keep.RH; S.R0 = keep.R0; S.RGEN = keep.RGEN; S.Z = keep.Z; P.x = keep.px; P.y = keep.py; S.anchorFade = keep.fade; S.tView = keep.tv; }
+      const f = a => `預設縮放 ${a[0].toFixed(1)}、縮到最小 ${a[1].toFixed(1)} 毫秒`;
+      return { pass: ms.on[0] < 16, detail: `最慢的中位數｜單一膨脹率：${f(ms.off)}；方案 B：${f(ms.on)}` };
     }}, { name: '繪製效能', desc: '目前畫面的單格繪製時間應低於 16 毫秒（每秒 60 格的預算）', run(){
       const t0 = performance.now(); for(let i=0;i<10;i++) render(S.tView); const ms = (performance.now() - t0)/10;
       return { pass: ms < 16, detail: `平均每格 ${ms.toFixed(1)} 毫秒（畫質：${QL[S.qLevel].name}）` };

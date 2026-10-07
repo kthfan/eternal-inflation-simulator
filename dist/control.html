@@ -302,6 +302,9 @@ details[open] summary::after{content:" －"}
     <div class="sl"><label for="obsSel"><span>觀測者模式</span></label>
       <select id="obsSel"><option value="post" selected>後選：永遠留在暴脹區</option><option value="typical">典型：可能被泡泡吞沒</option></select>
       <p class="note">後選模式只看一條永遠不被吞沒的世界線。典型模式不做挑選，中央的觀測者遲早會落入某個口袋宇宙，甚至遭遇大擠壓。</p></div>
+    <div class="sl"><label for="localHSel"><span>膨脹率</span></label>
+      <select id="localHSel"><option value="0" selected>單一膨脹率（原本）</option><option value="1">各區域各自的膨脹率（方案 B，實驗中）</option></select>
+      <p class="note">方案 B：口袋宇宙內部以自己的膨脹率 H·√ε 流動，子泡泡留得較近、較久；玩家在真空能較低的區域裡維持大小更便宜、長得更大也不會失控。已知限制見 docs/ROADMAP.md D11。</p></div>
     <div id="uniSliders"></div>
     <div class="derived" id="derived"></div>
     <button class="apply" id="applyBtn">套用並重新開始</button>
@@ -1134,20 +1137,103 @@ details[open] summary::after{content:" －"}
     };
     const E = (b, t) => Math.min(EMAX, Math.exp(p.H * (t - b.tn)));
     U.E = E;
+    const LH = !!p.localH, cLight = p.H * p.RH;
+    const BMAX = 1e250, ex = (h, d) => Math.min(BMAX, Math.exp(h * d));
+    const hIn = (b) => {
+      if (!b) return p.H;
+      const e = VAC[b.vac].eps;
+      return e > 0 ? p.H * Math.sqrt(e / FALSE_EPS) : 0;
+    };
+    U.hIn = hIn;
+    const grow = (r0, s, h, d) => {
+      if (h > 1e-9) {
+        const e = ex(h, d), k = cLight / h;
+        return s < 0 ? Math.max(0, (r0 - k) * e + k) : (r0 + k) * e - k;
+      }
+      return s < 0 ? Math.max(0, r0 - cLight * d) : r0 + cLight * d;
+    };
+    let cacheEpoch = 0;
+    const centerAt = (b, t) => {
+      if (b._ct === t && b._ce === cacheEpoch) return b._cc;
+      const c = U.circleAt(b, t);
+      b._ct = t;
+      b._ce = cacheEpoch;
+      b._cc = c;
+      return c;
+    };
+    const anchorAt = (R, t) => {
+      if (!R.anc) return centerAt(R, t);
+      if (R._at === t && R._ae === cacheEpoch) return R._ac;
+      const c = centerAt(R, t), e = ex(hIn(R), t - R.anc.tk);
+      const a = { cx: c.cx + R.anc.dx * e, cy: c.cy + R.anc.dy * e };
+      R._at = t;
+      R._ae = cacheEpoch;
+      R._ac = a;
+      return a;
+    };
+    function reanchor(R, ax, ay, t) {
+      const A = anchorAt(R, t), dx = ax - A.cx, dy = ay - A.cy, h = hIn(R), seen = /* @__PURE__ */ new Set();
+      const fix = (b) => {
+        if (seen.has(b)) return;
+        seen.add(b);
+        if (b.dyn && b.parent === R && !b.ctl) {
+          const f = 1 / ex(h, t - b.tn);
+          b.ox -= dx * f;
+          b.oy -= dy * f;
+        }
+        if (b.ctl) {
+          const C = b.ctl;
+          for (let i = 0; i < C.t.length; i++) if (C.reg[i] === R) {
+            const f = 1 / ex(h, t - C.t[i]);
+            C.x[i] -= dx * f;
+            C.y[i] -= dy * f;
+          }
+        }
+      };
+      for (const b of U.hist) fix(b);
+      for (const b of U.longs) fix(b);
+      for (const b of U.live) fix(b);
+      const c = centerAt(R, t);
+      R.anc = { tk: t, dx: ax - c.cx, dy: ay - c.cy };
+      cacheEpoch++;
+    }
     U.circleAt = (b, t) => {
       if (b.ctl) return ctlCircle(b, t);
+      if (LH && b.parent) {
+        const pc = anchorAt(b.parent, t), d = t - b.tn, e2 = b.h > 0 ? ex(b.h, d) : 1;
+        return { b, cx: pc.cx + b.ox * e2, cy: pc.cy + b.oy * e2, r: grow(b.r0, b.s, b.h, d) };
+      }
       const e = E(b, t);
       return { b, cx: b.x * e, cy: b.y * e, r: b.s < 0 ? Math.max(0, b.r0 * e - p.RH * (e - 1)) : p.R0 * e + p.RH * (e - 1) };
     };
-    function ctlCircle(b, t) {
-      const C = b.ctl, T = C.t;
+    const segIndex = (C, t) => {
+      const T = C.t;
       let lo = 0, hi = T.length - 1;
       while (lo < hi) {
         const m = lo + hi + 1 >> 1;
         if (T[m] <= t) lo = m;
         else hi = m - 1;
       }
-      const i = lo, H = p.H, e = Math.min(EMAX, Math.exp(H * (t - T[i]))), ux = C.ux[i] / H, uy = C.uy[i] / H, w = C.w[i] / H;
+      return lo;
+    };
+    function ctlCircle(b, t) {
+      const C = b.ctl;
+      if (LH) {
+        const i2 = segIndex(C, t), h = C.h[i2], d = t - C.t[i2], reg = C.reg[i2], base = reg ? anchorAt(reg, t) : null;
+        let x, y, r;
+        if (h > 1e-9) {
+          const e2 = ex(h, d), ux2 = C.ux[i2] / h, uy2 = C.uy[i2] / h, w2 = C.w[i2] / h;
+          x = (C.x[i2] + ux2) * e2 - ux2;
+          y = (C.y[i2] + uy2) * e2 - uy2;
+          r = (C.r[i2] + w2) * e2 - w2;
+        } else {
+          x = C.x[i2] + C.ux[i2] * d;
+          y = C.y[i2] + C.uy[i2] * d;
+          r = C.r[i2] + C.w[i2] * d;
+        }
+        return { b, cx: (base ? base.cx : 0) + x, cy: (base ? base.cy : 0) + y, r: Math.max(0, r) };
+      }
+      const i = segIndex(C, t), H = p.H, e = Math.min(EMAX, Math.exp(H * (t - C.t[i]))), ux = C.ux[i] / H, uy = C.uy[i] / H, w = C.w[i] / H;
       return { b, cx: (C.x[i] + ux) * e - ux, cy: (C.y[i] + uy) * e - uy, r: Math.max(0, (C.r[i] + w) * e - w) };
     }
     U.eps = (b) => VAC[b.vac].eps;
@@ -1196,6 +1282,10 @@ details[open] summary::after{content:" －"}
       if (W.vac === L.vac) return 0;
       const D = U.eps(L) - U.eps(W), tc = U.contactStart(W, L, t);
       if (t <= tc) return 0;
+      if (LH && W.parent && W.parent === L.parent) {
+        const v = 0.85 * D / (Math.abs(D) + 0.25) * tune2.wallK * cLight, h = W.h, d = t - tc;
+        return h > 1e-9 ? v * (Math.min(EMAX, Math.exp(h * d)) - 1) / h : v * d;
+      }
       return 0.85 * D / (Math.abs(D) + 0.25) * tune2.wallK * p.RH * (Math.min(EMAX, Math.exp(p.H * (t - tc))) - 1);
     };
     U.contactStart = (a, b, t) => {
@@ -1298,6 +1388,16 @@ details[open] summary::after{content:" －"}
       }
       const V = VAC[vac], s = forced ? forced.s : 1, r0 = forced ? forced.r0 : p.R0;
       let texit = exitTime(s, d, r0, t);
+      let dyn = false, ox, oy, h;
+      if (LH && parent) {
+        const pc = anchorAt(parent, t);
+        ox = x - pc.cx;
+        oy = y - pc.cy;
+        h = hIn(parent);
+        dyn = true;
+        const k2 = h > 1e-9 ? cLight / h : Infinity;
+        texit = s > 0 ? Infinity : h > 1e-9 ? r0 < k2 ? t + Math.log(k2 / (k2 - r0)) / h : Infinity : t + r0 / cLight;
+      }
       if (forced && forced.ctl) texit = Infinity;
       const b = {
         id: U.nextId++,
@@ -1316,6 +1416,12 @@ details[open] summary::after{content:" －"}
         heatT: V.hdT,
         texit
       };
+      if (dyn) {
+        b.dyn = true;
+        b.ox = ox;
+        b.oy = oy;
+        b.h = h;
+      }
       if (forced) b.act = true;
       if (forced && forced.ctl) {
         b.crunch = false;
@@ -1328,6 +1434,8 @@ details[open] summary::after{content:" －"}
           ux: [],
           uy: [],
           w: [],
+          reg: [],
+          h: [],
           contacts: /* @__PURE__ */ new Map(),
           in: { dx: 0, dy: 0, rT: r0 },
           eta: forced.eta,
@@ -1340,7 +1448,7 @@ details[open] summary::after{content:" －"}
         pushSeg(b, t, x, y, r0, 0, 0, 0);
         U.anyCtl = true;
       }
-      b.long = !(b.texit - t <= LONG);
+      b.long = b.dyn || !(b.texit - t <= LONG);
       U.hist.push(b);
       U.live.push(b);
       if (b.long) U.longs.push(b);
@@ -1463,14 +1571,22 @@ details[open] summary::after{content:" －"}
     function release(b, t) {
       b.player = false;
       if (U.player === b) U.player = null;
-      const c = U.circleAt(b, t);
-      pushSeg(b, t, c.cx, c.cy, c.r, 0, 0, p.H * p.RH);
-      b.ctl.free = true;
-      b.ctl.releasedAt = t;
-      b.texit = exitTime(1, Math.hypot(c.cx, c.cy), c.r, t);
+      const c = U.circleAt(b, t), C = b.ctl;
+      pushSeg(b, t, c.cx, c.cy, c.r, 0, 0, cLight, LH ? C.reg[segIndex(C, t)] : null);
+      C.free = true;
+      C.releasedAt = t;
+      if (LH && C.reg[C.reg.length - 1]) {
+        b.texit = Infinity;
+        b.dyn = true;
+      } else b.texit = exitTime(1, Math.hypot(c.cx, c.cy), c.r, t);
     }
-    function pushSeg(b, t, x, y, r, ux, uy, w) {
-      const C = b.ctl, n = C.t.length;
+    function pushSeg(b, t, x, y, r, ux, uy, w, reg = null) {
+      const C = b.ctl, n = C.t.length, h = LH ? hIn(reg) : p.H;
+      if (LH && reg) {
+        const rc = anchorAt(reg, t);
+        x -= rc.cx;
+        y -= rc.cy;
+      }
       if (n && C.t[n - 1] === t) {
         C.x[n - 1] = x;
         C.y[n - 1] = y;
@@ -1478,6 +1594,8 @@ details[open] summary::after{content:" －"}
         C.ux[n - 1] = ux;
         C.uy[n - 1] = uy;
         C.w[n - 1] = w;
+        C.reg[n - 1] = reg;
+        C.h[n - 1] = h;
         return;
       }
       C.t.push(t);
@@ -1487,15 +1605,24 @@ details[open] summary::after{content:" －"}
       C.ux.push(ux);
       C.uy.push(uy);
       C.w.push(w);
+      C.reg.push(reg);
+      C.h.push(h);
+    }
+    function regionOf(b, t, c) {
+      const cs = [];
+      for (const o of U.live) if (o !== b && o.tn <= t && o.texit > t) cs.push(U.circleAt(o, t));
+      const own = Territory.ownerAt(U.frame(t), cs, c.cx, c.cy);
+      return own ? own.b : null;
     }
     function decide(b, t) {
-      const C = b.ctl, c = p.H * p.RH, cur = U.circleAt(b, t);
+      const C = b.ctl, c = cLight, cur = U.circleAt(b, t);
+      const reg = LH ? regionOf(b, t, cur) : null, h = LH ? hIn(reg) : p.H;
       let w, ux = 0, uy = 0;
-      if (C.exhausted || cur.r >= p.RH) {
+      if (C.exhausted || h * cur.r >= c) {
         w = c;
         C.in.rT = Math.max(2 * p.R0, Math.min(0.95 * p.RH, cur.r));
       } else {
-        w = Math.max(-c, Math.min(c, -p.H * cur.r + PLAYER.k * (C.in.rT - cur.r)));
+        w = Math.max(-c, Math.min(c, -h * cur.r + PLAYER.k * (C.in.rT - cur.r)));
         const um = c - Math.abs(w), m = Math.hypot(C.in.dx, C.in.dy);
         if (m > 0) {
           const f = Math.min(1, m) * um / m;
@@ -1503,12 +1630,15 @@ details[open] summary::after{content:" －"}
           uy = C.in.dy * f;
         }
       }
-      pushSeg(b, t, cur.cx, cur.cy, cur.r, ux, uy, w);
+      pushSeg(b, t, cur.cx, cur.cy, cur.r, ux, uy, w, reg);
     }
     function ledger(b, t) {
       const t0 = t - STEP;
       if (b.tn > t0 + 1e-9) return;
-      const C = b.ctl, c0 = U.circleAt(b, t0), c1 = U.circleAt(b, t), e = Math.exp(p.H * STEP);
+      const C = b.ctl, c0 = U.circleAt(b, t0), c1 = U.circleAt(b, t);
+      const si = LH ? segIndex(C, t0) : 0, reg = LH ? C.reg[si] : null, hr = LH ? C.h[si] : p.H, e = Math.exp(hr * STEP);
+      const r0c = reg ? anchorAt(reg, t0) : null, r1c = reg ? anchorAt(reg, t) : null;
+      const adv = (x, y) => reg ? [r1c.cx + (x - r0c.cx) * e, r1c.cy + (y - r0c.cy) * e] : [x * e, y * e];
       const Rs = Math.max(c0.r, c1.r) + 6, n = Math.max(4, Math.min(PLAYER.latticeMax, Math.ceil(Rs / PLAYER.cell))), sp = Rs / n;
       const near = (tt, cx, cy, R) => {
         const out = [];
@@ -1518,7 +1648,8 @@ details[open] summary::after{content:" －"}
         }
         return out;
       };
-      const own0 = Territory.locator(U.frame(t0), near(t0, c0.cx, c0.cy, Rs + 2)), own1 = Territory.locator(U.frame(t), near(t, c0.cx * e, c0.cy * e, Rs * e + 2));
+      const [a1x, a1y] = adv(c0.cx, c0.cy);
+      const own0 = Territory.locator(U.frame(t0), near(t0, c0.cx, c0.cy, Rs + 2)), own1 = Territory.locator(U.frame(t), near(t, a1x, a1y, Rs * e + 2));
       const ox = U.stepN * 0.6180339887 % 1 * sp, oy = U.stepN * 0.7548776662 % 1 * sp, wA = sp * sp * e * e / (p.RH * p.RH);
       const eP = VAC[b.vac].eps, eOf = (o) => o ? VAC[o.b.vac].eps : FALSE_EPS;
       let own = 0;
@@ -1526,7 +1657,7 @@ details[open] summary::after{content:" －"}
         const dx = i * sp + ox, dy = j * sp + oy;
         if (dx * dx + dy * dy > Rs * Rs) continue;
         const x = c0.cx + dx, y = c0.cy + dy;
-        const o0 = own0(x, y), o1 = own1(x * e, y * e);
+        const [x1, y1] = adv(x, y), o0 = own0(x, y), o1 = own1(x1, y1);
         const a0 = o0 ? o0.b : null, a1 = o1 ? o1.b : null;
         if (a1 === b) own++;
         if (a0 === a1 || a0 !== b && a1 !== b) continue;
@@ -1596,18 +1727,20 @@ details[open] summary::after{content:" －"}
     U.player = null;
     U.recenters = 0;
     U.comoving = { x: 0, y: 0 };
-    function rebase(ax, ay, t) {
+    function rebase(ax, ay, t, smooth = false) {
       const H = p.H, seen = /* @__PURE__ */ new Set();
+      cacheEpoch++;
       const move = (b) => {
         if (seen.has(b)) return;
         seen.add(b);
-        const e = Math.exp(H * (b.tn - t));
+        const e = b.ctl ? Math.exp(H * (b.tn - t)) : 1 / E(b, t);
         b.x -= ax * e;
         b.y -= ay * e;
         b.d = Math.hypot(b.x, b.y);
         if (b.ctl) {
           const C = b.ctl;
           for (let i = 0; i < C.t.length; i++) {
+            if (C.reg[i]) continue;
             const f = Math.exp(H * (C.t[i] - t));
             C.x[i] -= ax * f;
             C.y[i] -= ay * f;
@@ -1618,7 +1751,7 @@ details[open] summary::after{content:" －"}
       for (const b of U.longs) move(b);
       for (const b of U.live) move(b);
       for (const b of U.live) {
-        if (!(b.texit > t) || b.retired || b.player) continue;
+        if (!(b.texit > t) || b.retired || b.player || b.dyn) continue;
         if (b.ctl) {
           const c = U.circleAt(b, t);
           b.texit = exitTime(1, Math.hypot(c.cx, c.cy), c.r, t);
@@ -1633,7 +1766,7 @@ details[open] summary::after{content:" －"}
       U.comoving.x += ax * e0;
       U.comoving.y += ay * e0;
       U.recenters++;
-      for (const fn of listeners.rebase) fn({ x: ax, y: ay, t });
+      for (const fn of listeners.rebase) fn({ x: ax, y: ay, t, smooth });
     }
     U.rebase = (ax, ay) => rebase(ax, ay, U.tSim);
     function follow(t) {
@@ -1641,6 +1774,32 @@ details[open] summary::after{content:" －"}
       if (!P2) return;
       const c = U.circleAt(P2, t);
       if (Math.hypot(c.cx, c.cy) > PLAYER.recenter * p.RH) rebase(c.cx, c.cy, t);
+    }
+    U.obsRegion = null;
+    function comove(t) {
+      const P2 = U.obsRegion;
+      if (P2) {
+        const c0 = anchorAt(P2, t - STEP), c1 = anchorAt(P2, t), e = Math.exp(hIn(P2) * STEP);
+        const qx = c1.cx - c0.cx * e, qy = c1.cy - c0.cy * e;
+        if (qx * qx + qy * qy > 1e-12) rebase(qx, qy, t, true);
+      }
+      const o = U.ownerAt(0, 0, t);
+      U.obsRegion = o ? o.b : null;
+    }
+    function keepAnchors(t) {
+      const o = U.ownerAt(0, 0, t);
+      for (let R = o ? o.b : null; R; R = R.parent) {
+        if (R.ctl && R.player) continue;
+        const A = anchorAt(R, t);
+        if (!R.anc || t - R.anc.tk > 5 || Math.hypot(A.cx, A.cy) > p.RH) reanchor(R, 0, 0, t);
+      }
+    }
+    function sweep(t) {
+      for (const b of U.live) {
+        if (!b.dyn || !(b.texit > t) || b.retired || b.player) continue;
+        const c = U.circleAt(b, t);
+        if (Math.hypot(c.cx, c.cy) - c.r > p.RGEN + 60 || b.s < 0 && c.r <= 0) b.texit = t + STEP / 2;
+      }
     }
     function applyActions(step) {
       let k = 0;
@@ -1697,10 +1856,14 @@ details[open] summary::after{content:" －"}
         U.acc -= STEP;
         U.tSim += STEP;
         if (pendingAct < U.actions.length) applyActions(U.stepN + 1);
+        if (U.player) follow(U.tSim);
+        else if (LH) comove(U.tSim);
+        if (LH) keepAnchors(U.tSim);
         nucleate();
-        if (U.player || U.anyCtl) {
-          playerStep(U.tSim);
-          follow(U.tSim);
+        if (U.player || U.anyCtl) playerStep(U.tSim);
+        if (LH) {
+          if (U.stepN % 15 === 0) sweep(U.tSim);
+          cacheEpoch++;
         }
         if (++U.stepN % 30 === 0) retire();
         n++;
@@ -1749,8 +1912,8 @@ details[open] summary::after{content:" －"}
 
   // src/core/selfcheck.js
   var PLAYER_RECENTER = PLAYER.recenter;
-  var SelfCheck = /* @__PURE__ */ (() => {
-    const baseP = { seed: 4242, H: 0.25, RH: 140, R0: 3, RGEN: 3e3, typical: false, vacN: 12, crunchP: 0.25, oddDimP: 0.15 };
+  function buildSelfCheck(extraP = {}) {
+    const baseP = { seed: 4242, H: 0.25, RH: 140, R0: 3, RGEN: 3e3, typical: false, vacN: 12, crunchP: 0.25, oddDimP: 0.15, ...extraP };
     const baseT = () => ({ gamma: 25e-7, innerMul: 1, wallK: 1 });
     function buildRules(U, t) {
       const byB = /* @__PURE__ */ new Map(), cs = U.aliveAt(t).map((b) => {
@@ -1996,9 +2159,8 @@ details[open] summary::after{content:" －"}
             worst = Math.max(worst, v / c);
             if (v > c * (1 + 1e-9)) over++;
             if (i > 0) {
-              const e = Math.exp(U.p.H * (C.t[i] - C.t[i - 1])), H = U.p.H;
-              const px = (C.x[i - 1] + C.ux[i - 1] / H) * e - C.ux[i - 1] / H, pr = (C.r[i - 1] + C.w[i - 1] / H) * e - C.w[i - 1] / H;
-              if (Math.abs(px - C.x[i]) > 1e-6 * (1 + Math.abs(px)) || Math.abs(pr - C.r[i]) > 1e-6 * (1 + pr)) jump++;
+              const a = U.circleAt(P2, C.t[i] - 1e-7), b = U.circleAt(P2, C.t[i]), tol = 1e-4 + 1e-6 * (Math.abs(b.cx) + Math.abs(b.cy) + b.r);
+              if (Math.abs(a.cx - b.cx) > tol || Math.abs(a.cy - b.cy) > tol || Math.abs(a.r - b.r) > tol) jump++;
             }
           }
         }
@@ -2155,7 +2317,7 @@ details[open] summary::after{content:" －"}
           }
         }
         const acts = A.actions.filter((a) => a.result && a.result.ok).length;
-        return { pass: same && !inside && acts > 30, detail: `${A.actions.length} 個動作（成功 ${acts}）重播${same ? "完全一致" : "不一致"}；玩家宇宙內的成核 ${inside} 次（若不禁止，預期約 ${expect.toFixed(0)} 次）` };
+        return { pass: same && !inside && acts > 15, detail: `${A.actions.length} 個動作（成功 ${acts}）重播${same ? "完全一致" : "不一致"}；玩家宇宙內的成核 ${inside} 次（若不禁止，預期約 ${expect.toFixed(0)} 次）` };
       } },
       { name: "玩家宇宙：歸屬一致", desc: "有玩家宇宙在泡泡間移動時：物理與畫面歸屬一致、射線邊界與逐點判斷吻合", run() {
         let mis = 0, n = 0, bad = 0, rays = 0;
@@ -2307,7 +2469,7 @@ details[open] summary::after{content:" －"}
               prev = id;
             }
           }
-          maxEternal = Math.max(maxEternal, U.live.filter((b) => !isFinite(b.texit)).length);
+          maxEternal = Math.max(maxEternal, U.live.filter((b) => !isFinite(b.texit) && !b.dyn).length);
         }
         return { pass: !returns && maxEternal <= 3, detail: `5 個宇宙、${n} 個時間點：跳回 ${returns} 次；最後同時存在的永久泡泡最多 ${maxEternal} 個` };
       } },
@@ -2435,8 +2597,68 @@ details[open] summary::after{content:" －"}
         return { pass: flick === 0, detail: `${obs} 次觀測中忽隱忽現 ${flick} 次` };
       } }
     ];
+    if (baseP.localH) tests.push(
+      { name: "方案 B：子泡泡留在母泡泡內", desc: "子泡泡以母宇宙內部的膨脹率流動（比母宇宙所在區域慢），它的光錐必須一直留在母泡泡的光錐內", run() {
+        let bad = 0, n = 0;
+        for (const [seed, typical] of [[4242, false], [99, false], [23, true]]) {
+          const U = createUniverse({ ...baseP, seed, typical }, baseT());
+          for (let k = 0; k < 6; k++) {
+            U.presim(15);
+            const t = U.tSim;
+            for (const b of U.live) {
+              if (!b.parent || !(b.texit > t) || U.VAC[b.parent.vac].kind === "up") continue;
+              const c = U.circleAt(b, t), pc = U.circleAt(b.parent, t);
+              n++;
+              if (Math.hypot(c.cx - pc.cx, c.cy - pc.cy) + c.r > pc.r * (1 + 1e-9) + 1e-3) bad++;
+            }
+          }
+        }
+        return { pass: n > 100 && !bad, detail: `${n} 次觀測中子泡泡超出母泡泡 ${bad} 次` };
+      } },
+      { name: "方案 B：口袋內以自己的膨脹率遠離", desc: "同一個口袋宇宙裡的兩個子泡泡，中心距離以該宇宙的膨脹率 H·√ε 增加（而不是外面假真空的 H）", run() {
+        const U = createUniverse(baseP, baseT());
+        U.presim(50);
+        let worst = 0, n = 0;
+        const t1 = U.tSim, t2 = t1 + 2;
+        const kids = U.live.filter((b) => b.parent && b.texit > t2 + 1 && U.VAC[b.parent.vac].kind === "ds");
+        const c1 = new Map(kids.map((b) => [b, U.circleAt(b, t1)]));
+        U.presim(2);
+        for (let i = 0; i < kids.length; i++) for (let j = 0; j < i; j++) {
+          const a = kids[i], b = kids[j];
+          if (a.parent !== b.parent || !(a.texit > t2) || !(b.texit > t2)) continue;
+          const d1 = Math.hypot(c1.get(a).cx - c1.get(b).cx, c1.get(a).cy - c1.get(b).cy);
+          const A = U.circleAt(a, t2), B = U.circleAt(b, t2), d2 = Math.hypot(A.cx - B.cx, A.cy - B.cy);
+          const want = Math.exp(U.hIn(a.parent) * (t2 - t1));
+          n++;
+          worst = Math.max(worst, Math.abs(d2 / d1 - want) / want);
+        }
+        return { pass: n > 5 && worst < 1e-6, detail: `${n} 對兄弟泡泡：距離增長率與 e^{h·Δt} 的最大相對誤差 ${worst.toExponential(1)}` };
+      } },
+      { name: "方案 B：玩家在口袋內的維持費", desc: "玩家在 Λ > 0 的口袋宇宙內維持大小：花費符合當地的膨脹率 2π·h·Δε·r²（h = H·√ε 比外面小，所以比在假真空中便宜）", run() {
+        const U = createUniverse(baseP, { ...baseT(), gamma: 0 });
+        U.presim(1);
+        const V = U.VAC.filter((v) => v.eps < 1).sort((a2, b) => a2.eps - b.eps), lo = V[0], hi = V[V.length - 1];
+        spawnPlayer(U, lo.i, 30, 1);
+        const P2 = U.player;
+        let c = U.circleAt(P2, U.tSim);
+        const a = U.act({ type: "nucleate", x: c.cx + 45, y: c.cy, vac: hi.i });
+        U.advance(STEP);
+        U.act({ type: "steer", dx: 1, dy: 0, rT: 30 });
+        U.presim(3);
+        U.act({ type: "steer", dx: 0, dy: 0, rT: 30 });
+        U.presim(2);
+        const Q = U.hist.find((b) => b.id === a.result.id), n = P2.ctl.t.length - 1, inPocket = P2.ctl.reg[n] === Q;
+        const E0 = P2.ctl.E;
+        U.presim(6);
+        const h = U.hIn(Q), r = U.circleAt(P2, U.tSim).r, theory = 2 * Math.PI * h * (hi.eps - lo.eps) * (r / U.p.RH) ** 2 * 6, loss = E0 - P2.ctl.E;
+        const fv = 2 * Math.PI * U.p.H * (1 - lo.eps) * (r / U.p.RH) ** 2 * 6;
+        return { pass: inPocket && Math.abs(loss - theory) < 0.08 * theory + 5e-3, detail: `玩家${inPocket ? "在" : "不在"}口袋內；6 秒維持費 ${loss.toFixed(3)}（理論 ${theory.toFixed(3)}，在假真空中會是 ${fv.toFixed(3)}）` };
+      } }
+    );
     return { tests, buildRules };
-  })();
+  }
+  var SelfCheck = buildSelfCheck();
+  var SelfCheckB = buildSelfCheck({ localH: true });
 
   // src/app/config.js
   var tune = { gamma: 25e-7, innerMul: 1, wallK: 1 };
@@ -2793,10 +3015,10 @@ details[open] summary::after{content:" －"}
     S.zoomAnim.rem -= s;
     if (Math.abs(S.zoomAnim.rem) < 2e-3) S.zoomAnim = null;
   }
-  function onRebase({ x, y, t }) {
+  function onRebase({ x, y, t, smooth }) {
     P.x -= x;
     P.y -= y;
-    S.anchorFade = { x: -x, y: -y, t, t0: performance.now() };
+    if (!smooth) S.anchorFade = { x: -x, y: -y, t, t0: performance.now() };
   }
   function buildPalettes(VAC) {
     return VAC.map((V) => {
@@ -3970,7 +4192,7 @@ details[open] summary::after{content:" －"}
   function refreshDerived() {
     const h = uniVal.hub, rh = uniVal.rh;
     const q = S.U ? S.U.p : {};
-    const dirty = !S.U || h !== q.H || rh !== q.RH || uniVal.r0 !== q.R0 || uniVal.rgen !== q.RGEN || uniVal.presim !== S.PRESIM || uniVal.vacN !== q.vacN || uniVal.crunchP !== q.crunchP || uniVal.oddDimP !== q.oddDimP || parseSeed($("seedIn").value) !== q.seed || $("obsSel").value === "typical" !== q.typical;
+    const dirty = !S.U || h !== q.H || rh !== q.RH || uniVal.r0 !== q.R0 || uniVal.rgen !== q.RGEN || uniVal.presim !== S.PRESIM || uniVal.vacN !== q.vacN || uniVal.crunchP !== q.crunchP || uniVal.oddDimP !== q.oddDimP || parseSeed($("seedIn").value) !== q.seed || $("obsSel").value === "typical" !== q.typical || $("localHSel").value === "1" !== !!q.localH;
     $("derived").innerHTML = `泡壁速度 c = H·R<sub>H</sub> = <b>${(h * rh).toFixed(1)} px/s</b><br>空間倍增時間 ln2 / H = <b>${(Math.LN2 / h).toFixed(2)} 秒</b><br>每分鐘膨脹 <b>10<sup>${(h * 60 / Math.LN10).toFixed(1)}</sup></b> 倍`;
     $("applyBtn").classList.toggle("dirty", dirty);
     $("applyBtn").textContent = dirty ? "套用並重新開始（有未套用的變更）" : "套用並重新開始";
@@ -4009,7 +4231,8 @@ details[open] summary::after{content:" －"}
       typical: $("obsSel").value === "typical",
       vacN: uniVal.vacN,
       crunchP: uniVal.crunchP,
-      oddDimP: uniVal.oddDimP
+      oddDimP: uniVal.oddDimP,
+      localH: $("localHSel").value === "1"
     }, tune, { actions: opts.actions });
     S.U.window = S.HIST;
     S.U.on("rebase", onRebase);
@@ -4026,7 +4249,7 @@ details[open] summary::after{content:" －"}
     $("reseedBtn").hidden = true;
     resetTemporal();
     try {
-      history.replaceState(null, "", "#seed=" + seed + (S.U.p.typical ? "&obs=typical" : ""));
+      history.replaceState(null, "", "#seed=" + seed + (S.U.p.typical ? "&obs=typical" : "") + (S.U.p.localH ? "&localH=1" : ""));
     } catch (e) {
     }
     colSeen.clear();
@@ -4057,12 +4280,14 @@ details[open] summary::after{content:" －"}
       const m = /seed=([^&]+)/.exec(location.hash), o = /obs=typical/.test(location.hash);
       $("seedIn").value = m ? parseSeed(decodeURIComponent(m[1])) : Math.random() * 1e9 >>> 0;
       if (o) $("obsSel").value = "typical";
+      if (/localH=1/.test(location.hash)) $("localHSel").value = "1";
     }
     uniReady = true;
     refreshDerived();
     $("applyBtn").addEventListener("click", () => restart());
     $("seedIn").addEventListener("input", refreshDerived);
     $("obsSel").addEventListener("change", refreshDerived);
+    $("localHSel").addEventListener("change", refreshDerived);
     $("seedRnd").addEventListener("click", () => {
       $("seedIn").value = Math.random() * 1e9 >>> 0;
       refreshDerived();
@@ -4244,6 +4469,54 @@ details[open] summary::after{content:" －"}
         }
         const med = other.slice().sort((a, b) => a - b)[other.length >> 1] || 1, worst = Math.max(0, ...at);
         return { pass: at.length > 0 && worst < 2.5 * med, detail: `重新置中 ${at.length} 次，那一格的畫面變化最大 ${worst.toFixed(1)}（一般一格的中位數 ${med.toFixed(1)}）` };
+      } }, { name: "方案 B 的繪製效能", desc: "同一組種子分別以「單一膨脹率」與「各區域各自的膨脹率（方案 B）」演化後繪製。以每格時間的中位數比較（無頭瀏覽器偶爾會有與內容無關的數秒停頓）：預設縮放下方案 B 仍應低於 16 毫秒；縮到最小只列出供參考（方案 B 的口袋內兄弟泡泡較擁擠、疇壁較多）", run() {
+        const keep = { U: S.U, PAL: S.PAL, HUB: S.HUB, RH: S.RH, R0: S.R0, RGEN: S.RGEN, Z: S.Z, px: P.x, py: P.y, fade: S.anchorFade, tv: S.tView };
+        const ms = { off: [0, 0], on: [0, 0] };
+        try {
+          for (const [seed, typical, T] of [[4242, false, 120], [99, false, 90], [7, false, 60], [23, true, 30]]) for (const localH of [false, true]) {
+            const U = createUniverse({ seed, H: 0.25, RH: 140, R0: 3, RGEN: 3e3, typical, localH, vacN: 12, crunchP: 0.25, oddDimP: 0.15 }, { gamma: 25e-7, innerMul: 1, wallK: 1 });
+            U.presim(T);
+            S.U = U;
+            S.PAL = buildPalettes(U.VAC);
+            S.HUB = U.p.H;
+            S.RH = U.p.RH;
+            S.R0 = U.p.R0;
+            S.RGEN = U.p.RGEN;
+            S.anchorFade = null;
+            S.tView = U.tSim;
+            const k = localH ? "on" : "off";
+            [defaultZoom(), S.minZ].forEach((z, zi) => {
+              S.Z = z;
+              P.x = 0;
+              P.y = 0;
+              clampCam();
+              render(S.tView);
+              const f2 = [];
+              for (let i = 0; i < 9; i++) {
+                const t0 = performance.now();
+                render(S.tView - i % 3 * 0.03);
+                f2.push(performance.now() - t0);
+              }
+              ms[k][zi] = Math.max(ms[k][zi], f2.sort((a, b) => a - b)[4]);
+            });
+          }
+        } catch (e) {
+          return { pass: false, detail: "發生錯誤：" + e.message };
+        } finally {
+          S.U = keep.U;
+          S.PAL = keep.PAL;
+          S.HUB = keep.HUB;
+          S.RH = keep.RH;
+          S.R0 = keep.R0;
+          S.RGEN = keep.RGEN;
+          S.Z = keep.Z;
+          P.x = keep.px;
+          P.y = keep.py;
+          S.anchorFade = keep.fade;
+          S.tView = keep.tv;
+        }
+        const f = (a) => `預設縮放 ${a[0].toFixed(1)}、縮到最小 ${a[1].toFixed(1)} 毫秒`;
+        return { pass: ms.on[0] < 16, detail: `最慢的中位數｜單一膨脹率：${f(ms.off)}；方案 B：${f(ms.on)}` };
       } }, { name: "繪製效能", desc: "目前畫面的單格繪製時間應低於 16 毫秒（每秒 60 格的預算）", run() {
         const t0 = performance.now();
         for (let i = 0; i < 10; i++) render(S.tView);

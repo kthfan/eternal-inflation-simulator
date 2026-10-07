@@ -77,7 +77,7 @@ export function refreshDerived(){
   const q = S.U ? S.U.p : {};
   const dirty = !S.U || h !== q.H || rh !== q.RH || uniVal.r0 !== q.R0 || uniVal.rgen !== q.RGEN || uniVal.presim !== S.PRESIM ||
     uniVal.vacN !== q.vacN || uniVal.crunchP !== q.crunchP || uniVal.oddDimP !== q.oddDimP ||
-    parseSeed($('seedIn').value) !== q.seed || ($('obsSel').value === 'typical') !== q.typical;
+    parseSeed($('seedIn').value) !== q.seed || ($('obsSel').value === 'typical') !== q.typical || ($('localHSel').value === '1') !== !!q.localH;
   $('derived').innerHTML =
     `泡壁速度 c = H·R<sub>H</sub> = <b>${(h*rh).toFixed(1)} px/s</b><br>`+
     `空間倍增時間 ln2 / H = <b>${(Math.LN2/h).toFixed(2)} 秒</b><br>`+
@@ -111,7 +111,7 @@ export function restart(opts = {}){
   $('seedIn').value = seed;
   S.PRESIM = uniVal.presim;
   S.U = createUniverse({ seed, H: uniVal.hub, RH: uniVal.rh, R0: uniVal.r0, RGEN: uniVal.rgen, typical: $('obsSel').value === 'typical',
-    vacN: uniVal.vacN, crunchP: uniVal.crunchP, oddDimP: uniVal.oddDimP }, tune, { actions: opts.actions });
+    vacN: uniVal.vacN, crunchP: uniVal.crunchP, oddDimP: uniVal.oddDimP, localH: $('localHSel').value === '1' }, tune, { actions: opts.actions });
   S.U.window = S.HIST;
   S.U.on('rebase', onRebase); S.anchorFade = null;
   S.HUB = S.U.p.H; S.RH = S.U.p.RH; S.R0 = S.U.p.R0; S.RGEN = S.U.p.RGEN;
@@ -119,7 +119,7 @@ export function restart(opts = {}){
   $('landscape').innerHTML = landHTML(); $('sS').textContent = seed;
   S.obsEndKey = ''; $('banner').hidden = true; $('reseedBtn').hidden = true;
   resetTemporal();
-  try { history.replaceState(null, '', '#seed=' + seed + (S.U.p.typical ? '&obs=typical' : '')); } catch(e){}
+  try { history.replaceState(null, '', '#seed=' + seed + (S.U.p.typical ? '&obs=typical' : '') + (S.U.p.localH ? '&localH=1' : '')); } catch(e){}
   colSeen.clear(); S.pendingCol = [];
   S.tView = 0; S.isLive = true; S.playing = true; S.scrubbing = false;
   S.selected = null; card.hidden = true; S.zoomAnim = null;
@@ -138,12 +138,14 @@ export function init(){
     const m = /seed=([^&]+)/.exec(location.hash), o = /obs=typical/.test(location.hash);
     $('seedIn').value = m ? parseSeed(decodeURIComponent(m[1])) : (Math.random()*1e9) >>> 0;
     if(o) $('obsSel').value = 'typical';
+    if(/localH=1/.test(location.hash)) $('localHSel').value = '1';
   }
   uniReady = true;
   refreshDerived();
   $('applyBtn').addEventListener('click', () => restart());
   $('seedIn').addEventListener('input', refreshDerived);
   $('obsSel').addEventListener('change', refreshDerived);
+  $('localHSel').addEventListener('change', refreshDerived);
   $('seedRnd').addEventListener('click', () => { $('seedIn').value = (Math.random()*1e9) >>> 0; refreshDerived(); });
   $('bannerClose').addEventListener('click', () => { $('banner').hidden = true; });
   $('bannerNew').addEventListener('click', () => { $('seedIn').value = (Math.random()*1e9) >>> 0; restart(); });

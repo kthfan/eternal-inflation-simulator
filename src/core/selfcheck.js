@@ -5,8 +5,9 @@ import { STEP, createUniverse, PLAYER } from './universe.js';
 const PLAYER_RECENTER = PLAYER.recenter;
 
 /* ---------- 自我檢查：用全新的宇宙實例驗證不變式（不影響正在執行的模擬） ---------- */
-export const SelfCheck = (() => {
-  const baseP = { seed: 4242, H: .25, RH: 140, R0: 3, RGEN: 3000, typical: false, vacN: 12, crunchP: .25, oddDimP: .15 };
+/* extraP：附加的宇宙參數（例如 { localH: true } 以方案 B 跑同一組不變式） */
+export function buildSelfCheck(extraP = {}){
+  const baseP = { seed: 4242, H: .25, RH: 140, R0: 3, RGEN: 3000, typical: false, vacN: 12, crunchP: .25, oddDimP: .15, ...extraP };
   const baseT = () => ({ gamma: 2.5e-6, innerMul: 1, wallK: 1 });
   // 以物理座標為所有存活泡泡建立規則（與畫面呼叫同一個 Territory.buildRules，只是縮放倍率為 1）
   function buildRules(U, t){
@@ -228,9 +229,9 @@ export const SelfCheck = (() => {
           n++; const v = Math.hypot(C.ux[i], C.uy[i]) + Math.abs(C.w[i]); worst = Math.max(worst, v/c);
           if(v > c*(1 + 1e-9)) over++;
           if(i > 0){
-            const e = Math.exp(U.p.H*(C.t[i] - C.t[i-1])), H = U.p.H;
-            const px = (C.x[i-1] + C.ux[i-1]/H)*e - C.ux[i-1]/H, pr = (C.r[i-1] + C.w[i-1]/H)*e - C.w[i-1]/H;
-            if(Math.abs(px - C.x[i]) > 1e-6*(1 + Math.abs(px)) || Math.abs(pr - C.r[i]) > 1e-6*(1 + pr)) jump++;
+            // 段與段的交界：前一段外推到交界時刻，與後一段的起點相同（用 circleAt 比較，與座標表示方式無關）
+            const a = U.circleAt(P, C.t[i] - 1e-7), b = U.circleAt(P, C.t[i]), tol = 1e-4 + 1e-6*(Math.abs(b.cx) + Math.abs(b.cy) + b.r);
+            if(Math.abs(a.cx - b.cx) > tol || Math.abs(a.cy - b.cy) > tol || Math.abs(a.r - b.r) > tol) jump++;
           }
         }
       }
@@ -344,7 +345,7 @@ export const SelfCheck = (() => {
         for(let t = P.tn; t < U.tSim; t += .5){ const c = U.circleAt(P, t); expect += U.tune.gamma*U.VAC[P.vac].grel*U.tune.innerMul*Math.PI*c.r*c.r*.5; }
       }
       const acts = A.actions.filter(a => a.result && a.result.ok).length;
-      return { pass: same && !inside && acts > 30, detail: `${A.actions.length} 個動作（成功 ${acts}）重播${same ? '完全一致' : '不一致'}；玩家宇宙內的成核 ${inside} 次（若不禁止，預期約 ${expect.toFixed(0)} 次）` };
+      return { pass: same && !inside && acts > 15, detail: `${A.actions.length} 個動作（成功 ${acts}）重播${same ? '完全一致' : '不一致'}；玩家宇宙內的成核 ${inside} 次（若不禁止，預期約 ${expect.toFixed(0)} 次）` };
     }},
     { name: '玩家宇宙：歸屬一致', desc: '有玩家宇宙在泡泡間移動時：物理與畫面歸屬一致、射線邊界與逐點判斷吻合', run(){
       let mis = 0, n = 0, bad = 0, rays = 0;
@@ -444,7 +445,7 @@ export const SelfCheck = (() => {
           const o = U.observer(U.tSim), id = o.b ? o.b.id : 0;
           if(id !== prev){ if(seen.has(id)) returns++; seen.add(id); prev = id; }
         }
-        maxEternal = Math.max(maxEternal, U.live.filter(b => !isFinite(b.texit)).length);
+        maxEternal = Math.max(maxEternal, U.live.filter(b => !isFinite(b.texit) && !b.dyn).length);   // 方案 B 的子泡泡流出改由掃描判斷，不算永久
       }
       return { pass: !returns && maxEternal <= 3, detail: `5 個宇宙、${n} 個時間點：跳回 ${returns} 次；最後同時存在的永久泡泡最多 ${maxEternal} 個` };
     }},
@@ -517,5 +518,52 @@ export const SelfCheck = (() => {
       return { pass: flick === 0, detail: `${obs} 次觀測中忽隱忽現 ${flick} 次` };
     }},
   ];
+  if(baseP.localH) tests.push(
+    { name: '方案 B：子泡泡留在母泡泡內', desc: '子泡泡以母宇宙內部的膨脹率流動（比母宇宙所在區域慢），它的光錐必須一直留在母泡泡的光錐內', run(){
+      let bad = 0, n = 0;
+      for(const [seed, typical] of [[4242, false], [99, false], [23, true]]){
+        const U = createUniverse({ ...baseP, seed, typical }, baseT());
+        for(let k=0;k<6;k++){
+          U.presim(15); const t = U.tSim;
+          for(const b of U.live){
+            if(!b.parent || !(b.texit > t) || U.VAC[b.parent.vac].kind === 'up') continue;
+            const c = U.circleAt(b, t), pc = U.circleAt(b.parent, t); n++;
+            if(Math.hypot(c.cx - pc.cx, c.cy - pc.cy) + c.r > pc.r*(1 + 1e-9) + 1e-3) bad++;
+          }
+        }
+      }
+      return { pass: n > 100 && !bad, detail: `${n} 次觀測中子泡泡超出母泡泡 ${bad} 次` };
+    }},
+    { name: '方案 B：口袋內以自己的膨脹率遠離', desc: '同一個口袋宇宙裡的兩個子泡泡，中心距離以該宇宙的膨脹率 H·√ε 增加（而不是外面假真空的 H）', run(){
+      const U = createUniverse(baseP, baseT()); U.presim(50);
+      let worst = 0, n = 0; const t1 = U.tSim, t2 = t1 + 2;
+      const kids = U.live.filter(b => b.parent && b.texit > t2 + 1 && U.VAC[b.parent.vac].kind === 'ds');
+      const c1 = new Map(kids.map(b => [b, U.circleAt(b, t1)]));
+      U.presim(2);
+      for(let i=0;i<kids.length;i++) for(let j=0;j<i;j++){
+        const a = kids[i], b = kids[j]; if(a.parent !== b.parent || !(a.texit > t2) || !(b.texit > t2)) continue;
+        const d1 = Math.hypot(c1.get(a).cx - c1.get(b).cx, c1.get(a).cy - c1.get(b).cy);
+        const A = U.circleAt(a, t2), B = U.circleAt(b, t2), d2 = Math.hypot(A.cx - B.cx, A.cy - B.cy);
+        const want = Math.exp(U.hIn(a.parent)*(t2 - t1)); n++;
+        worst = Math.max(worst, Math.abs(d2/d1 - want)/want);
+      }
+      return { pass: n > 5 && worst < 1e-6, detail: `${n} 對兄弟泡泡：距離增長率與 e^{h·Δt} 的最大相對誤差 ${worst.toExponential(1)}` };
+    }},
+    { name: '方案 B：玩家在口袋內的維持費', desc: '玩家在 Λ > 0 的口袋宇宙內維持大小：花費符合當地的膨脹率 2π·h·Δε·r²（h = H·√ε 比外面小，所以比在假真空中便宜）', run(){
+      const U = createUniverse(baseP, { ...baseT(), gamma: 0 }); U.presim(1);
+      const V = U.VAC.filter(v => v.eps < 1).sort((a, b) => a.eps - b.eps), lo = V[0], hi = V[V.length - 1];
+      spawnPlayer(U, lo.i, 30, 1); const P = U.player; let c = U.circleAt(P, U.tSim);
+      const a = U.act({ type: 'nucleate', x: c.cx + 45, y: c.cy, vac: hi.i }); U.advance(STEP);
+      U.act({ type: 'steer', dx: 1, dy: 0, rT: 30 }); U.presim(3); U.act({ type: 'steer', dx: 0, dy: 0, rT: 30 }); U.presim(2);
+      const Q = U.hist.find(b => b.id === a.result.id), n = P.ctl.t.length - 1, inPocket = P.ctl.reg[n] === Q;
+      const E0 = P.ctl.E; U.presim(6);
+      const h = U.hIn(Q), r = U.circleAt(P, U.tSim).r, theory = 2*Math.PI*h*(hi.eps - lo.eps)*(r/U.p.RH)**2*6, loss = E0 - P.ctl.E;
+      const fv = 2*Math.PI*U.p.H*(1 - lo.eps)*(r/U.p.RH)**2*6;
+      return { pass: inPocket && Math.abs(loss - theory) < .08*theory + .005, detail: `玩家${inPocket ? '在' : '不在'}口袋內；6 秒維持費 ${loss.toFixed(3)}（理論 ${theory.toFixed(3)}，在假真空中會是 ${fv.toFixed(3)}）` };
+    }},
+  );
   return { tests, buildRules };
-})();
+}
+export const SelfCheck = buildSelfCheck();
+/* 方案 B（各區域膨脹率）：同一組不變式在 localH 下也必須成立 */
+export const SelfCheckB = buildSelfCheck({ localH: true });

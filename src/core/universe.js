@@ -59,7 +59,8 @@ export function makeLandscape(r, p){
   return VAC;
 }
 
-/* p：建立後不可變的宇宙參數 { seed, H, RH, R0, RGEN, typical, vacN, crunchP, oddDimP }
+/* p：建立後不可變的宇宙參數 { seed, H, RH, R0, RGEN, typical, vacN, crunchP, oddDimP, localH }
+   localH（方案 B，見 docs/ROADMAP.md D11）：各區域以自己的膨脹率流動。false 時全部共用假真空的 H（原本的模型，逐位元不變）
    tune：執行中可調整、會影響之後演化的參數 { gamma, innerMul, wallK }
    opts.actions：要重播的動作紀錄（U.actions 的內容），相同種子 + 相同動作紀錄 → 相同歷史 */
 export function createUniverse(p, tune, opts = {}){
@@ -76,18 +77,76 @@ export function createUniverse(p, tune, opts = {}){
 
   const E = (b, t) => Math.min(EMAX, Math.exp(p.H*(t - b.tn)));
   U.E = E;
+
+  /* ---------- 方案 B：各區域的膨脹率（p.localH）----------
+     口袋宇宙內部以自己的膨脹率流動：H_in = H·√(ε/ε_假真空)（Λ > 0）；Λ ≤ 0 視為 0（Λ≈0 幾乎不膨脹；Λ<0 先膨脹後收縮，這裡不細分）；
+     激發態假真空 H·√1.6。子泡泡跟著母宇宙內部的空間流動：以母宇宙中心為縮放中心、速率 H_in(母)，泡壁相對當地空間以光速推進：
+       中心 c(t) = c_母(t) + (誕生點 − c_母(tn))·e^{h(t−tn)}，半徑 r(t) = (r₀ ± c/h)·e^{h(t−tn)} ∓ c/h（h → 0 時 r₀ ± c·(t−tn)）。
+     以縮放中心做縮放，圓仍是圓（Territory 不用改）；子孫的真空能較低 → h 較小 → 子泡泡永遠留在母泡泡的光錐內。
+     這是「各區域各自膨脹、在泡壁處接起來」的近似：真實的泡泡內部是泡壁光錐內的另一個開放宇宙。 */
+  const LH = !!p.localH, cLight = p.H*p.RH;
+  /* 方案 B 的倍數上限：偏移改存相對焦點附近的錨點，偏移小、倍數大、乘積仍在正常範圍，所以不需要 EMAX 這個保險（只防溢位）。
+     若照 EMAX 截斷，年齡夠大的子泡泡會凍結，而換錨點時的換算又不知道它凍結了，兩者一不一致就會漂走 */
+  const BMAX = 1e250, ex = (h, d) => Math.min(BMAX, Math.exp(h*d));
+  const hIn = b => { if(!b) return p.H; const e = VAC[b.vac].eps; return e > 0 ? p.H*Math.sqrt(e/FALSE_EPS) : 0; };
+  U.hIn = hIn;
+  const grow = (r0, s, h, d) => {
+    if(h > 1e-9){ const e = ex(h, d), k = cLight/h; return s < 0 ? Math.max(0, (r0 - k)*e + k) : (r0 + k)*e - k; }
+    return s < 0 ? Math.max(0, r0 - cLight*d) : r0 + cLight*d;
+  };
+  /* 母宇宙中心的快取（同一時刻、同一座標系內重複使用；每一步與每次平移原點後失效） */
+  let cacheEpoch = 0;
+  const centerAt = (b, t) => {
+    if(b._ct === t && b._ce === cacheEpoch) return b._cc;
+    const c = U.circleAt(b, t); b._ct = t; b._ce = cacheEpoch; b._cc = c; return c;
+  };
+  /* 區域的錨點：均勻膨脹以任何一個「隨該區域流動的點」為縮放中心都是同一個流動。錨點起初就是泡泡中心；
+     焦點在這個區域內時，錨點定期換到焦點附近（reanchor），子泡泡與玩家軌跡段改存相對錨點的偏移。
+     否則古老的巨大口袋宇宙中心遠在 10¹⁵ 像素外，「中心 + 偏移·e^{h·年齡}」是兩個巨大的數相減，誤差無限放大。
+     R.anc = { tk, dx, dy }：錨點在 tk 時相對 R 中心的位置（相對量，平移原點時不用改）；A(t) = c_R(t) + (dx, dy)·e^{h_R(t−tk)} */
+  const anchorAt = (R, t) => {
+    if(!R.anc) return centerAt(R, t);
+    if(R._at === t && R._ae === cacheEpoch) return R._ac;
+    const c = centerAt(R, t), e = ex(hIn(R), t - R.anc.tk);
+    const a = { cx: c.cx + R.anc.dx*e, cy: c.cy + R.anc.dy*e };
+    R._at = t; R._ae = cacheEpoch; R._ac = a; return a;
+  };
+  /* 把 R 的錨點換到此刻位於 (ax, ay) 的 R 共動點：所有以 R 為區域的偏移扣掉新舊錨點之差（隨 R 的膨脹率換算到各自的時刻） */
+  function reanchor(R, ax, ay, t){
+    const A = anchorAt(R, t), dx = ax - A.cx, dy = ay - A.cy, h = hIn(R), seen = new Set();
+    const fix = b => {
+      if(seen.has(b)) return; seen.add(b);
+      // 與 circleAt／ctlCircle 用同一個倍數換算（1/ex），兩邊才會一致
+      if(b.dyn && b.parent === R && !b.ctl){ const f = 1/ex(h, t - b.tn); b.ox -= dx*f; b.oy -= dy*f; }
+      if(b.ctl){ const C = b.ctl; for(let i=0;i<C.t.length;i++) if(C.reg[i] === R){ const f = 1/ex(h, t - C.t[i]); C.x[i] -= dx*f; C.y[i] -= dy*f; } }
+    };
+    for(const b of U.hist) fix(b); for(const b of U.longs) fix(b); for(const b of U.live) fix(b);
+    const c = centerAt(R, t); R.anc = { tk: t, dx: ax - c.cx, dy: ay - c.cy };
+    cacheEpoch++;
+  }
   /* 泡壁以光速擴張：r = R0·E + RH·(E−1)；收縮泡泡（s = −1，內部真空能比周圍高）：r = r0·E − RH·(E−1)，縮到 0 為止 */
   U.circleAt = (b, t) => {
     if(b.ctl) return ctlCircle(b, t);
+    if(LH && b.parent){
+      const pc = anchorAt(b.parent, t), d = t - b.tn, e = b.h > 0 ? ex(b.h, d) : 1;
+      return { b, cx: pc.cx + b.ox*e, cy: pc.cy + b.oy*e, r: grow(b.r0, b.s, b.h, d) };
+    }
     const e = E(b, t); return { b, cx: b.x*e, cy: b.y*e, r: b.s < 0 ? Math.max(0, b.r0*e - p.RH*(e - 1)) : p.R0*e + p.RH*(e - 1) };
   };
   /* 可控制的泡泡（玩家）：每一步的控制 (ux, uy, w) 固定，中心與半徑有解析解（逐段解析）。
      c(t) = (c₀ + u/H)·e^{HΔt} − u/H，r(t) = (r₀ + w/H)·e^{HΔt} − w/H；最後一段之後沿用最後的控制外推 */
+  const segIndex = (C, t) => { const T = C.t; let lo = 0, hi = T.length - 1; while(lo < hi){ const m = (lo + hi + 1) >> 1; if(T[m] <= t) lo = m; else hi = m - 1; } return lo; };
   function ctlCircle(b, t){
-    const C = b.ctl, T = C.t;
-    let lo = 0, hi = T.length - 1;
-    while(lo < hi){ const m = (lo + hi + 1) >> 1; if(T[m] <= t) lo = m; else hi = m - 1; }
-    const i = lo, H = p.H, e = Math.min(EMAX, Math.exp(H*(t - T[i]))), ux = C.ux[i]/H, uy = C.uy[i]/H, w = C.w[i]/H;
+    const C = b.ctl;
+    if(LH){
+      // 方案 B：每一段記錄當時所在的區域 reg（null = 假真空，以原點為縮放中心），位置是相對區域中心的偏移
+      const i = segIndex(C, t), h = C.h[i], d = t - C.t[i], reg = C.reg[i], base = reg ? anchorAt(reg, t) : null;
+      let x, y, r;
+      if(h > 1e-9){ const e = ex(h, d), ux = C.ux[i]/h, uy = C.uy[i]/h, w = C.w[i]/h; x = (C.x[i] + ux)*e - ux; y = (C.y[i] + uy)*e - uy; r = (C.r[i] + w)*e - w; }
+      else { x = C.x[i] + C.ux[i]*d; y = C.y[i] + C.uy[i]*d; r = C.r[i] + C.w[i]*d; }
+      return { b, cx: (base ? base.cx : 0) + x, cy: (base ? base.cy : 0) + y, r: Math.max(0, r) };
+    }
+    const i = segIndex(C, t), H = p.H, e = Math.min(EMAX, Math.exp(H*(t - C.t[i]))), ux = C.ux[i]/H, uy = C.uy[i]/H, w = C.w[i]/H;
     return { b, cx: (C.x[i] + ux)*e - ux, cy: (C.y[i] + uy)*e - uy, r: Math.max(0, (C.r[i] + w)*e - w) };
   }
   U.eps = b => VAC[b.vac].eps;
@@ -119,6 +178,10 @@ export function createUniverse(p, tune, opts = {}){
     if(W.vac === L.vac) return 0;
     const D = U.eps(L) - U.eps(W), tc = U.contactStart(W, L, t);
     if(t <= tc) return 0;
+    if(LH && W.parent && W.parent === L.parent){     // 方案 B：同一個母宇宙裡的疇壁隨母宇宙內部的空間拉長
+      const v = .85*D/(Math.abs(D) + .25)*tune.wallK*cLight, h = W.h, d = t - tc;
+      return h > 1e-9 ? v*(Math.min(EMAX, Math.exp(h*d)) - 1)/h : v*d;
+    }
     return .85*D/(Math.abs(D) + .25)*tune.wallK*p.RH*(Math.min(EMAX, Math.exp(p.H*(t - tc))) - 1);
   };
   /* 疇壁從何時開始推進：一般泡泡是第一次相撞的時刻；可控制的泡泡（玩家）可能分開又再接觸，取 t 所在那一段接觸的開始時刻 */
@@ -194,19 +257,27 @@ export function createUniverse(p, tune, opts = {}){
     }
     const V = VAC[vac], s = forced ? forced.s : 1, r0 = forced ? forced.r0 : p.R0;
     let texit = exitTime(s, d, r0, t);
+    let dyn = false, ox, oy, h;
+    if(LH && parent){
+      // 方案 B：子泡泡相對母宇宙中心的偏移與流動速率；流出時刻沒有簡單的解析式，改由每 0.5 秒的掃描判斷（dyn）
+      const pc = anchorAt(parent, t); ox = x - pc.cx; oy = y - pc.cy; h = hIn(parent); dyn = true;
+      const k = h > 1e-9 ? cLight/h : Infinity;
+      texit = s > 0 ? Infinity : h > 1e-9 ? (r0 < k ? t + Math.log(k/(k - r0))/h : Infinity) : t + r0/cLight;   // 收縮泡泡：縮成一點的時刻
+    }
     if(forced && forced.ctl) texit = Infinity;     // 玩家宇宙：一直保留（之後由焦點跟隨處理，見 D9 M4）
     const b = { id: U.nextId++, tn: t, x, y, d, vac, seed, parent: parent || null, depth: parent ? parent.depth + 1 : 0, s, r0,
       crunch: V.kind === 'ads', crunchT: V.crunchT, heatT: V.hdT, texit };
+    if(dyn){ b.dyn = true; b.ox = ox; b.oy = oy; b.h = h; }
     if(forced) b.act = true;
     if(forced && forced.ctl){
       // 玩家宇宙的內部時間無法再用光錐的雙曲面公式（D7）；輕鬆模式下先不會大擠壓、熱寂
       b.crunch = false; b.heatT = Infinity;
-      b.ctl = { t: [], x: [], y: [], r: [], ux: [], uy: [], w: [], contacts: new Map(),
+      b.ctl = { t: [], x: [], y: [], r: [], ux: [], uy: [], w: [], reg: [], h: [], contacts: new Map(),
         in: { dx: 0, dy: 0, rT: r0 }, eta: forced.eta, mode: forced.mode, E: PLAYER.E0, exhausted: false, gain: 0, loss: 0 };
       pushSeg(b, t, x, y, r0, 0, 0, 0);
       U.anyCtl = true;
     }
-    b.long = !(b.texit - t <= LONG);
+    b.long = b.dyn || !(b.texit - t <= LONG);
     U.hist.push(b); U.live.push(b); if(b.long) U.longs.push(b);
     U.vacCount[vac]++;
     notify('born', b);
@@ -332,30 +403,41 @@ export function createUniverse(p, tune, opts = {}){
   /* 放手：玩家宇宙變回一般的泡泡（泡壁以光速擴張、不再移動），之後依一般規則流出模擬範圍 */
   function release(b, t){
     b.player = false; if(U.player === b) U.player = null;
-    const c = U.circleAt(b, t);
-    pushSeg(b, t, c.cx, c.cy, c.r, 0, 0, p.H*p.RH);
-    b.ctl.free = true; b.ctl.releasedAt = t;
-    b.texit = exitTime(1, Math.hypot(c.cx, c.cy), c.r, t);
+    const c = U.circleAt(b, t), C = b.ctl;
+    pushSeg(b, t, c.cx, c.cy, c.r, 0, 0, cLight, LH ? C.reg[segIndex(C, t)] : null);
+    C.free = true; C.releasedAt = t;
+    if(LH && C.reg[C.reg.length - 1]){ b.texit = Infinity; b.dyn = true; }   // 在口袋宇宙內：由掃描判斷流出
+    else b.texit = exitTime(1, Math.hypot(c.cx, c.cy), c.r, t);
   }
-  function pushSeg(b, t, x, y, r, ux, uy, w){
-    const C = b.ctl, n = C.t.length;
-    if(n && C.t[n-1] === t){ C.x[n-1] = x; C.y[n-1] = y; C.r[n-1] = r; C.ux[n-1] = ux; C.uy[n-1] = uy; C.w[n-1] = w; return; }
-    C.t.push(t); C.x.push(x); C.y.push(y); C.r.push(r); C.ux.push(ux); C.uy.push(uy); C.w.push(w);
+  /* (x, y) 為物理位置；方案 B 時改存相對所在區域 reg 中心的偏移，並記下該區域的膨脹率 */
+  function pushSeg(b, t, x, y, r, ux, uy, w, reg = null){
+    const C = b.ctl, n = C.t.length, h = LH ? hIn(reg) : p.H;
+    if(LH && reg){ const rc = anchorAt(reg, t); x -= rc.cx; y -= rc.cy; }
+    if(n && C.t[n-1] === t){ C.x[n-1] = x; C.y[n-1] = y; C.r[n-1] = r; C.ux[n-1] = ux; C.uy[n-1] = uy; C.w[n-1] = w; C.reg[n-1] = reg; C.h[n-1] = h; return; }
+    C.t.push(t); C.x.push(x); C.y.push(y); C.r.push(r); C.ux.push(ux); C.uy.push(uy); C.w.push(w); C.reg.push(reg); C.h.push(h);
+  }
+  /* 方案 B：玩家所在的區域 = 「除了玩家以外」玩家中心點的擁有者（歸屬一律由 Territory 判斷）；null 為假真空 */
+  function regionOf(b, t, c){
+    const cs = []; for(const o of U.live) if(o !== b && o.tn <= t && o.texit > t) cs.push(U.circleAt(o, t));
+    const own = Territory.ownerAt(U.frame(t), cs, c.cx, c.cy);
+    return own ? own.b : null;
   }
   /* 決定下一步 [t, t+STEP] 的控制：以 w 把半徑拉向目標（維持大小需 w = −H·r），剩下的光速額度給前進：|u| ≤ c − |w|。
      力竭時泡壁回到自然狀態：以光速擴張（w = c、u = 0），吞入假真空會補回能量。半徑 ≥ RH 時連維持大小都做不到（D4） */
   function decide(b, t){
-    const C = b.ctl, c = p.H*p.RH, cur = U.circleAt(b, t);
+    const C = b.ctl, c = cLight, cur = U.circleAt(b, t);
+    // 方案 B：用所在區域的膨脹率 h（維持大小需 w = −h·r；當地的哈伯半徑 c/h 越大，越大也還控制得住）
+    const reg = LH ? regionOf(b, t, cur) : null, h = LH ? hIn(reg) : p.H;
     let w, ux = 0, uy = 0;
     // 力竭期間目標半徑跟著實際半徑：恢復控制時維持當下的大小，而不是立刻花大量能量縮回去（縮小由玩家自己決定）。
-    // 大於哈伯半徑時連大小都維持不住（需要 w < −c）：失控，泡壁回到自然狀態
-    if(C.exhausted || cur.r >= p.RH){ w = c; C.in.rT = Math.max(2*p.R0, Math.min(.95*p.RH, cur.r)); }
+    // 大於（當地的）哈伯半徑時連大小都維持不住（需要 w < −c）：失控，泡壁回到自然狀態
+    if(C.exhausted || h*cur.r >= c){ w = c; C.in.rT = Math.max(2*p.R0, Math.min(.95*p.RH, cur.r)); }
     else {
-      w = Math.max(-c, Math.min(c, -p.H*cur.r + PLAYER.k*(C.in.rT - cur.r)));
+      w = Math.max(-c, Math.min(c, -h*cur.r + PLAYER.k*(C.in.rT - cur.r)));
       const um = c - Math.abs(w), m = Math.hypot(C.in.dx, C.in.dy);
       if(m > 0){ const f = Math.min(1, m)*um/m; ux = C.in.dx*f; uy = C.in.dy*f; }
     }
-    pushSeg(b, t, cur.cx, cur.cy, cur.r, ux, uy, w);
+    pushSeg(b, t, cur.cx, cur.cy, cur.r, ux, uy, w, reg);
   }
   /* 能量帳（D3）：在 [t−STEP, t] 期間，玩家宇宙與其他宇宙（或假真空）之間轉手的地盤 × 真空能差。
      以隨哈伯流移動的格點取樣（背景膨脹本身不算），歸屬一律由 Territory.ownerAt 判斷。
@@ -365,10 +447,15 @@ export function createUniverse(p, tune, opts = {}){
      · 硬擠進真空能較低者：付出 Δε × 面積 ÷ η */
   function ledger(b, t){
     const t0 = t - STEP; if(b.tn > t0 + 1e-9) return;
-    const C = b.ctl, c0 = U.circleAt(b, t0), c1 = U.circleAt(b, t), e = Math.exp(p.H*STEP);
+    const C = b.ctl, c0 = U.circleAt(b, t0), c1 = U.circleAt(b, t);
+    // 格點隨當地的空間流動：假真空以原點為縮放中心（速率 H）；方案 B 在口袋宇宙內時以該區域的中心與膨脹率
+    const si = LH ? segIndex(C, t0) : 0, reg = LH ? C.reg[si] : null, hr = LH ? C.h[si] : p.H, e = Math.exp(hr*STEP);
+    const r0c = reg ? anchorAt(reg, t0) : null, r1c = reg ? anchorAt(reg, t) : null;
+    const adv = (x, y) => reg ? [r1c.cx + (x - r0c.cx)*e, r1c.cy + (y - r0c.cy)*e] : [x*e, y*e];
     const Rs = Math.max(c0.r, c1.r) + 6, n = Math.max(4, Math.min(PLAYER.latticeMax, Math.ceil(Rs/PLAYER.cell))), sp = Rs/n;
     const near = (tt, cx, cy, R) => { const out = []; for(const o of U.live) if(o.tn <= tt && o.texit > tt){ const c = U.circleAt(o, tt); if(Math.hypot(c.cx - cx, c.cy - cy) < c.r + R) out.push(c); } return out; };
-    const own0 = Territory.locator(U.frame(t0), near(t0, c0.cx, c0.cy, Rs + 2)), own1 = Territory.locator(U.frame(t), near(t, c0.cx*e, c0.cy*e, Rs*e + 2));
+    const [a1x, a1y] = adv(c0.cx, c0.cy);
+    const own0 = Territory.locator(U.frame(t0), near(t0, c0.cx, c0.cy, Rs + 2)), own1 = Territory.locator(U.frame(t), near(t, a1x, a1y, Rs*e + 2));
     // 格點偏移以黃金比例逐步變化：長時間平均不偏
     const ox = ((U.stepN*.6180339887) % 1)*sp, oy = ((U.stepN*.7548776662) % 1)*sp, wA = sp*sp*e*e/(p.RH*p.RH);
     const eP = VAC[b.vac].eps, eOf = o => o ? VAC[o.b.vac].eps : FALSE_EPS;
@@ -376,7 +463,7 @@ export function createUniverse(p, tune, opts = {}){
     for(let i=-n-1;i<=n;i++) for(let j=-n-1;j<=n;j++){
       const dx = i*sp + ox, dy = j*sp + oy; if(dx*dx + dy*dy > Rs*Rs) continue;
       const x = c0.cx + dx, y = c0.cy + dy;
-      const o0 = own0(x, y), o1 = own1(x*e, y*e);
+      const [x1, y1] = adv(x, y), o0 = own0(x, y), o1 = own1(x1, y1);
       const a0 = o0 ? o0.b : null, a1 = o1 ? o1.b : null;
       if(a1 === b) own++;
       if(a0 === a1 || (a0 !== b && a1 !== b)) continue;
@@ -431,29 +518,64 @@ export function createUniverse(p, tune, opts = {}){
      · 在步進的最後執行；動作一律在步進開頭套用，所以動作的座標永遠屬於套用當下的座標系，重播時完全一致 */
   U.recenters = 0;
   U.comoving = { x: 0, y: 0 };    // 目前原點的共動座標（以 t = 0 時的物理長度為單位），累計平移量
-  function rebase(ax, ay, t){
+  function rebase(ax, ay, t, smooth = false){
     const H = p.H, seen = new Set();
+    cacheEpoch++;
     const move = b => {
       if(seen.has(b)) return; seen.add(b);
-      const e = Math.exp(H*(b.tn - t)); b.x -= ax*e; b.y -= ay*e; b.d = Math.hypot(b.x, b.y);
-      if(b.ctl){ const C = b.ctl; for(let i=0;i<C.t.length;i++){ const f = Math.exp(H*(C.t[i] - t)); C.x[i] -= ax*f; C.y[i] -= ay*f; } }
+      // 中心 = 誕生位置 × E(b, t)：除以「此刻實際的」膨脹倍數，中心才會準確平移 (ax, ay)。
+      // 膨脹倍數已達上限 EMAX（幾何凍結）的泡泡若照 e^{H(tn−t)} 換算，中心幾乎不會移動，相對其他東西就漂走了
+      const e = b.ctl ? Math.exp(H*(b.tn - t)) : 1/E(b, t); b.x -= ax*e; b.y -= ay*e; b.d = Math.hypot(b.x, b.y);
+      // 方案 B：相對所在區域中心的軌跡段不用平移（區域中心本身會跟著平移）
+      if(b.ctl){ const C = b.ctl; for(let i=0;i<C.t.length;i++){ if(C.reg[i]) continue; const f = Math.exp(H*(C.t[i] - t)); C.x[i] -= ax*f; C.y[i] -= ay*f; } }
     };
     for(const b of U.hist) move(b); for(const b of U.longs) move(b); for(const b of U.live) move(b);
     for(const b of U.live){
-      if(!(b.texit > t) || b.retired || b.player) continue;
+      if(!(b.texit > t) || b.retired || b.player || b.dyn) continue;
       if(b.ctl){ const c = U.circleAt(b, t); b.texit = exitTime(1, Math.hypot(c.cx, c.cy), c.r, t); }
       else b.texit = exitTime(b.s, b.d, b.r0, b.tn);
       if(b.texit <= t) b.texit = t + STEP/2;
       if(!b.long && !(b.texit - b.tn <= LONG)){ b.long = true; U.longs.push(b); }
     }
     const e0 = Math.exp(-H*t); U.comoving.x += ax*e0; U.comoving.y += ay*e0; U.recenters++;
-    for(const fn of listeners.rebase) fn({ x: ax, y: ay, t });
+    for(const fn of listeners.rebase) fn({ x: ax, y: ay, t, smooth });
   }
   U.rebase = (ax, ay) => rebase(ax, ay, U.tSim);     // 測試用：在目前的步進邊界手動平移
   function follow(t){
     const P = U.player; if(!P) return;
     const c = U.circleAt(P, t);
     if(Math.hypot(c.cx, c.cy) > PLAYER.recenter*p.RH) rebase(c.cx, c.cy, t);
+  }
+  /* 方案 B：沒有玩家、觀測者在某個口袋宇宙內時，觀測者跟著那個宇宙的空間流動（每一步平移原點到它在該宇宙中的共動點）。
+     否則觀測者仍以假真空的方式流動，相對口袋宇宙內部的空間會以超光速漂移 —— 這是把不同區域接在同一張平面上的副作用 */
+  /* 觀測者所在的區域要「記住」：巨大而古老的口袋宇宙內部相對假真空座標的漂移可達每步上萬像素，
+     若每一步才用「原點此刻的擁有者」重新判斷，原點在一步之內就已漂出那個宇宙。所以先依上一步的區域平移，平移後再重新判斷 */
+  U.obsRegion = null;
+  function comove(t){
+    const P = U.obsRegion;
+    if(P){
+      const c0 = anchorAt(P, t - STEP), c1 = anchorAt(P, t), e = Math.exp(hIn(P)*STEP);
+      const qx = c1.cx - c0.cx*e, qy = c1.cy - c0.cy*e;
+      if(qx*qx + qy*qy > 1e-12) rebase(qx, qy, t, true);
+    }
+    const o = U.ownerAt(0, 0, t); U.obsRegion = o ? o.b : null;
+  }
+  /* 方案 B：焦點（原點）所在的區域鏈，錨點每 5 秒或離焦點太遠時換到焦點 */
+  function keepAnchors(t){
+    const o = U.ownerAt(0, 0, t);
+    for(let R = o ? o.b : null; R; R = R.parent){
+      if(R.ctl && R.player) continue;
+      const A = anchorAt(R, t);
+      if(!R.anc || t - R.anc.tk > 5 || Math.hypot(A.cx, A.cy) > p.RH) reanchor(R, 0, 0, t);
+    }
+  }
+  /* 方案 B：子泡泡的流出改由掃描判斷 —— 近側邊緣離原點超過 RGEN + 60 就丟棄；縮成一點的也丟棄 */
+  function sweep(t){
+    for(const b of U.live){
+      if(!b.dyn || !(b.texit > t) || b.retired || b.player) continue;
+      const c = U.circleAt(b, t);
+      if(Math.hypot(c.cx, c.cy) - c.r > p.RGEN + 60 || (b.s < 0 && c.r <= 0)) b.texit = t + STEP/2;
+    }
   }
 
   function applyActions(step){
@@ -508,7 +630,13 @@ export function createUniverse(p, tune, opts = {}){
   U.advance = dt => {
     U.acc += dt;
     let n = 0;
-    while(U.acc >= STEP && n < 20000){ U.acc -= STEP; U.tSim += STEP; if(pendingAct < U.actions.length) applyActions(U.stepN + 1); nucleate(); if(U.player || U.anyCtl){ playerStep(U.tSim); follow(U.tSim); } if(++U.stepN % 30 === 0) retire(); n++; }
+    while(U.acc >= STEP && n < 20000){ U.acc -= STEP; U.tSim += STEP; if(pendingAct < U.actions.length) applyActions(U.stepN + 1);
+      // 焦點跟隨在成核之前：成核範圍以玩家（或方案 B 中隨所在宇宙流動的觀測者）此刻的位置為中心；動作已在這之前套用，座標屬於送出當下的座標系
+      if(U.player) follow(U.tSim); else if(LH) comove(U.tSim);
+      if(LH) keepAnchors(U.tSim);
+      nucleate(); if(U.player || U.anyCtl) playerStep(U.tSim);
+      if(LH){ if(U.stepN % 15 === 0) sweep(U.tSim); cacheEpoch++; }
+      if(++U.stepN % 30 === 0) retire(); n++; }
     if(U.live.some(b => b.texit <= U.tSim)) U.live = U.live.filter(b => b.texit > U.tSim);
     const k = Math.floor(U.tLive/BUCKET) - U.bucketBase; while(U.buckets.length <= k) U.buckets.push(0);
     U.trim();

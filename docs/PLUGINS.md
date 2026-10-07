@@ -47,7 +47,8 @@ export function myPlugin(options){
 
 可攔截的事件：處理函式回傳 `true`，核心就不再處理（例如拖曳泡泡時不要同時平移畫面）。
 `api.on` 回傳一個取消訂閱的函式。宇宙本身另有事件：`U.on('born', b => …)`、`U.on('retire', b => …)`、`U.on('act', a => …)`（動作已套用，結果在 `a.result`）、
-`U.on('rebase', ({ x, y, t }) => …)`（焦點跟隨：原點換到此刻位於 (x, y) 的共動點，之前記下的物理座標都要減去它）。
+`U.on('rebase', ({ x, y, t, smooth }) => …)`（焦點跟隨：原點換到此刻位於 (x, y) 的共動點，之前記下的物理座標都要減去它；`smooth` 為 true 時是方案 B 每一步的小幅平移，畫面不需要淡入）。
+方案 B 下 `U.hIn(b)` 為泡泡 b 內部的膨脹率（`b` 為 `null` 時是假真空的 H），`U.obsRegion` 為觀測者所在的區域。
 
 ## api 一覽
 

@@ -157,8 +157,9 @@ export function player(){
         ctx.font = '13px "Noto Sans TC", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         const x = S.vw/2, y = 26;
         if(B){
-          const C = B.ctl, c = api.U.circleAt(B, t), rr = c.r/S.RH, um = Math.max(0, 1 - rr), w = 220;
-          const state = rr >= 1 ? '失控：大於哈伯半徑，連大小都維持不住（按 N 重新誕生）' : C.exhausted ? '力竭：泡壁以光速自由膨脹（吞入假真空可回復）'
+          // 方案 B：所在區域的膨脹率 h 決定當地的哈伯半徑 c/h（最高速度 = c·(1 − r·h/c)）
+          const C = B.ctl, c = api.U.circleAt(B, t), rr = c.r/S.RH, hl = C.h && C.h.length ? C.h[C.h.length - 1] : S.HUB, rl = rr*hl/S.HUB, um = Math.max(0, 1 - rl), w = 220;
+          const state = rl >= 1 ? '失控：大於哈伯半徑，連大小都維持不住（按 N 重新誕生）' : C.exhausted ? '力竭：泡壁以光速自由膨脹（吞入假真空可回復）'
             : C.E < 0 ? '能量透支：技能無法使用（吞食真空能比你高的宇宙來補充）' : '';
           ctx.fillStyle = 'rgba(10,6,24,.7)'; ctx.fillRect(x - w/2 - 12, y - 16, w + 24, state ? 62 : 46);
           ctx.fillStyle = 'rgba(255,255,255,.15)'; ctx.fillRect(x - w/2, y - 6, w, 10);
