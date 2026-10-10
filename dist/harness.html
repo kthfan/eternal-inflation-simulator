@@ -1031,7 +1031,21 @@ details[open] summary::after{content:" －"}
   var MAXB = 16e4;
   var FALSE_EPS = 1;
   var UP_EPS = 1.6;
-  var PLAYER = { E0: 5, eta: 0.8, k: 1.5, minE: 0.5, cell: 3.5, latticeMax: 16, downCost: 0.15, range: 1, recenter: 0.75 };
+  var PLAYER = {
+    E0: 5,
+    eta: 0.8,
+    k: 1.5,
+    minE: 0.5,
+    cell: 3.5,
+    latticeMax: 16,
+    downCost: 0.15,
+    range: 1,
+    recenter: 0.75,
+    /* 曲速（D12）：k 預設倍率（×c）、kMax 上限（保證 A2 的丟棄仍精確：(1 + kMax)·RH 要小於 RGEN）；
+       借貸速率 kappa·k²·(r/RH)²（Alcubierre：負能量 ∝ v²R²）；量子不等式：借貸速率 × 持續時間² ≤ Q；
+       量子利息：結束後在 repayT 秒內償還 借貸 × (1 + 持續時間/TI) */
+    warp: { k: 5, kMax: 15, kappa: 0.25, Q: 4, TI: 4, repayT: 1.5 }
+  };
   var VNAMES = "子丑寅卯辰巳午未申酉戌亥甲乙丙丁";
   function makeLandscape(r, p) {
     const n = p.vacN, VAC = [];
@@ -1229,19 +1243,20 @@ details[open] summary::after{content:" －"}
       if (LH) {
         const i2 = segIndex(C, t), h = C.h[i2], d = t - C.t[i2], reg = C.reg[i2], base = reg ? anchorAt(reg, t) : null;
         let x, y, r;
+        const vx = C.ux[i2] + C.vx[i2], vy = C.uy[i2] + C.vy[i2];
         if (h > 1e-9) {
-          const e2 = ex(h, d), ux2 = C.ux[i2] / h, uy2 = C.uy[i2] / h, w2 = C.w[i2] / h;
+          const e2 = ex(h, d), ux2 = vx / h, uy2 = vy / h, w2 = C.w[i2] / h;
           x = (C.x[i2] + ux2) * e2 - ux2;
           y = (C.y[i2] + uy2) * e2 - uy2;
           r = (C.r[i2] + w2) * e2 - w2;
         } else {
-          x = C.x[i2] + C.ux[i2] * d;
-          y = C.y[i2] + C.uy[i2] * d;
+          x = C.x[i2] + vx * d;
+          y = C.y[i2] + vy * d;
           r = C.r[i2] + C.w[i2] * d;
         }
         return { b, cx: (base ? base.cx : 0) + x, cy: (base ? base.cy : 0) + y, r: Math.max(0, r) };
       }
-      const i = segIndex(C, t), H = p.H, e = Math.min(EMAX, Math.exp(H * (t - C.t[i]))), ux = C.ux[i] / H, uy = C.uy[i] / H, w = C.w[i] / H;
+      const i = segIndex(C, t), H = p.H, e = Math.min(EMAX, Math.exp(H * (t - C.t[i]))), ux = (C.ux[i] + C.vx[i]) / H, uy = (C.uy[i] + C.vy[i]) / H, w = C.w[i] / H;
       return { b, cx: (C.x[i] + ux) * e - ux, cy: (C.y[i] + uy) * e - uy, r: Math.max(0, (C.r[i] + w) * e - w) };
     }
     U.eps = (b) => VAC[b.vac].eps;
@@ -1441,6 +1456,8 @@ details[open] summary::after{content:" －"}
           r: [],
           ux: [],
           uy: [],
+          vx: [],
+          vy: [],
           w: [],
           reg: [],
           h: [],
@@ -1451,7 +1468,10 @@ details[open] summary::after{content:" －"}
           E: PLAYER.E0,
           exhausted: false,
           gain: 0,
-          loss: 0
+          loss: 0,
+          warp: null,
+          repay: null,
+          lastWarp: null
         };
         pushSeg(b, t, x, y, r0, 0, 0, 0);
         U.anyCtl = true;
@@ -1576,10 +1596,49 @@ details[open] summary::after{content:" －"}
       P2.ctl.in = { dx, dy, rT };
       return { ok: true };
     }
+    const warpRate = (k, r) => PLAYER.warp.kappa * k * k * (r / p.RH) ** 2;
+    function accrue(C, t, r) {
+      const W = C.warp;
+      W.B += warpRate(W.k, r) * Math.max(0, t - W.tAcc);
+      W.tAcc = t;
+    }
+    function endWarp(b, t, why) {
+      const C = b.ctl, W = C.warp;
+      if (!W) return;
+      accrue(C, t, U.circleAt(b, t).r);
+      const tau = t - W.t0, due = W.B * (1 + tau / PLAYER.warp.TI);
+      C.warp = null;
+      C.repay = due > 0 ? { left: due, rate: due / PLAYER.warp.repayT } : null;
+      C.lastWarp = { t0: W.t0, t1: t, tau, k: W.k, borrowed: W.B, due, why };
+    }
+    function actWarp(a, t) {
+      const P2 = U.player;
+      if (!P2) return { ok: false, reason: "沒有玩家宇宙" };
+      const C = P2.ctl;
+      if (!a.on) {
+        if (!C.warp) return { ok: false, reason: "不在曲速中" };
+        endWarp(P2, t, "手動");
+        return { ok: true };
+      }
+      if (C.warp) return { ok: false, reason: "已在曲速中" };
+      if (C.repay) return { ok: false, reason: "正在償還量子利息" };
+      if (C.exhausted) return { ok: false, reason: "力竭中，無法啟動" };
+      if (!(C.E > 0)) return { ok: false, reason: "能量透支中，無法再借貸負能量" };
+      const c = U.circleAt(P2, t), h = LH ? hIn(regionOf(P2, t, c)) : p.H;
+      if (h * c.r >= cLight) return { ok: false, reason: "失控中，無法啟動" };
+      let dx = +a.dx || 0, dy = +a.dy || 0;
+      const m = Math.hypot(dx, dy);
+      if (!(m > 0)) return { ok: false, reason: "需要方向" };
+      const k = Math.max(1, Math.min(PLAYER.warp.kMax, a.k === void 0 ? PLAYER.warp.k : +a.k || PLAYER.warp.k));
+      C.warp = { k, dx: dx / m, dy: dy / m, t0: t, tAcc: t, B: 0 };
+      return { ok: true, k };
+    }
     function release(b, t) {
       b.player = false;
       if (U.player === b) U.player = null;
       const c = U.circleAt(b, t), C = b.ctl;
+      C.warp = null;
+      C.repay = null;
       pushSeg(b, t, c.cx, c.cy, c.r, 0, 0, cLight, LH ? C.reg[segIndex(C, t)] : null);
       C.free = true;
       C.releasedAt = t;
@@ -1588,7 +1647,7 @@ details[open] summary::after{content:" －"}
         b.dyn = true;
       } else b.texit = exitTime(1, Math.hypot(c.cx, c.cy), c.r, t);
     }
-    function pushSeg(b, t, x, y, r, ux, uy, w, reg = null) {
+    function pushSeg(b, t, x, y, r, ux, uy, w, reg = null, vx = 0, vy = 0) {
       const C = b.ctl, n = C.t.length, h = LH ? hIn(reg) : p.H;
       if (LH && reg) {
         const rc = anchorAt(reg, t);
@@ -1601,6 +1660,8 @@ details[open] summary::after{content:" －"}
         C.r[n - 1] = r;
         C.ux[n - 1] = ux;
         C.uy[n - 1] = uy;
+        C.vx[n - 1] = vx;
+        C.vy[n - 1] = vy;
         C.w[n - 1] = w;
         C.reg[n - 1] = reg;
         C.h[n - 1] = h;
@@ -1612,6 +1673,8 @@ details[open] summary::after{content:" －"}
       C.r.push(r);
       C.ux.push(ux);
       C.uy.push(uy);
+      C.vx.push(vx);
+      C.vy.push(vy);
       C.w.push(w);
       C.reg.push(reg);
       C.h.push(h);
@@ -1626,27 +1689,35 @@ details[open] summary::after{content:" －"}
       const C = b.ctl, c = cLight, cur = U.circleAt(b, t);
       const reg = LH ? regionOf(b, t, cur) : null, h = LH ? hIn(reg) : p.H;
       let w, ux = 0, uy = 0;
+      if (C.warp && (C.exhausted || h * cur.r >= c)) endWarp(b, t, C.exhausted ? "力竭" : "失控");
+      let vx = 0, vy = 0;
       if (C.exhausted || h * cur.r >= c) {
         w = c;
         C.in.rT = Math.max(2 * p.R0, Math.min(0.95 * p.RH, cur.r));
       } else {
         w = Math.max(-c, Math.min(c, -h * cur.r + PLAYER.k * (C.in.rT - cur.r)));
-        const um = c - Math.abs(w), m = Math.hypot(C.in.dx, C.in.dy);
-        if (m > 0) {
-          const f = Math.min(1, m) * um / m;
-          ux = C.in.dx * f;
-          uy = C.in.dy * f;
+        if (C.warp) {
+          vx = C.warp.dx * C.warp.k * c;
+          vy = C.warp.dy * C.warp.k * c;
+        } else {
+          const um = c - Math.abs(w), m = Math.hypot(C.in.dx, C.in.dy);
+          if (m > 0) {
+            const f = Math.min(1, m) * um / m;
+            ux = C.in.dx * f;
+            uy = C.in.dy * f;
+          }
         }
       }
-      pushSeg(b, t, cur.cx, cur.cy, cur.r, ux, uy, w, reg);
+      pushSeg(b, t, cur.cx, cur.cy, cur.r, ux, uy, w, reg, vx, vy);
     }
     function ledger(b, t) {
       const t0 = t - STEP;
       if (b.tn > t0 + 1e-9) return;
       const C = b.ctl, c0 = U.circleAt(b, t0), c1 = U.circleAt(b, t);
-      const si = LH ? segIndex(C, t0) : 0, reg = LH ? C.reg[si] : null, hr = LH ? C.h[si] : p.H, e = Math.exp(hr * STEP);
+      const si = segIndex(C, t0 + STEP / 2), reg = LH ? C.reg[si] : null, hr = LH ? C.h[si] : p.H, e = Math.exp(hr * STEP);
+      const g = hr > 1e-9 ? (e - 1) / hr : STEP, Vx = C.vx[si] * g, Vy = C.vy[si] * g;
       const r0c = reg ? anchorAt(reg, t0) : null, r1c = reg ? anchorAt(reg, t) : null;
-      const adv = (x, y) => reg ? [r1c.cx + (x - r0c.cx) * e, r1c.cy + (y - r0c.cy) * e] : [x * e, y * e];
+      const adv = (x, y) => reg ? [r1c.cx + (x - r0c.cx) * e + Vx, r1c.cy + (y - r0c.cy) * e + Vy] : [x * e + Vx, y * e + Vy];
       const Rs = Math.max(c0.r, c1.r) + 6, n = Math.max(4, Math.min(PLAYER.latticeMax, Math.ceil(Rs / PLAYER.cell))), sp = Rs / n;
       const near = (tt, cx, cy, R) => {
         const out = [];
@@ -1694,6 +1765,7 @@ details[open] summary::after{content:" －"}
     }
     function contacts(b, t) {
       const C = b.ctl, cb = U.circleAt(b, t), t0 = t - STEP;
+      let opened = 0;
       for (const o of U.live) {
         if (o === b || o.tn > t || o.texit <= t) continue;
         const co = U.circleAt(o, t), ov = Math.hypot(cb.cx - co.cx, cb.cy - co.cy) < cb.r + co.r;
@@ -1714,6 +1786,7 @@ details[open] summary::after{content:" －"}
           }
           if (!arr) C.contacts.set(o.id, arr = []);
           arr.push([hi, Infinity]);
+          opened++;
         } else {
           for (let i = 0; i < 30; i++) {
             const m = (lo + hi) / 2;
@@ -1723,14 +1796,36 @@ details[open] summary::after{content:" －"}
           arr[arr.length - 1][1] = lo;
         }
       }
+      return opened;
     }
     function playerStep(t) {
-      for (const b of U.live) if (b.ctl && b.texit > t) contacts(b, t);
       const P2 = U.player;
-      if (P2) {
-        ledger(P2, t);
-        if (U.player === P2) decide(P2, t);
+      let opened = 0;
+      for (const b of U.live) if (b.ctl && b.texit > t) {
+        const n = contacts(b, t);
+        if (b === P2) opened = n;
       }
+      if (!P2) return;
+      const C = P2.ctl;
+      if (C.warp) {
+        if (opened) endWarp(P2, t, "碰撞");
+        else {
+          const r = U.circleAt(P2, t).r;
+          accrue(C, t, r);
+          const tau = t - C.warp.t0;
+          if (warpRate(C.warp.k, r) * tau * tau >= PLAYER.warp.Q) endWarp(P2, t, "量子不等式的上限");
+        }
+      }
+      ledger(P2, t);
+      if (C.repay && U.player === P2) {
+        const pay = Math.min(C.repay.left, C.repay.rate * STEP);
+        C.E -= pay;
+        C.loss += pay;
+        C.repay.left -= pay;
+        if (C.repay.left <= 1e-12) C.repay = null;
+        if (C.mode === "survival" && C.E <= 0) C.exhausted = true;
+      }
+      if (U.player === P2) decide(P2, t);
     }
     U.player = null;
     U.recenters = 0;
@@ -1814,7 +1909,7 @@ details[open] summary::after{content:" －"}
       while (pendingAct < U.actions.length && U.actions[pendingAct].step <= step) {
         const a = U.actions[pendingAct++];
         a.t = U.tSim;
-        a.result = a.type === "nucleate" ? actNucleate(a, U.tSim, k++) : a.type === "spawn" ? actSpawn(a, U.tSim, k++) : a.type === "steer" ? actSteer(a) : { ok: false, reason: "未知的動作" };
+        a.result = a.type === "nucleate" ? actNucleate(a, U.tSim, k++) : a.type === "spawn" ? actSpawn(a, U.tSim, k++) : a.type === "steer" ? actSteer(a) : a.type === "warp" ? actWarp(a, U.tSim) : { ok: false, reason: "未知的動作" };
         for (const fn of listeners.act) fn(a);
       }
     }
@@ -2342,6 +2437,93 @@ details[open] summary::after{content:" －"}
         }
         return { pass: rays > 100 && mis / n < 2e-3 && bad / rays < 0.01, detail: `${n} 個取樣點中 ${mis} 個不一致；玩家與鄰居 ${rays} 條射線中 ${bad} 條不吻合（${(bad / Math.max(1, rays) * 100).toFixed(2)}%）` };
       } },
+      { name: "玩家宇宙：曲速與量子利息", desc: "曲速（D12）：中心以 k·c 被搬動（空間本身移動，可超過光速），泡壁相對被搬動的空間仍不超光速、軌跡連續；方向鎖定；借貸速率 × 持續時間² 到上限 Q 自動結束；結束後在 repayT 秒內償還 借貸 × (1 + 持續時間/TI)，償還期間不能再啟動；搬動本身不轉手地盤（曲速期間的花費與只維持大小相同）；碰到其他泡泡就脫離；能從以光速擴張、包住自己的泡泡裡逃出去（光速以內做不到）；重播完全相同", run() {
+        const W = PLAYER.warp, fails = [];
+        const mk = (gamma = 0) => {
+          const U2 = createUniverse({ ...baseP, seed: 5 }, { ...baseT(), gamma });
+          U2.presim(1);
+          spawnPlayer(U2, U2.VAC.findIndex((v) => v.kind === "ds"), 28, 0.8);
+          return U2;
+        };
+        const U = mk(), P2 = U.player, C = P2.ctl, c = U.p.H * U.p.RH;
+        const E0 = C.E, a = U.act({ type: "warp", on: true, dx: 1, dy: 0, k: 5 });
+        U.advance(STEP);
+        U.act({ type: "steer", dx: 0, dy: 1, rT: 28 });
+        let speedErr = 0, ySpan = 0, restart2 = null;
+        for (let i = 0; i < 400 && C.warp; i++) {
+          const t = U.tSim, A = U.circleAt(P2, t + STEP / 2), B = U.circleAt(P2, t), H = U.p.H, e = Math.exp(H * STEP / 2);
+          const vx = (A.cx - B.cx * e) * H / (e - 1), vy = (A.cy - B.cy * e) * H / (e - 1);
+          speedErr = Math.max(speedErr, Math.abs(Math.hypot(vx, vy) - 5 * c) / (5 * c));
+          ySpan = Math.max(ySpan, Math.abs(B.cy));
+          U.advance(STEP);
+        }
+        const lw = C.lastWarp, rate = W.kappa * 25 * (28 / U.p.RH) ** 2, tauMax = Math.sqrt(W.Q / rate);
+        if (!lw) return { pass: false, detail: `曲速 ${(400 * STEP).toFixed(0)} 秒內沒有結束（量子不等式的上限沒有作用）` };
+        if (!a.result.ok) fails.push("啟動失敗");
+        if (speedErr > 1e-3) fails.push(`速度誤差 ${speedErr.toExponential(1)}`);
+        if (ySpan > 1) fails.push(`方向沒有鎖定（偏移 ${ySpan.toFixed(1)}）`);
+        if (!lw || lw.why !== "量子不等式的上限" || Math.abs(lw.tau - tauMax) > 2 * STEP) fails.push(`上限不符（${lw && lw.tau.toFixed(2)} 秒，理論 ${tauMax.toFixed(2)}）`);
+        if (lw && Math.abs(lw.due - lw.borrowed * (1 + lw.tau / W.TI)) > 1e-9) fails.push("利息不符");
+        if (lw && Math.abs(lw.borrowed - rate * lw.tau) / (rate * lw.tau) > 0.03) fails.push(`借貸不符（${lw.borrowed.toFixed(3)}，理論 ${(rate * lw.tau).toFixed(3)}）`);
+        restart2 = U.act({ type: "warp", on: true, dx: 1, dy: 0 });
+        U.advance(STEP);
+        if (restart2.result.ok) fails.push("償還期間可以再啟動");
+        const Ea = C.E + 0;
+        U.presim(W.repayT + 2 * STEP);
+        if (C.repay) fails.push("沒有如期還完");
+        const V2 = mk(), P22 = V2.player;
+        const e2 = P22.ctl.E;
+        V2.advance(STEP);
+        V2.presim(lw.tau);
+        const hold = e2 - P22.ctl.E;
+        const V3 = mk(), P3 = V3.player;
+        const e3 = P3.ctl.E;
+        V3.act({ type: "warp", on: true, dx: 1, dy: 0, k: 5 });
+        V3.advance(STEP);
+        while (P3.ctl.warp) V3.advance(STEP);
+        const paid = P3.ctl.lastWarp.due - (P3.ctl.repay ? P3.ctl.repay.left : 0), during = e3 - P3.ctl.E - paid;
+        if (Math.abs(during - hold) > 0.08 * hold) fails.push(`曲速期間的花費 ${during.toFixed(3)}，只維持大小 ${hold.toFixed(3)}`);
+        let over = 0, jump = 0;
+        for (let i = 0; i < C.t.length; i++) {
+          if (Math.hypot(C.ux[i], C.uy[i]) + Math.abs(C.w[i]) > c * (1 + 1e-9)) over++;
+          if (i > 0) {
+            const p0 = U.circleAt(P2, C.t[i] - 1e-7), p1 = U.circleAt(P2, C.t[i]), tol = 1e-3 + 1e-6 * (Math.abs(p1.cx) + Math.abs(p1.cy) + p1.r);
+            if (Math.abs(p0.cx - p1.cx) > tol || Math.abs(p0.cy - p1.cy) > tol || Math.abs(p0.r - p1.r) > tol) jump++;
+          }
+        }
+        if (over || jump) fails.push(`超光速 ${over} 段、不連續 ${jump} 處`);
+        const V4 = mk(), P4 = V4.player, c4 = V4.circleAt(P4, V4.tSim), V = V4.VAC.filter((v) => v.eps < 1 && v.kind !== "up");
+        const xa = V4.act({ type: "nucleate", x: c4.cx + 2.5 * V4.p.RH, y: c4.cy, vac: V[V.length - 1].i });
+        V4.advance(STEP);
+        V4.act({ type: "warp", on: true, dx: 1, dy: 0, k: 10 });
+        V4.advance(STEP);
+        while (P4.ctl.warp) V4.advance(STEP);
+        const X = V4.hist.find((b) => b.id === xa.result.id), px = V4.circleAt(P4, V4.tSim), qx = V4.circleAt(X, V4.tSim);
+        if (P4.ctl.lastWarp.why !== "碰撞" || px.cx > qx.cx) fails.push(`碰撞：${P4.ctl.lastWarp.why}`);
+        const esc = (warpOn) => {
+          const U5 = mk(), P5 = U5.player, c5 = U5.circleAt(P5, U5.tSim);
+          const qa = U5.act({ type: "nucleate", x: c5.cx + 40, y: c5.cy, vac: P5.vac });
+          U5.advance(STEP);
+          const Q = U5.hist.find((b) => b.id === qa.result.id);
+          U5.presim(3);
+          let out = false;
+          for (let i = 0; i < 12 && !out; i++) {
+            if (warpOn && !P5.ctl.warp && !P5.ctl.repay) U5.act({ type: "warp", on: true, dx: -1, dy: 0, k: W.kMax });
+            else U5.act({ type: "steer", dx: -1, dy: 0, rT: 28 });
+            U5.presim(1);
+            const pc = U5.circleAt(P5, U5.tSim), qc = U5.circleAt(Q, U5.tSim);
+            if (Math.hypot(pc.cx - qc.cx, pc.cy - qc.cy) - pc.r > qc.r) out = true;
+          }
+          return out;
+        };
+        const escW = esc(true), escS = esc(false);
+        if (!escW || escS) fails.push(`逃出包住自己的泡泡：曲速${escW ? "可以" : "不行"}、光速以內${escS ? "可以" : "不行"}`);
+        const log = U.actionLog(), R = createUniverse({ ...baseP, seed: 5 }, { ...baseT(), gamma: 0 }, { actions: log });
+        R.presim(U.tSim);
+        const same = R.fingerprint(U.tSim) === U.fingerprint(U.tSim) && R.player && Math.abs(R.player.ctl.E - C.E) < 1e-12;
+        if (!same) fails.push("重播不一致");
+        return { pass: !fails.length, detail: fails.length ? fails.join("；") : `5c：速度誤差 ${speedErr.toExponential(1)}、持續 ${lw.tau.toFixed(2)} 秒（上限 ${tauMax.toFixed(2)}）、借貸 ${lw.borrowed.toFixed(2)}、償還 ${lw.due.toFixed(2)}；曲速期間花費 ${during.toFixed(3)}（只維持大小 ${hold.toFixed(3)}）；撞到泡泡自動脫離；曲速能逃出包住自己的泡泡、光速以內不能；重播一致` };
+      } },
       { name: "焦點跟隨：平移不變", desc: "把原點換到另一個共動點：所有圓只差一個平移、半徑不變，每一點的歸屬與換之前相同；仍在模擬範圍內的泡泡不會被丟棄", run() {
         const U = createUniverse(baseP, baseT());
         U.presim(40);
@@ -2414,6 +2596,46 @@ details[open] summary::after{content:" －"}
         const same = B.fingerprint(T) === U.fingerprint(T) && B.recenters === U.recenters;
         const ok = !!U.player && U.recenters > 50 && near.slice(0, 4).every((v) => v >= 2) && !far && n > 50 && !bad && finite && same;
         return { pass: ok, detail: `置中 ${U.recenters} 次；每 30 秒在玩家附近誕生 ${near.join("、")}；離原點過遠 ${far} 次；丟棄 ${n} 個泡泡中可能再碰到的 ${bad} 個；重播${same ? "完全一致" : "不一致"}` };
+      } },
+      { name: "焦點跟隨：曲速長途", desc: "玩家反覆以最高曲速（kMax·c）往假真空跳躍（每次 0.6 秒），共 90 秒：被丟棄的泡泡離玩家泡壁超過 (1 + kMax)·RH（玩家以 kMax·c、泡壁以光速相向也永遠碰不到，A2 仍然精確），座標保持有限，且重播完全相同", run() {
+        const W = PLAYER.warp, U = createUniverse({ ...baseP, seed: 4242 }, { ...baseT(), gamma: 4e-7 });
+        U.presim(20);
+        const vac = U.VAC.filter((v) => v.eps < 1).sort((a, b) => a.eps - b.eps)[0].i;
+        spawnPlayer(U, vac, 10, 0.8);
+        const P2 = U.player, t0 = U.tSim;
+        let warps = 0;
+        while (U.tSim < t0 + 90 && U.player) {
+          autopilot(U, 3, 10);
+          if (!U.player) break;
+          const C = P2.ctl;
+          if (C.warp || C.repay) continue;
+          const a = U.act({ type: "warp", on: true, dx: C.in.dx || 1, dy: C.in.dy, k: W.kMax });
+          U.advance(STEP);
+          if (a.result.ok) warps++;
+          U.presim(0.6);
+          if (C.warp) U.act({ type: "warp", on: false });
+          while (C.warp && U.player) U.advance(STEP);
+        }
+        const T = U.tSim, lim = (1 + W.kMax) * U.p.RH;
+        let bad = 0, n = 0, finite = true, minGap = Infinity;
+        for (const b of U.hist) {
+          if (b === P2 || b.retired || b.ctl || !(b.texit < T) || b.tn < t0) continue;
+          const c = U.circleAt(b, b.texit);
+          if (b.s < 0 && c.r < 1) continue;
+          const pc = U.circleAt(P2, b.texit), gap = Math.hypot(c.cx - pc.cx, c.cy - pc.cy) - c.r - pc.r;
+          n++;
+          minGap = Math.min(minGap, gap);
+          if (gap < lim) bad++;
+        }
+        for (const b of U.live) {
+          const c = U.circleAt(b, T);
+          if (!isFinite(c.cx) || !isFinite(c.cy) || !isFinite(c.r)) finite = false;
+        }
+        const B = createUniverse({ ...baseP, seed: 4242 }, { ...baseT(), gamma: 4e-7 }, { actions: U.actionLog() });
+        while (B.tSim < T - 1e-9) B.advance(Math.min(0.3711, T - B.tSim + 1e-9));
+        const same = B.fingerprint(T) === U.fingerprint(T) && B.recenters === U.recenters;
+        const ok = !!U.player && warps >= 5 && n > 50 && !bad && finite && same;
+        return { pass: ok, detail: `曲速 ${warps} 次、置中 ${U.recenters} 次；丟棄 ${n} 個泡泡，離玩家最近 ${(minGap / U.p.RH).toFixed(1)} RH（下限 ${1 + W.kMax} RH），可能再碰到的 ${bad} 個；重播${same ? "完全一致" : "不一致"}${U.player ? "" : "；玩家被吞沒"}` };
       } },
       { name: "焦點跟隨：進入大泡泡", desc: "在玩家 1.3 個哈伯半徑外放一個泡泡（原本會在約 17 秒後流出模擬範圍），玩家飛進去並在裡面持續前進：只要它還包住玩家，就不能因為原點移動而被丟棄", run() {
         const U = createUniverse({ ...baseP, seed: 4242 }, { ...baseT(), gamma: 0 });

@@ -18,7 +18,12 @@ export const UP_EPS = 1.6;
 /* 玩家宇宙（docs/ROADMAP.md D3、D4、D9 M3）：
    E0 初始能量（單位：Δε·RH²）、eta 能量轉換效率、k 半徑控制的回復率（1/秒）、minE 力竭後恢復控制所需的能量、
    recenter 玩家離原點超過幾個哈伯半徑就重新置中（焦點跟隨，D9 M4）、cell 能量帳取樣格點的間距（像素）、latticeMax 格點半徑格數上限（巨大的玩家宇宙改用較粗的格點）、downCost 向下穿隧技能的固定成本（向上穿隧的成本 = Δε × 區域面積） */
-export const PLAYER = { E0: 5, eta: .8, k: 1.5, minE: .5, cell: 3.5, latticeMax: 16, downCost: .15, range: 1, recenter: .75 };   // 激發態假真空：比假真空更高，只能由向上穿隧（使用者動作）產生，見 docs/ROADMAP.md D5、D6
+export const PLAYER = { E0: 5, eta: .8, k: 1.5, minE: .5, cell: 3.5, latticeMax: 16, downCost: .15, range: 1, recenter: .75,
+  /* 曲速（D12）：k 預設倍率（×c）、kMax 上限（保證 A2 的丟棄仍精確：(1 + kMax)·RH 要小於 RGEN）；
+     借貸速率 kappa·k²·(r/RH)²（Alcubierre：負能量 ∝ v²R²）；量子不等式：借貸速率 × 持續時間² ≤ Q；
+     量子利息：結束後在 repayT 秒內償還 借貸 × (1 + 持續時間/TI) */
+  warp: { k: 5, kMax: 15, kappa: .25, Q: 4, TI: 4, repayT: 1.5 } };
+// 激發態假真空：比假真空更高，只能由向上穿隧（使用者動作）產生，見 docs/ROADMAP.md D5、D6
 
 export const VNAMES = '子丑寅卯辰巳午未申酉戌亥甲乙丙丁';
 
@@ -134,7 +139,8 @@ export function createUniverse(p, tune, opts = {}){
     const e = E(b, t); return { b, cx: b.x*e, cy: b.y*e, r: b.s < 0 ? Math.max(0, b.r0*e - p.RH*(e - 1)) : p.R0*e + p.RH*(e - 1) };
   };
   /* 可控制的泡泡（玩家）：每一步的控制 (ux, uy, w) 固定，中心與半徑有解析解（逐段解析）。
-     c(t) = (c₀ + u/H)·e^{HΔt} − u/H，r(t) = (r₀ + w/H)·e^{HΔt} − w/H；最後一段之後沿用最後的控制外推 */
+     c(t) = (c₀ + u/H)·e^{HΔt} − u/H，r(t) = (r₀ + w/H)·e^{HΔt} − w/H；最後一段之後沿用最後的控制外推。
+     曲速（D12）時中心另有曲速速度 V（空間本身被搬動，可超過光速），式中的 u 換成 u + V；泡壁相對被搬動的空間仍是 |u| + |w| ≤ c */
   const segIndex = (C, t) => { const T = C.t; let lo = 0, hi = T.length - 1; while(lo < hi){ const m = (lo + hi + 1) >> 1; if(T[m] <= t) lo = m; else hi = m - 1; } return lo; };
   function ctlCircle(b, t){
     const C = b.ctl;
@@ -142,11 +148,12 @@ export function createUniverse(p, tune, opts = {}){
       // 方案 B：每一段記錄當時所在的區域 reg（null = 假真空，以原點為縮放中心），位置是相對區域中心的偏移
       const i = segIndex(C, t), h = C.h[i], d = t - C.t[i], reg = C.reg[i], base = reg ? anchorAt(reg, t) : null;
       let x, y, r;
-      if(h > 1e-9){ const e = ex(h, d), ux = C.ux[i]/h, uy = C.uy[i]/h, w = C.w[i]/h; x = (C.x[i] + ux)*e - ux; y = (C.y[i] + uy)*e - uy; r = (C.r[i] + w)*e - w; }
-      else { x = C.x[i] + C.ux[i]*d; y = C.y[i] + C.uy[i]*d; r = C.r[i] + C.w[i]*d; }
+      const vx = C.ux[i] + C.vx[i], vy = C.uy[i] + C.vy[i];
+      if(h > 1e-9){ const e = ex(h, d), ux = vx/h, uy = vy/h, w = C.w[i]/h; x = (C.x[i] + ux)*e - ux; y = (C.y[i] + uy)*e - uy; r = (C.r[i] + w)*e - w; }
+      else { x = C.x[i] + vx*d; y = C.y[i] + vy*d; r = C.r[i] + C.w[i]*d; }
       return { b, cx: (base ? base.cx : 0) + x, cy: (base ? base.cy : 0) + y, r: Math.max(0, r) };
     }
-    const i = segIndex(C, t), H = p.H, e = Math.min(EMAX, Math.exp(H*(t - C.t[i]))), ux = C.ux[i]/H, uy = C.uy[i]/H, w = C.w[i]/H;
+    const i = segIndex(C, t), H = p.H, e = Math.min(EMAX, Math.exp(H*(t - C.t[i]))), ux = (C.ux[i] + C.vx[i])/H, uy = (C.uy[i] + C.vy[i])/H, w = C.w[i]/H;
     return { b, cx: (C.x[i] + ux)*e - ux, cy: (C.y[i] + uy)*e - uy, r: Math.max(0, (C.r[i] + w)*e - w) };
   }
   U.eps = b => VAC[b.vac].eps;
@@ -272,8 +279,9 @@ export function createUniverse(p, tune, opts = {}){
     if(forced && forced.ctl){
       // 玩家宇宙的內部時間無法再用光錐的雙曲面公式（D7）；輕鬆模式下先不會大擠壓、熱寂
       b.crunch = false; b.heatT = Infinity;
-      b.ctl = { t: [], x: [], y: [], r: [], ux: [], uy: [], w: [], reg: [], h: [], contacts: new Map(),
-        in: { dx: 0, dy: 0, rT: r0 }, eta: forced.eta, mode: forced.mode, E: PLAYER.E0, exhausted: false, gain: 0, loss: 0 };
+      b.ctl = { t: [], x: [], y: [], r: [], ux: [], uy: [], vx: [], vy: [], w: [], reg: [], h: [], contacts: new Map(),
+        in: { dx: 0, dy: 0, rT: r0 }, eta: forced.eta, mode: forced.mode, E: PLAYER.E0, exhausted: false, gain: 0, loss: 0,
+        warp: null, repay: null, lastWarp: null };
       pushSeg(b, t, x, y, r0, 0, 0, 0);
       U.anyCtl = true;
     }
@@ -400,21 +408,55 @@ export function createUniverse(p, tune, opts = {}){
     P.ctl.in = { dx, dy, rT };
     return { ok: true };
   }
+  /* ---------- 曲速（D12）----------
+     空間本身的扭曲不受光速限制（前方收縮、後方膨脹，Alcubierre）：整個玩家宇宙連同內部的空間以 V = k·c 被搬動，
+     泡壁相對被搬動的空間仍不超光速。代價是負能量（違反零能量條件），以「向真空借貸」表示：
+     · 借貸速率 kappa·k²·(r/RH)²（越快、越大越貴）；量子不等式：借貸速率 × 持續時間² ≤ Q，到了上限自動結束
+     · 量子利息：結束後必須在 repayT 秒內償還 借貸 × (1 + 持續時間/TI)（越久才還，利息越高），償還期間不能再啟動
+     · 方向在啟動時鎖定（超光速時泡泡前緣在自己的光錐之外，無法即時操控）；可以隨時停下；碰到其他泡泡就自動脫離
+     · warp { on: true, dx, dy, k }：啟動；warp { on: false }：停下 */
+  const warpRate = (k, r) => PLAYER.warp.kappa*k*k*(r/p.RH)**2;
+  function accrue(C, t, r){ const W = C.warp; W.B += warpRate(W.k, r)*Math.max(0, t - W.tAcc); W.tAcc = t; }
+  function endWarp(b, t, why){
+    const C = b.ctl, W = C.warp; if(!W) return;
+    accrue(C, t, U.circleAt(b, t).r);
+    const tau = t - W.t0, due = W.B*(1 + tau/PLAYER.warp.TI);
+    C.warp = null;
+    C.repay = due > 0 ? { left: due, rate: due/PLAYER.warp.repayT } : null;
+    C.lastWarp = { t0: W.t0, t1: t, tau, k: W.k, borrowed: W.B, due, why };
+  }
+  function actWarp(a, t){
+    const P = U.player; if(!P) return { ok: false, reason: '沒有玩家宇宙' };
+    const C = P.ctl;
+    if(!a.on){ if(!C.warp) return { ok: false, reason: '不在曲速中' }; endWarp(P, t, '手動'); return { ok: true }; }
+    if(C.warp) return { ok: false, reason: '已在曲速中' };
+    if(C.repay) return { ok: false, reason: '正在償還量子利息' };
+    if(C.exhausted) return { ok: false, reason: '力竭中，無法啟動' };
+    if(!(C.E > 0)) return { ok: false, reason: '能量透支中，無法再借貸負能量' };
+    const c = U.circleAt(P, t), h = LH ? hIn(regionOf(P, t, c)) : p.H;
+    if(h*c.r >= cLight) return { ok: false, reason: '失控中，無法啟動' };
+    let dx = +a.dx || 0, dy = +a.dy || 0; const m = Math.hypot(dx, dy);
+    if(!(m > 0)) return { ok: false, reason: '需要方向' };
+    const k = Math.max(1, Math.min(PLAYER.warp.kMax, a.k === undefined ? PLAYER.warp.k : +a.k || PLAYER.warp.k));
+    C.warp = { k, dx: dx/m, dy: dy/m, t0: t, tAcc: t, B: 0 };
+    return { ok: true, k };
+  }
   /* 放手：玩家宇宙變回一般的泡泡（泡壁以光速擴張、不再移動），之後依一般規則流出模擬範圍 */
   function release(b, t){
     b.player = false; if(U.player === b) U.player = null;
     const c = U.circleAt(b, t), C = b.ctl;
+    C.warp = null; C.repay = null;
     pushSeg(b, t, c.cx, c.cy, c.r, 0, 0, cLight, LH ? C.reg[segIndex(C, t)] : null);
     C.free = true; C.releasedAt = t;
     if(LH && C.reg[C.reg.length - 1]){ b.texit = Infinity; b.dyn = true; }   // 在口袋宇宙內：由掃描判斷流出
     else b.texit = exitTime(1, Math.hypot(c.cx, c.cy), c.r, t);
   }
   /* (x, y) 為物理位置；方案 B 時改存相對所在區域 reg 中心的偏移，並記下該區域的膨脹率 */
-  function pushSeg(b, t, x, y, r, ux, uy, w, reg = null){
+  function pushSeg(b, t, x, y, r, ux, uy, w, reg = null, vx = 0, vy = 0){
     const C = b.ctl, n = C.t.length, h = LH ? hIn(reg) : p.H;
     if(LH && reg){ const rc = anchorAt(reg, t); x -= rc.cx; y -= rc.cy; }
-    if(n && C.t[n-1] === t){ C.x[n-1] = x; C.y[n-1] = y; C.r[n-1] = r; C.ux[n-1] = ux; C.uy[n-1] = uy; C.w[n-1] = w; C.reg[n-1] = reg; C.h[n-1] = h; return; }
-    C.t.push(t); C.x.push(x); C.y.push(y); C.r.push(r); C.ux.push(ux); C.uy.push(uy); C.w.push(w); C.reg.push(reg); C.h.push(h);
+    if(n && C.t[n-1] === t){ C.x[n-1] = x; C.y[n-1] = y; C.r[n-1] = r; C.ux[n-1] = ux; C.uy[n-1] = uy; C.vx[n-1] = vx; C.vy[n-1] = vy; C.w[n-1] = w; C.reg[n-1] = reg; C.h[n-1] = h; return; }
+    C.t.push(t); C.x.push(x); C.y.push(y); C.r.push(r); C.ux.push(ux); C.uy.push(uy); C.vx.push(vx); C.vy.push(vy); C.w.push(w); C.reg.push(reg); C.h.push(h);
   }
   /* 方案 B：玩家所在的區域 = 「除了玩家以外」玩家中心點的擁有者（歸屬一律由 Territory 判斷）；null 為假真空 */
   function regionOf(b, t, c){
@@ -431,13 +473,18 @@ export function createUniverse(p, tune, opts = {}){
     let w, ux = 0, uy = 0;
     // 力竭期間目標半徑跟著實際半徑：恢復控制時維持當下的大小，而不是立刻花大量能量縮回去（縮小由玩家自己決定）。
     // 大於（當地的）哈伯半徑時連大小都維持不住（需要 w < −c）：失控，泡壁回到自然狀態
+    if(C.warp && (C.exhausted || h*cur.r >= c)) endWarp(b, t, C.exhausted ? '力竭' : '失控');
+    let vx = 0, vy = 0;
     if(C.exhausted || h*cur.r >= c){ w = c; C.in.rT = Math.max(2*p.R0, Math.min(.95*p.RH, cur.r)); }
     else {
       w = Math.max(-c, Math.min(c, -h*cur.r + PLAYER.k*(C.in.rT - cur.r)));
-      const um = c - Math.abs(w), m = Math.hypot(C.in.dx, C.in.dy);
-      if(m > 0){ const f = Math.min(1, m)*um/m; ux = C.in.dx*f; uy = C.in.dy*f; }
+      if(C.warp){ vx = C.warp.dx*C.warp.k*c; vy = C.warp.dy*C.warp.k*c; }     // 曲速：方向鎖定，自己的前進輸入不用
+      else {
+        const um = c - Math.abs(w), m = Math.hypot(C.in.dx, C.in.dy);
+        if(m > 0){ const f = Math.min(1, m)*um/m; ux = C.in.dx*f; uy = C.in.dy*f; }
+      }
     }
-    pushSeg(b, t, cur.cx, cur.cy, cur.r, ux, uy, w, reg);
+    pushSeg(b, t, cur.cx, cur.cy, cur.r, ux, uy, w, reg, vx, vy);
   }
   /* 能量帳（D3）：在 [t−STEP, t] 期間，玩家宇宙與其他宇宙（或假真空）之間轉手的地盤 × 真空能差。
      以隨哈伯流移動的格點取樣（背景膨脹本身不算），歸屬一律由 Territory.ownerAt 判斷。
@@ -449,9 +496,11 @@ export function createUniverse(p, tune, opts = {}){
     const t0 = t - STEP; if(b.tn > t0 + 1e-9) return;
     const C = b.ctl, c0 = U.circleAt(b, t0), c1 = U.circleAt(b, t);
     // 格點隨當地的空間流動：假真空以原點為縮放中心（速率 H）；方案 B 在口袋宇宙內時以該區域的中心與膨脹率
-    const si = LH ? segIndex(C, t0) : 0, reg = LH ? C.reg[si] : null, hr = LH ? C.h[si] : p.H, e = Math.exp(hr*STEP);
+    // 曲速時空間連同玩家一起被搬動（V），格點也跟著搬：搬動本身不轉手地盤，只有泡壁相對空間的運動（u、w）才算
+    const si = segIndex(C, t0 + STEP/2), reg = LH ? C.reg[si] : null, hr = LH ? C.h[si] : p.H, e = Math.exp(hr*STEP);   // 取這一步中點所在的段（t − STEP 的浮點誤差可能落到前一段）
+    const g = hr > 1e-9 ? (e - 1)/hr : STEP, Vx = C.vx[si]*g, Vy = C.vy[si]*g;
     const r0c = reg ? anchorAt(reg, t0) : null, r1c = reg ? anchorAt(reg, t) : null;
-    const adv = (x, y) => reg ? [r1c.cx + (x - r0c.cx)*e, r1c.cy + (y - r0c.cy)*e] : [x*e, y*e];
+    const adv = (x, y) => reg ? [r1c.cx + (x - r0c.cx)*e + Vx, r1c.cy + (y - r0c.cy)*e + Vy] : [x*e + Vx, y*e + Vy];
     const Rs = Math.max(c0.r, c1.r) + 6, n = Math.max(4, Math.min(PLAYER.latticeMax, Math.ceil(Rs/PLAYER.cell))), sp = Rs/n;
     const near = (tt, cx, cy, R) => { const out = []; for(const o of U.live) if(o.tn <= tt && o.texit > tt){ const c = U.circleAt(o, tt); if(Math.hypot(c.cx - cx, c.cy - cy) < c.r + R) out.push(c); } return out; };
     const [a1x, a1y] = adv(c0.cx, c0.cy);
@@ -482,7 +531,7 @@ export function createUniverse(p, tune, opts = {}){
   }
   /* 接觸紀錄：可控制的泡泡與其他泡泡的接觸區間 [開始, 結束]（疇壁位移從每段接觸的開始算起） */
   function contacts(b, t){
-    const C = b.ctl, cb = U.circleAt(b, t), t0 = t - STEP;
+    const C = b.ctl, cb = U.circleAt(b, t), t0 = t - STEP; let opened = 0;
     for(const o of U.live){
       if(o === b || o.tn > t || o.texit <= t) continue;
       const co = U.circleAt(o, t), ov = Math.hypot(cb.cx - co.cx, cb.cy - co.cy) < cb.r + co.r;
@@ -494,18 +543,34 @@ export function createUniverse(p, tune, opts = {}){
         if(f(lo) <= 0) hi = lo;
         else for(let i=0;i<30;i++){ const m = (lo + hi)/2; if(f(m) > 0) lo = m; else hi = m; }
         if(!arr) C.contacts.set(o.id, arr = []);
-        arr.push([hi, Infinity]);
+        arr.push([hi, Infinity]); opened++;
       } else {
         for(let i=0;i<30;i++){ const m = (lo + hi)/2; if(f(m) <= 0) lo = m; else hi = m; }
         arr[arr.length - 1][1] = lo;
       }
     }
+    return opened;
   }
-  /* 每一步：更新所有可控制泡泡的接觸；玩家宇宙結算能量帳並決定下一步的控制 */
+  /* 每一步：更新所有可控制泡泡的接觸；玩家宇宙結算能量帳、曲速的借貸與量子利息，並決定下一步的控制 */
   function playerStep(t){
-    for(const b of U.live) if(b.ctl && b.texit > t) contacts(b, t);
-    const P = U.player;
-    if(P){ ledger(P, t); if(U.player === P) decide(P, t); }
+    const P = U.player; let opened = 0;
+    for(const b of U.live) if(b.ctl && b.texit > t){ const n = contacts(b, t); if(b === P) opened = n; }
+    if(!P) return;
+    const C = P.ctl;
+    if(C.warp){
+      // 碰到其他泡泡就脫離；否則累計借貸，到了量子不等式的上限（借貸速率 × 持續時間² ≤ Q）就結束
+      if(opened) endWarp(P, t, '碰撞');
+      else { const r = U.circleAt(P, t).r; accrue(C, t, r); const tau = t - C.warp.t0; if(warpRate(C.warp.k, r)*tau*tau >= PLAYER.warp.Q) endWarp(P, t, '量子不等式的上限'); }
+    }
+    ledger(P, t);
+    if(C.repay && U.player === P){
+      // 償還量子利息（正能量脈衝）：在 repayT 秒內平均扣除
+      const pay = Math.min(C.repay.left, C.repay.rate*STEP);
+      C.E -= pay; C.loss += pay; C.repay.left -= pay;
+      if(C.repay.left <= 1e-12) C.repay = null;
+      if(C.mode === 'survival' && C.E <= 0) C.exhausted = true;
+    }
+    if(U.player === P) decide(P, t);
   }
   U.player = null;
 
@@ -586,6 +651,7 @@ export function createUniverse(p, tune, opts = {}){
       a.result = a.type === 'nucleate' ? actNucleate(a, U.tSim, k++)
         : a.type === 'spawn' ? actSpawn(a, U.tSim, k++)
         : a.type === 'steer' ? actSteer(a)
+        : a.type === 'warp' ? actWarp(a, U.tSim)
         : { ok: false, reason: '未知的動作' };
       for(const fn of listeners.act) fn(a);
     }

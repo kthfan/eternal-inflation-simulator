@@ -85,13 +85,15 @@ api.restart({ actions: api.U.actionLog() });               // 以相同種子重
 - `spawn { x, y, vac, r, eta, mode }`：在假真空中誕生玩家宇宙（`api.U.player`）；`steer { dx, dy, rT }`：玩家輸入（方向、目標半徑），只在變化時送出。
   玩家宇宙的狀態在 `api.U.player.ctl`（`E` 能量、`exhausted`、`in`、`fate`……）。
 - `nucleate { …, by: 'player' }`：玩家技能，限影響範圍並扣除能量（`a.result.cost`）。
+- `warp { on: true, dx, dy, k }`／`warp { on: false }`：曲速的啟動與停下（D12）。狀態在 `P.ctl.warp`（`{ k, dx, dy, t0, B }`，B 為已借貸）、
+  `P.ctl.repay`（`{ left, rate }`，償還量子利息中）、`P.ctl.lastWarp`（上一次的 `{ tau, borrowed, due, why }`）；參數在 `api.PLAYER.warp`。
 - 需要新的動作類型時，在 `src/core/universe.js` 的動作紀錄區加入（所有版本共用），並補上自我檢查。
 
 ## 範例
 
 - `plugins/inspector/index.js`（版本 `variants/inspector`）：overlay 繪製、宇宙事件、面板、攔截按鍵、自我檢查。
 - `plugins/control/index.js`（版本 `variants/control`）：動作紀錄（放置泡泡、重播、匯出匯入）、攔截滑鼠、暫停演化。
-- `plugins/player/index.js`（版本 `variants/game`）：玩家宇宙（誕生、鍵盤操控、技能、鏡頭跟隨、HUD、停用回看）。
+- `plugins/player/index.js`（版本 `variants/game`）：玩家宇宙（誕生、鍵盤操控、技能、曲速、鏡頭跟隨、HUD、停用回看）。
 
 ## 注意
 

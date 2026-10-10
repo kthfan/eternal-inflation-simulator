@@ -2,10 +2,11 @@
    · 挑選真空後「誕生」；WASD／方向鍵控制膨脹方向（前脹後縮 → 前進），Q／E 縮小／放大目標半徑
    · 能量來自吞入真空能較高的地盤；維持大小、移動、技能都要花能量；力竭時泡壁回到以光速自由膨脹
    · 技能（在游標處）：1 = 向下穿隧（放下較低真空的泡泡）、2 = 向上穿隧（激發態區域，會收縮消失）
+   · 3 = 曲速（D12）：搬動空間本身，可超過光速；向真空借貸負能量，結束後連同量子利息償還
    · 空白鍵暫停／繼續演化；遊戲進行中不能回看（只能在直播時操作）
    所有操作都經由核心的動作紀錄（api.act），物理與能量帳都在核心計算，相同種子 + 相同動作紀錄可完整重播。 */
 export function player(){
-  let api, panel, mx = -1, my = -1, follow = true;
+  let api, panel, mx = -1, my = -1, follow = true, seenWarp = null;
   const keys = new Set();
   let sent = { dx: 0, dy: 0, rT: 0 }, rT = 0, rTdir = 0, msg = '', msgUntil = 0;   // rT 只在按住 Q／E 調整時使用，其餘時候沿用核心目前的目標半徑
 
@@ -55,6 +56,17 @@ export function player(){
     else { const ups = U.VAC.filter(v => v.eps > pe).sort((a, b) => a.eps - b.eps); if(!ups.length){ say('該處沒有更高的真空可以穿隧'); return; } vac = ups[ups.length - 1].i; }
     api.act({ type: 'nucleate', by: 'player', x, y, vac, r: .3*api.S.RH });
   }
+  /* 曲速：按 3 啟動或停下。方向 = 正按著的方向鍵；沒有按就朝游標 */
+  function warp(){
+    const B = P(); if(!B){ say('先誕生玩家宇宙'); return; }
+    if(B.ctl.warp){ api.act({ type: 'warp', on: false }); return; }
+    let dx = sent.dx, dy = sent.dy;
+    if(!dx && !dy){
+      if(mx < 0){ say('按住方向鍵，或把游標移到要前往的方向'); return; }
+      const c = api.U.circleAt(B, api.tView), [x, y] = api.camera.toPhysical(mx, my); dx = x - c.cx; dy = y - c.cy;
+    }
+    api.act({ type: 'warp', on: true, dx, dy, k: +$p('plWarp').value });
+  }
   function fillVacuums(U){
     const opts = U.VAC.filter(V => V.eps < 1).sort((a, b) => a.eps - b.eps).map(V => {
       const tag = V.kind === 'ads' ? 'Λ<0，最強' : V.kind === 'tiny' ? 'Λ≈0' : 'Λ>0';
@@ -79,8 +91,15 @@ export function player(){
           <option value="survival">生存：能量耗盡就力竭，泡壁以光速自由膨脹</option></select></div>
         <div class="btns"><button id="plSpawn">誕生（N）</button></div>
         <div class="sl"><label for="plDown"><span>技能 1（向下穿隧）的真空</span></label><select id="plDown"></select></div>
-        <p class="note">WASD／方向鍵：控制膨脹方向（前脹後縮 → 前進）　Q／E：縮小／放大　1、2：在游標處施放技能　空白鍵：暫停演化　F：鏡頭跟隨<br>
+        <div class="sl"><label for="plWarp"><span>曲速倍率（技能 3）</span><output id="plWarpo"></output></label>
+          <input type="range" id="plWarp" min="2" max="${api.PLAYER.warp.kMax}" step="1" value="${api.PLAYER.warp.k}">
+          <p class="note">曲速搬動的是空間本身（前方收縮、後方膨脹），所以可以超過光速；泡壁相對被搬動的空間仍不超光速。
+            代價是負能量：向真空借貸，越快、泡泡越大借得越多，能撐的時間越短（量子不等式）；結束後要在 ${api.PLAYER.warp.repayT} 秒內連本帶利償還，借越久利息越高（量子利息）。
+            方向在啟動時鎖定，碰到其他泡泡會自動脫離。</p></div>
+        <p class="note">WASD／方向鍵：控制膨脹方向（前脹後縮 → 前進）　Q／E：縮小／放大　1、2：在游標處施放技能　3：曲速（朝按住的方向，沒按則朝游標；再按一次停下）　空白鍵：暫停演化　F：鏡頭跟隨<br>
           越大越慢：最高速度 = c·(1 − r/R<sub>H</sub>)；超過哈伯半徑就無法控制。維持大小要持續花能量。</p>` });
+      const wOut = () => { $p('plWarpo').textContent = `${$p('plWarp').value} c`; };
+      $p('plWarp').addEventListener('input', wOut); wOut();
       const rOut = () => { $p('plRo').textContent = `${(+$p('plR').value).toFixed(2)} R_H`; };
       $p('plR').addEventListener('input', rOut); rOut();
       $p('plSpawn').addEventListener('click', spawn);
@@ -90,6 +109,7 @@ export function player(){
         U.on('act', a => {
           if(a.type === 'spawn') say(a.result.ok ? `你誕生了：#${a.result.id}（${U.VAC[a.vac].name}）` : `無法誕生：${a.result.reason}`);
           if(a.type === 'nucleate' && a.by === 'player') say(a.result.ok ? `施放成功（花費 ${a.result.cost.toFixed(2)}）` : `無法施放：${a.result.reason}`);
+          if(a.type === 'warp' && a.on) say(a.result.ok ? `曲速 ${a.result.k} c：向真空借貸負能量` : `無法啟動曲速：${a.result.reason}`);
         });
       });
       api.camera.cv.addEventListener('pointermove', e => { mx = e.clientX; my = e.clientY; });
@@ -107,6 +127,7 @@ export function player(){
         if(k === 'f'){ follow = !follow; return true; }
         if(k === '1'){ cast('down'); return true; }
         if(k === '2'){ cast('up'); return true; }
+        if(k === '3'){ warp(); return true; }
         return false;
       });
       addEventListener('keyup', e => {
@@ -120,8 +141,11 @@ export function player(){
         if(!api.S.isLive) api.time.goLive();          // 遊戲進行中不能回看
         const B = P();
         if(B && rTdir){ rT = Math.max(2*api.S.R0, Math.min(.95*api.S.RH, rT*Math.exp(rTdir*.7*dtR))); steer(); }
+        // 曲速結束：顯示借貸與應還的量子利息
+        const lw = B && B.ctl.lastWarp;
+        if(lw && lw !== seenWarp){ seenWarp = lw; say(`曲速結束（${lw.why}）：${lw.tau.toFixed(1)} 秒，借 ${lw.borrowed.toFixed(2)}，連本帶利償還 ${lw.due.toFixed(2)}`, 3500); }
         if(B && follow){
-          const c = api.U.circleAt(B, api.tView), Pc = api.camera.P, k = Math.min(1, dtR*4);
+          const c = api.U.circleAt(B, api.tView), Pc = api.camera.P, k = Math.min(1, dtR*(B.ctl.warp ? 12 : 4));   // 曲速時鏡頭跟得更緊
           api.camera.set(Pc.x + (c.cx - Pc.x)*k, Pc.y + (c.cy - Pc.y)*k);
         }
       });
@@ -136,10 +160,30 @@ export function player(){
         // 目標半徑
         ctx.setLineDash([3, 6]); ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,240,200,.45)';
         ctx.beginPath(); ctx.arc(sx, sy, B.ctl.in.rT*Z, 0, Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
-        // 前進方向
-        const C = B.ctl, n = C.t.length - 1, ux = C.ux[n], uy = C.uy[n], u = Math.hypot(ux, uy);
+        const C = B.ctl, n = C.t.length - 1;
+        // 曲速：後方拉長的光痕（空間在身後膨脹）、前方被壓縮的弧（空間在前方收縮）
+        if(C.warp){
+          const ex = C.warp.dx, ey = C.warp.dy, k = C.warp.k, L = (40 + 10*k)*Math.min(2, Math.max(.6, Z)), ph = (t*3) % 1;
+          ctx.lineWidth = 1.4;
+          for(let i=0;i<14;i++){
+            const off = (i/13 - .5)*1.8*sr, len = L*(.55 + .45*Math.abs(Math.sin(i*2.3 + t*7))), st = sr*.6 + ((ph + i*.37) % 1)*8;
+            const bx = sx - ex*st - ey*off, by = sy - ey*st + ex*off;
+            const g = ctx.createLinearGradient(bx, by, bx - ex*len, by - ey*len); g.addColorStop(0, 'rgba(190,230,255,.55)'); g.addColorStop(1, 'rgba(190,230,255,0)');
+            ctx.strokeStyle = g; ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx - ex*len, by - ey*len); ctx.stroke();
+          }
+          const a0 = Math.atan2(ey, ex);
+          for(let j=0;j<3;j++){ ctx.strokeStyle = `rgba(200,235,255,${.5 - j*.14})`; ctx.lineWidth = 2.2 - j*.5; ctx.beginPath(); ctx.arc(sx, sy, sr + 6 + j*5, a0 - .9 + j*.15, a0 + .9 - j*.15); ctx.stroke(); }
+        }
+        // 償還量子利息：正能量脈衝（向外擴散的紅色環）
+        if(C.repay){
+          const ph = (t*1.6) % 1;
+          ctx.strokeStyle = `rgba(255,140,120,${.55*(1 - ph)})`; ctx.lineWidth = 2.5;
+          ctx.beginPath(); ctx.arc(sx, sy, sr + 4 + ph*26, 0, Math.PI*2); ctx.stroke();
+        }
+        // 前進方向（曲速時是曲速方向）
+        const wv = C.warp ? 1 : 0, ux = wv ? C.vx[n] : C.ux[n], uy = wv ? C.vy[n] : C.uy[n], u = Math.hypot(ux, uy);
         if(u > .5){
-          const L = sr + 10 + u*.8, ex = ux/u, ey = uy/u;
+          const L = sr + 10 + Math.min(u, 60)*.8, ex = ux/u, ey = uy/u;
           ctx.strokeStyle = 'rgba(255,240,200,.85)'; ctx.lineWidth = 2;
           ctx.beginPath(); ctx.moveTo(sx + ex*(sr + 6), sy + ey*(sr + 6)); ctx.lineTo(sx + ex*L, sy + ey*L);
           ctx.lineTo(sx + ex*(L - 7) - ey*5, sy + ey*(L - 7) + ex*5); ctx.moveTo(sx + ex*L, sy + ey*L); ctx.lineTo(sx + ex*(L - 7) + ey*5, sy + ey*(L - 7) - ex*5); ctx.stroke();
@@ -168,6 +212,14 @@ export function player(){
           ctx.fillStyle = '#f4ecff';
           ctx.fillText(`能量 ${C.E.toFixed(2)}　半徑 ${rr.toFixed(2)} R_H　最高速度 ${(um*100).toFixed(0)}% c`, x, y + 18);
           if(state){ ctx.fillStyle = '#ff9aa6'; ctx.fillText(state, x, y + 36); }
+          // 曲速與量子利息
+          const W = api.PLAYER.warp, wy = y + (state ? 54 : 36);
+          let wl = '';
+          if(C.warp){
+            const rate = W.kappa*C.warp.k**2*rr*rr, tau = t - C.warp.t0, tmax = Math.sqrt(W.Q/rate);
+            wl = `曲速 ${C.warp.k} c｜已借 ${C.warp.B.toFixed(2)}｜還能撐 ${Math.max(0, tmax - tau).toFixed(1)} 秒｜需還約 ${(C.warp.B*(1 + tau/W.TI)).toFixed(2)}`;
+          } else if(C.repay) wl = `償還量子利息：剩 ${C.repay.left.toFixed(2)}（還完才能再啟動曲速）`;
+          if(wl){ const tw = ctx.measureText(wl).width + 20; ctx.fillStyle = 'rgba(10,6,24,.7)'; ctx.fillRect(x - tw/2, wy - 11, tw, 22); ctx.fillStyle = C.warp ? '#bfe6ff' : '#ffb4a6'; ctx.fillText(wl, x, wy); }
         } else {
           const last = api.U.hist.concat(api.U.longs).find(b => b.ctl && b.ctl.fate === 'eaten');
           ctx.fillStyle = 'rgba(10,6,24,.7)'; ctx.fillRect(x - 190, y - 14, 380, 28);
@@ -187,8 +239,15 @@ export function player(){
         T.act({ type: 'steer', dx: 1, dy: 0, rT: 30 }); T.presim(2);
         // 扣掉哈伯流：前進量 = 現在的中心 − 誕生點隨哈伯流移動後的位置
         const c = T.circleAt(B, T.tSim), e = Math.exp(p.H*(T.tSim - B.tn)), fwd = c.cx - pos[0]*e, side = Math.abs(c.cy - pos[1]*e);
-        const ok = !!T.player && isFinite(B.ctl.E) && fwd > 10 && side < fwd*.2;
-        return { pass: ok, detail: `能量 ${B.ctl.E.toFixed(2)}；相對哈伯流前進 ${fwd.toFixed(1)}、側移 ${side.toFixed(1)}` };
+        // 曲速 5c 往上 0.5 秒：中心相對當地空間的位移約 5c × 0.5（期間若重新置中，座標會整體平移，要加回來）
+        const t0 = T.tSim, c0 = T.circleAt(B, t0), shifts = []; T.on('rebase', e => shifts.push(e));
+        const wa = T.act({ type: 'warp', on: true, dx: 0, dy: -1, k: 5 }); T.advance(api.STEP);
+        T.presim(.5); T.act({ type: 'warp', on: false }); T.advance(api.STEP);
+        const t1 = T.tSim, c1 = T.circleAt(B, t1), back = shifts.reduce((s, e) => s + e.y*Math.exp(p.H*(t1 - e.t)), 0);
+        const jump = -(c1.cy + back - c0.cy*Math.exp(p.H*(t1 - t0)));
+        const want = 5*p.H*p.RH*(.5 + api.STEP), okW = !!wa.result && wa.result.ok && Math.abs(jump - want) < .15*want && !!B.ctl.repay;
+        const ok = !!T.player && isFinite(B.ctl.E) && fwd > 10 && side < fwd*.2 && okW;
+        return { pass: ok, detail: `能量 ${B.ctl.E.toFixed(2)}；相對哈伯流前進 ${fwd.toFixed(1)}、側移 ${side.toFixed(1)}；曲速 0.5 秒位移 ${jump.toFixed(0)}（約 ${want.toFixed(0)}），${B.ctl.repay ? '開始償還量子利息' : '沒有償還'}` };
       }});
     },
   };
