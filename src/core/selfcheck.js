@@ -57,7 +57,7 @@ export function buildSelfCheck(extraP = {}){
       if(i % 6 === 0){
         const rr = 2200*Math.sqrt(r()), a = r()*TAU, x = Math.cos(a)*rr, y = Math.sin(a)*rr;
         const own = U.ownerAt(x, y, U.tSim), pe = own ? U.VAC[own.b.vac].eps : 1;
-        const ups = U.VAC.filter(v => v.eps > pe), downs = U.VAC.filter(v => v.eps < pe);
+        const ups = U.VAC.filter(v => v.eps > pe && v.kind !== 'rf'), downs = U.VAC.filter(v => v.eps < pe);
         const list = r() < .6 && ups.length ? ups : downs, V = list[(r()*list.length)|0];
         if(V) U.act({ type: 'nucleate', x, y, vac: V.i, r: 40 + r()*120 });
       }
@@ -93,7 +93,7 @@ export function buildSelfCheck(extraP = {}){
       if(U.player && r() < .15){
         const c = U.circleAt(U.player, U.tSim), th = r()*TAU, d = c.r + 20 + r()*100, x = c.cx + Math.cos(th)*d, y = c.cy + Math.sin(th)*d;
         const own = U.ownerAt(x, y, U.tSim), pe = own ? U.VAC[own.b.vac].eps : 1, up = r() < .5;
-        const list = U.VAC.filter(v => up ? v.eps > pe : v.eps < pe), V = list[(r()*list.length)|0];
+        const list = U.VAC.filter(v => up ? v.eps > pe && v.kind !== 'rf' : v.eps < pe), V = list[(r()*list.length)|0];
         if(V) U.act({ type: 'nucleate', by: 'player', x, y, vac: V.i, r: 30 + r()*40 });
       }
       U.presim(.5);
@@ -132,7 +132,7 @@ export function buildSelfCheck(extraP = {}){
           const t = b.tn, F = U.frame(t), cs = U.aliveAt(t).filter(o => o.id < b.id).map(o => U.circleAt(o, t));
           const own = Territory.ownerAt(F, cs, b.x, b.y); n++;
           if((own ? own.b : null) !== b.parent) bad++;
-          if(b.parent && U.VAC[b.parent.vac].kind !== 'ds') ads++;
+          if(b.parent && U.VAC[b.parent.vac].kind !== 'ds' && U.VAC[b.parent.vac].kind !== 'rf') ads++;
           if(b.parent && U.crunchedAt(b.parent, b.x, b.y, t)) crunched++;
         }
       }
@@ -359,26 +359,29 @@ export function buildSelfCheck(extraP = {}){
       }
       return { pass: rays > 100 && mis/n < .002 && bad/rays < .01, detail: `${n} 個取樣點中 ${mis} 個不一致；玩家與鄰居 ${rays} 條射線中 ${bad} 條不吻合（${(bad/Math.max(1,rays)*100).toFixed(2)}%）` };
     }},
-    { name: '玩家宇宙：曲速與量子利息', desc: '曲速（D12）：中心以 k·c 被搬動（空間本身移動，可超過光速），泡壁相對被搬動的空間仍不超光速、軌跡連續；方向鎖定；借貸速率 × 持續時間² 到上限 Q 自動結束；結束後在 repayT 秒內償還 借貸 × (1 + 持續時間/TI)，償還期間不能再啟動；搬動本身不轉手地盤（曲速期間的花費與只維持大小相同）；碰到其他泡泡就脫離；能從以光速擴張、包住自己的泡泡裡逃出去（光速以內做不到）；重播完全相同', run(){
+    { name: '玩家宇宙：曲速與量子利息', desc: '曲速（D12）：中心以 k·c 被搬動（空間本身移動，可超過光速），泡壁相對被搬動的空間仍不超光速、軌跡連續；方向跟著輸入改變、放開則維持；借貸速率 × 持續時間² 到上限 Q 自動結束；結束後在 repayT 秒內償還 借貸 × (1 + 持續時間/TI)，償還期間不能再啟動；搬動本身不轉手地盤（曲速期間的花費與只維持大小相同）；碰到其他泡泡不脫離、可以穿過較高真空的泡泡；能從以光速擴張、包住自己的泡泡裡逃出去（光速以內做不到）；重播完全相同', run(){
       const W = PLAYER.warp, fails = [];
       const mk = (gamma = 0) => { const U = createUniverse({ ...baseP, seed: 5 }, { ...baseT(), gamma }); U.presim(1);
         spawnPlayer(U, U.VAC.findIndex(v => v.kind === 'ds'), 28, .8); return U; };
       // 1. 速度、方向鎖定、上限、利息、償還
       const U = mk(), P = U.player, C = P.ctl, c = U.p.H*U.p.RH;
       const E0 = C.E, a = U.act({ type: 'warp', on: true, dx: 1, dy: 0, k: 5 }); U.advance(STEP);
-      U.act({ type: 'steer', dx: 0, dy: 1, rT: 28 });             // 曲速中轉向：應被忽略
-      let speedErr = 0, ySpan = 0, restart = null;
+      // 曲速中轉向：先往右 1 秒，按住「下」1 秒，放開後應維持往下
+      let speedErr = 0, dirR = 1, dirD = 1, dirKeep = 1, restart = null;
       for(let i=0;i<400 && C.warp;i++){
+        if(i === 30) U.act({ type: 'steer', dx: 0, dy: 1, rT: 28 });
+        if(i === 60) U.act({ type: 'steer', dx: 0, dy: 0, rT: 28 });
         const t = U.tSim, A = U.circleAt(P, t + STEP/2), B = U.circleAt(P, t), H = U.p.H, e = Math.exp(H*STEP/2);
-        const vx = (A.cx - B.cx*e)*H/(e - 1), vy = (A.cy - B.cy*e)*H/(e - 1);   // 相對當地空間的中心速度
-        speedErr = Math.max(speedErr, Math.abs(Math.hypot(vx, vy) - 5*c)/(5*c)); ySpan = Math.max(ySpan, Math.abs(B.cy));
+        const vx = (A.cx - B.cx*e)*H/(e - 1), vy = (A.cy - B.cy*e)*H/(e - 1), v = Math.hypot(vx, vy);   // 相對當地空間的中心速度
+        speedErr = Math.max(speedErr, Math.abs(v - 5*c)/(5*c));
+        if(i > 2 && i < 30) dirR = Math.min(dirR, vx/v); else if(i > 32 && i < 60) dirD = Math.min(dirD, vy/v); else if(i > 62) dirKeep = Math.min(dirKeep, vy/v);
         U.advance(STEP);
       }
       const lw = C.lastWarp, rate = W.kappa*25*(28/U.p.RH)**2, tauMax = Math.sqrt(W.Q/rate);
       if(!lw) return { pass: false, detail: `曲速 ${(400*STEP).toFixed(0)} 秒內沒有結束（量子不等式的上限沒有作用）` };
       if(!a.result.ok) fails.push('啟動失敗');
       if(speedErr > 1e-3) fails.push(`速度誤差 ${speedErr.toExponential(1)}`);
-      if(ySpan > 1) fails.push(`方向沒有鎖定（偏移 ${ySpan.toFixed(1)}）`);
+      if(dirR < .9999 || dirD < .9999 || dirKeep < .9999) fails.push(`轉向不正確（往右 ${dirR.toFixed(4)}、轉下 ${dirD.toFixed(4)}、放開後 ${dirKeep.toFixed(4)}）`);
       if(!lw || lw.why !== '量子不等式的上限' || Math.abs(lw.tau - tauMax) > 2*STEP) fails.push(`上限不符（${lw && lw.tau.toFixed(2)} 秒，理論 ${tauMax.toFixed(2)}）`);
       if(lw && Math.abs(lw.due - lw.borrowed*(1 + lw.tau/W.TI)) > 1e-9) fails.push('利息不符');
       if(lw && Math.abs(lw.borrowed - rate*lw.tau)/(rate*lw.tau) > .03) fails.push(`借貸不符（${lw.borrowed.toFixed(3)}，理論 ${(rate*lw.tau).toFixed(3)}）`);
@@ -400,13 +403,13 @@ export function buildSelfCheck(extraP = {}){
           if(Math.abs(p0.cx - p1.cx) > tol || Math.abs(p0.cy - p1.cy) > tol || Math.abs(p0.r - p1.r) > tol) jump++; }
       }
       if(over || jump) fails.push(`超光速 ${over} 段、不連續 ${jump} 處`);
-      // 4. 碰到其他泡泡就脫離（不會穿過去）
+      // 4. 碰到其他泡泡不脫離：穿過真空能比自己高的泡泡（搬動空間本身，不轉手地盤），繼續前進到它的另一側
       const V4 = mk(), P4 = V4.player, c4 = V4.circleAt(P4, V4.tSim), V = V4.VAC.filter(v => v.eps < 1 && v.kind !== 'up');
       const xa = V4.act({ type: 'nucleate', x: c4.cx + 2.5*V4.p.RH, y: c4.cy, vac: V[V.length - 1].i }); V4.advance(STEP);
       V4.act({ type: 'warp', on: true, dx: 1, dy: 0, k: 10 }); V4.advance(STEP);
       while(P4.ctl.warp) V4.advance(STEP);
       const X = V4.hist.find(b => b.id === xa.result.id), px = V4.circleAt(P4, V4.tSim), qx = V4.circleAt(X, V4.tSim);
-      if(P4.ctl.lastWarp.why !== '碰撞' || px.cx > qx.cx) fails.push(`碰撞：${P4.ctl.lastWarp.why}`);
+      if(!V4.player || P4.ctl.lastWarp.why !== '量子不等式的上限' || !(px.cx > qx.cx + qx.r*.2) || !isFinite(P4.ctl.E)) fails.push(`穿過泡泡：${P4.ctl.lastWarp ? P4.ctl.lastWarp.why : '沒有結束'}，玩家${px.cx > qx.cx ? '已' : '未'}越過泡泡中心`);
       // 5. 逃出以光速擴張、包住自己的泡泡（同種真空，玩家保有自己的圓）：光速以內永遠追不上它的泡壁
       const esc = warpOn => {
         const U5 = mk(), P5 = U5.player, c5 = U5.circleAt(P5, U5.tSim);
@@ -429,7 +432,57 @@ export function buildSelfCheck(extraP = {}){
       R.presim(U.tSim); const same = R.fingerprint(U.tSim) === U.fingerprint(U.tSim) && R.player && Math.abs(R.player.ctl.E - C.E) < 1e-12;
       if(!same) fails.push('重播不一致');
       return { pass: !fails.length, detail: fails.length ? fails.join('；') :
-        `5c：速度誤差 ${speedErr.toExponential(1)}、持續 ${lw.tau.toFixed(2)} 秒（上限 ${tauMax.toFixed(2)}）、借貸 ${lw.borrowed.toFixed(2)}、償還 ${lw.due.toFixed(2)}；曲速期間花費 ${during.toFixed(3)}（只維持大小 ${hold.toFixed(3)}）；撞到泡泡自動脫離；曲速能逃出包住自己的泡泡、光速以內不能；重播一致` };
+        `5c：速度誤差 ${speedErr.toExponential(1)}、可轉向、持續 ${lw.tau.toFixed(2)} 秒（上限 ${tauMax.toFixed(2)}）、借貸 ${lw.borrowed.toFixed(2)}、償還 ${lw.due.toFixed(2)}；曲速期間花費 ${during.toFixed(3)}（只維持大小 ${hold.toFixed(3)}）；穿過較高真空的泡泡；曲速能逃出包住自己的泡泡、光速以內不能；重播一致` };
+    }},
+    { name: '玩家宇宙：再循環與遊戲結束', desc: '再循環（D13）：在 Λ > 0 的口袋宇宙中以自己為中心向上穿隧出再循環假真空，半徑 = margin × 當地哈伯半徑、成本 = Δε × 面積；區域永遠縮不掉、內部以假真空的穿隧率重新成核（子泡泡的真空都比假真空低）。假真空中、Λ ≤ 0 的宇宙中不能使用；困在 Λ ≤ 0 處 trapT 秒就遊戲結束，及時用曲速逃出則不會；重播完全相同', run(){
+      const RC = PLAYER.recycle, fails = [];
+      const setup = (gamma, pick) => {
+        const U = createUniverse({ ...baseP, seed: 4242 }, { ...baseT(), gamma }); U.presim(1);
+        const V = U.VAC.filter(v => v.eps < 1 && v.kind !== 'rf' && v.kind !== 'up').sort((a, b) => a.eps - b.eps);
+        const pv = V[0], qv = pick(V, pv);
+        spawnPlayer(U, pv.i, 20, .8, 0, 0, 'relaxed'); const P = U.player, c = U.circleAt(P, U.tSim);
+        return { U, P, c, qv };
+      };
+      // 1. 在 Λ > 0 的口袋宇宙中再循環
+      const A = setup(3e-5, V => V.filter(v => v.kind === 'ds').pop()), U = A.U, P = A.P;   // 穿隧率調高：後選會排除玩家泡壁一個哈伯半徑內的誕生，區域要長大一些才有空間成核
+      const r1 = U.act({ type: 'recycle' }); U.advance(STEP);
+      if(r1.result.ok) fails.push('假真空中也能再循環');
+      const qa = U.act({ type: 'nucleate', x: A.c.cx + 30, y: A.c.cy, vac: A.qv.i }); U.advance(STEP);
+      U.presim(5);
+      const Q = U.hist.find(b => b.id === qa.result.id), E0 = P.ctl.E, ra = U.act({ type: 'recycle' }); U.advance(STEP);
+      let detail1 = '';
+      if(!ra.result.ok) fails.push(`口袋中無法再循環：${ra.result.reason}`);
+      else {
+        const R = U.hist.find(b => b.id === ra.result.id), hq = U.hIn(Q), rWant = RC.margin*(U.p.localH ? U.p.H*U.p.RH/hq : U.p.RH);
+        const cost = (1 - U.VAC[Q.vac].eps)*Math.PI*rWant*rWant/(U.p.RH*U.p.RH);
+        if(Math.abs(ra.result.r0 - rWant) > 1e-9 || Math.abs(ra.result.cost - cost) > 1e-9) fails.push('半徑或成本不符');
+        if(R.parent !== Q || U.VAC[R.vac].kind !== 'rf') fails.push('母宇宙或真空不符');
+        let shrink = 0, prev = U.circleAt(R, U.tSim).r;
+        for(let i=0;i<24;i++){ U.presim(.5); const r = U.circleAt(R, U.tSim).r; if(r < prev - 1e-9) shrink++; prev = r; }
+        const kids = U.hist.filter(b => b.parent === R), badKid = kids.filter(b => !(U.VAC[b.vac].eps < 1)).length;
+        if(shrink || !(prev > 1.5*rWant)) fails.push(`區域沒有持續長大（縮小 ${shrink} 次，12 秒後 ${(prev/rWant).toFixed(2)} 倍）`);
+        if(kids.length < 3 || badKid) fails.push(`區域內重新成核 ${kids.length} 個（真空不低於假真空的 ${badKid} 個）`);
+        detail1 = `口袋中再循環：半徑 ${(rWant/U.p.RH).toFixed(2)} RH、成本 ${cost.toFixed(2)}、12 秒後長到 ${(prev/rWant).toFixed(2)} 倍、區域內成核 ${kids.length} 個`;
+      }
+      // 2. 困在 Λ ≤ 0：不逃 → 遊戲結束；用曲速逃 → 存活
+      const trap = escape => {
+        const B = setup(0, (V, pv) => V.filter(v => v.eps <= 0 && v.eps > pv.eps).pop()), W = B.U, P2 = B.P;
+        W.act({ type: 'nucleate', x: B.c.cx + 30, y: B.c.cy, vac: B.qv.i }); W.advance(STEP);
+        let refused = null;
+        for(let i=0;i<(RC.trapT + 6)*30 && W.player;i++){
+          if(P2.ctl.trap > .5 && refused === null){ const a = W.act({ type: 'recycle' }); W.advance(STEP); refused = !a.result.ok; continue; }
+          if(escape && P2.ctl.trap > 1 && !P2.ctl.warp && !P2.ctl.repay && P2.ctl.E > 0) W.act({ type: 'warp', on: true, dx: -1, dy: 0, k: 15 });
+          W.advance(STEP);
+        }
+        return { W, P2, refused, fate: W.player ? 'alive' : P2.ctl.fate };
+      };
+      const T0 = trap(false), T1 = trap(true);
+      if(T0.fate !== 'trapped' || !T0.refused) fails.push(`困住：${T0.fate}、再循環${T0.refused ? '被拒絕' : '沒有被拒絕'}`);
+      if(T1.fate !== 'alive') fails.push(`用曲速逃出仍${T1.fate === 'trapped' ? '遊戲結束' : '死亡'}`);
+      // 3. 重播
+      const R2 = createUniverse({ ...baseP, seed: 4242 }, { ...baseT(), gamma: 0 }, { actions: T0.W.actionLog() }); R2.presim(T0.W.tSim);
+      if(R2.fingerprint(T0.W.tSim) !== T0.W.fingerprint(T0.W.tSim) || R2.player) fails.push('重播不一致');
+      return { pass: !fails.length, detail: fails.length ? fails.join('；') : `${detail1}；困在 Λ ≤ 0 ${RC.trapT} 秒後遊戲結束、曲速逃出則存活；重播一致` };
     }},
     { name: '焦點跟隨：平移不變', desc: '把原點換到另一個共動點：所有圓只差一個平移、半徑不變，每一點的歸屬與換之前相同；仍在模擬範圍內的泡泡不會被丟棄', run(){
       const U = createUniverse(baseP, baseT()); U.presim(40);

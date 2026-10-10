@@ -519,7 +519,7 @@ export function drawBubbles(F){
     const V = S.U.VAC[v.b.vac];
     /* 泡泡內部的紋理和背景一樣「畫在空間上」：以觀測者為中心、隨哈伯流向外流動（雙層交叉淡入的無限縮放）。
        同種真空的泡泡共用同一片紋理，融合時天衣無縫；流動速度只取決於離觀測者多遠，和泡泡大小無關，也不會突然轉向。 */
-    if(V.kind === 'ds' || V.kind === 'up'){
+    if(V.kind === 'ds' || V.kind === 'up' || V.kind === 'rf'){
       // 正真空能：內部仍在暴脹，物質被稀釋，看不到星系，只有能量雲（激發態假真空暴脹得比外面還快）
       const tf = v.b._tf;
       if(opt.neb && K.neb > 0 && tf > .01){
@@ -568,7 +568,7 @@ export function drawBubbles(F){
       hs.push([Math.max(x1, mid), 26,10,16, .55*prog], [Math.max(x1, mid, x0), 30,12,18, 0]);
       ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = radialGrad(sx, sy, 0, sr, hs); cellPath(v); ctx.fill();
     }
-    if(v.age < 3.5 && V.kind !== 'ds' && V.kind !== 'up'){
+    if(v.age < 3.5 && V.kind !== 'ds' && V.kind !== 'up' && V.kind !== 'rf'){
       const a = Math.pow(1 - v.age/3.5, 2)*.85, rr = Math.max(2, sr);
       ctx.globalCompositeOperation = 'lighter';
       ctx.fillStyle = radialGrad(sx, sy, 0, rr, [[0, 255,252,240, a], [.5, ...C4(pal.wall, a*.5)], [1, ...C4(pal.wall, 0)]]);
@@ -653,7 +653,7 @@ export function drawBubbles(F){
   } else wallFade.clear();
   // 不同真空相撞的那一刻：泡壁交點的閃光
   for(const R of walls){
-    if(R.kind !== 'wall') continue;
+    if(R.kind !== 'wall' || !(R.g.h > 0)) continue;     // 沒有交點（例如推進前緣還沒碰到、或兩圓同心）就沒有相撞的瞬間
     const A = R.W, B = R.L, x1 = R.g.p1x, y1 = R.g.p1y, x2 = R.g.p2x, y2 = R.g.p2y;
     const ck = A.b.id + ':' + B.b.id;
     if(!colSeen.has(ck)){ colSeen.add(ck); if(colSeen.size > 6000) colSeen.clear(); S.pendingCol.push((x1+x2)/(2*S.vw)*2 - 1); }

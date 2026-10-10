@@ -34,7 +34,7 @@ export function control(){
     $p('ctlCount').textContent = `${acts.length} 個（成功 ${ok}${pend ? `、待套用 ${pend}` : ''}）`;
   }
   function fillVacuums(U){
-    $p('ctlVac').innerHTML = U.VAC.map(V => `<option value="${V.i}">${V.name}（${V.kind === 'up' ? '比假真空高' : V.kind === 'ads' ? 'Λ<0' : V.kind === 'tiny' ? 'Λ≈0' : 'Λ>0'}）</option>`).join('');
+    $p('ctlVac').innerHTML = U.VAC.map(V => `<option value="${V.i}">${V.name}（${V.kind === 'up' ? '比假真空高' : V.kind === 'rf' ? '假真空等級' : V.kind === 'ads' ? 'Λ<0' : V.kind === 'tiny' ? 'Λ≈0' : 'Λ>0'}）</option>`).join('');
   }
 
   return {

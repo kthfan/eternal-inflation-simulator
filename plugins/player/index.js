@@ -2,11 +2,14 @@
    · 挑選真空後「誕生」；WASD／方向鍵控制膨脹方向（前脹後縮 → 前進），Q／E 縮小／放大目標半徑
    · 能量來自吞入真空能較高的地盤；維持大小、移動、技能都要花能量；力竭時泡壁回到以光速自由膨脹
    · 技能（在游標處）：1 = 向下穿隧（放下較低真空的泡泡）、2 = 向上穿隧（激發態區域，會收縮消失）
-   · 3 = 曲速（D12）：搬動空間本身，可超過光速；向真空借貸負能量，結束後連同量子利息償還
+   · 3 = 曲速（D12）：搬動空間本身，可超過光速；向真空借貸負能量，結束後連同量子利息償還；方向跟著輸入改變
+   · 4 = 再循環（D13）：在 Λ > 0 的口袋宇宙中，以自己為中心向上穿隧回假真空，重新開始永恆暴脹。
+     困在 Λ ≤ 0 的宇宙（無法再循環）超過一段時間就遊戲結束
+   · 按住滑鼠右鍵：朝游標方向前進（與方向鍵相同，也能改變曲速的方向）
    · 空白鍵暫停／繼續演化；遊戲進行中不能回看（只能在直播時操作）
    所有操作都經由核心的動作紀錄（api.act），物理與能量帳都在核心計算，相同種子 + 相同動作紀錄可完整重播。 */
 export function player(){
-  let api, panel, mx = -1, my = -1, follow = true, seenWarp = null;
+  let api, panel, mx = -1, my = -1, follow = true, seenWarp = null, mouseSteer = null;   // mouseSteer：按住右鍵時的 pointerId
   const keys = new Set();
   let sent = { dx: 0, dy: 0, rT: 0 }, rT = 0, rTdir = 0, msg = '', msgUntil = 0;   // rT 只在按住 Q／E 調整時使用，其餘時候沿用核心目前的目標半徑
 
@@ -38,11 +41,17 @@ export function player(){
   function steer(){
     if(!P()) return;
     let dx = 0, dy = 0;
-    if(keys.has('a') || keys.has('arrowleft')) dx--;
-    if(keys.has('d') || keys.has('arrowright')) dx++;
-    if(keys.has('w') || keys.has('arrowup')) dy--;
-    if(keys.has('s') || keys.has('arrowdown')) dy++;
-    const m = Math.hypot(dx, dy); if(m){ dx /= m; dy /= m; }
+    if(mouseSteer !== null && mx >= 0){
+      // 按住右鍵：朝游標方向（方向改變超過約 1.5° 才送出，動作紀錄不會爆量）
+      const c = api.U.circleAt(P(), api.tView), [x, y] = api.camera.toPhysical(mx, my), m = Math.hypot(x - c.cx, y - c.cy);
+      if(m > 1){ dx = (x - c.cx)/m; dy = (y - c.cy)/m; if(Math.abs(dx - sent.dx) + Math.abs(dy - sent.dy) < .025){ dx = sent.dx; dy = sent.dy; } }
+    } else {
+      if(keys.has('a') || keys.has('arrowleft')) dx--;
+      if(keys.has('d') || keys.has('arrowright')) dx++;
+      if(keys.has('w') || keys.has('arrowup')) dy--;
+      if(keys.has('s') || keys.has('arrowdown')) dy++;
+      const m = Math.hypot(dx, dy); if(m){ dx /= m; dy /= m; }
+    }
     if(!rTdir) rT = P().ctl.in.rT;
     if(dx !== sent.dx || dy !== sent.dy || Math.abs(rT - sent.rT) > .02*sent.rT){
       sent = { dx, dy, rT }; api.act({ type: 'steer', dx, dy, rT });
@@ -95,8 +104,10 @@ export function player(){
           <input type="range" id="plWarp" min="2" max="${api.PLAYER.warp.kMax}" step="1" value="${api.PLAYER.warp.k}">
           <p class="note">曲速搬動的是空間本身（前方收縮、後方膨脹），所以可以超過光速；泡壁相對被搬動的空間仍不超光速。
             代價是負能量：向真空借貸，越快、泡泡越大借得越多，能撐的時間越短（量子不等式）；結束後要在 ${api.PLAYER.warp.repayT} 秒內連本帶利償還，借越久利息越高（量子利息）。
-            方向在啟動時鎖定，碰到其他泡泡會自動脫離。</p></div>
-        <p class="note">WASD／方向鍵：控制膨脹方向（前脹後縮 → 前進）　Q／E：縮小／放大　1、2：在游標處施放技能　3：曲速（朝按住的方向，沒按則朝游標；再按一次停下）　空白鍵：暫停演化　F：鏡頭跟隨<br>
+            方向跟著方向鍵或滑鼠改變；碰到其他泡泡不會停下（搬動的是空間本身），進入別的宇宙後照一般規則吞食或被吞食。</p></div>
+        <p class="note"><b>再循環（4）</b>：在 Λ > 0 的口袋宇宙中，以自己為中心向上穿隧回假真空（半徑略大於當地的哈伯半徑，永遠縮不掉），重新開始永恆暴脹。
+          成本 = Δε × 面積。Λ ≤ 0 的宇宙無法再循環（反德西特會塌縮、閔考斯基無法向上穿隧）：困在那裡 ${api.PLAYER.recycle.trapT} 秒就<b>遊戲結束</b>，要及時用曲速逃出。</p>
+        <p class="note">WASD／方向鍵：控制膨脹方向（前脹後縮 → 前進）　Q／E：縮小／放大　滑鼠右鍵（按住）：朝游標方向前進　1、2：在游標處施放技能　3：曲速（朝前進的方向，沒有則朝游標；再按一次停下）　4：再循環　空白鍵：暫停演化　F：鏡頭跟隨<br>
           越大越慢：最高速度 = c·(1 − r/R<sub>H</sub>)；超過哈伯半徑就無法控制。維持大小要持續花能量。</p>` });
       const wOut = () => { $p('plWarpo').textContent = `${$p('plWarp').value} c`; };
       $p('plWarp').addEventListener('input', wOut); wOut();
@@ -110,12 +121,21 @@ export function player(){
           if(a.type === 'spawn') say(a.result.ok ? `你誕生了：#${a.result.id}（${U.VAC[a.vac].name}）` : `無法誕生：${a.result.reason}`);
           if(a.type === 'nucleate' && a.by === 'player') say(a.result.ok ? `施放成功（花費 ${a.result.cost.toFixed(2)}）` : `無法施放：${a.result.reason}`);
           if(a.type === 'warp' && a.on) say(a.result.ok ? `曲速 ${a.result.k} c：向真空借貸負能量` : `無法啟動曲速：${a.result.reason}`);
+          if(a.type === 'recycle') say(a.result.ok ? `再循環：重新開始永恆暴脹（半徑 ${(a.result.r0/api.S.RH).toFixed(2)} R_H，花費 ${a.result.cost.toFixed(2)}）` : `無法再循環：${a.result.reason}`, 3500);
         });
       });
       api.camera.cv.addEventListener('pointermove', e => { mx = e.clientX; my = e.clientY; });
       api.camera.cv.addEventListener('pointerleave', () => { mx = -1; });
-      // 手動拖曳畫面時暫停跟隨（按 F 恢復）
-      api.on('pointerdown', () => { follow = false; return false; });
+      // 按住右鍵：朝游標方向前進（攔截，不拖曳畫面）；其他按鍵拖曳畫面時暫停跟隨（按 F 恢復）
+      api.camera.cv.addEventListener('contextmenu', e => e.preventDefault());
+      api.on('pointerdown', e => {
+        if(e.button === 2){ mouseSteer = e.pointerId; mx = e.clientX; my = e.clientY; api.camera.cv.setPointerCapture(e.pointerId); follow = true; steer(); return true; }
+        follow = false; return false;
+      });
+      api.on('pointerup', e => {
+        if(e.button === 2 && mouseSteer !== null){ mouseSteer = null; steer(); return true; }
+        return false;
+      });
 
       const MOVE = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
       api.on('keydown', e => {
@@ -128,6 +148,7 @@ export function player(){
         if(k === '1'){ cast('down'); return true; }
         if(k === '2'){ cast('up'); return true; }
         if(k === '3'){ warp(); return true; }
+        if(k === '4'){ if(P()) api.act({ type: 'recycle' }); else say('先誕生玩家宇宙'); return true; }
         return false;
       });
       addEventListener('keyup', e => {
@@ -135,12 +156,13 @@ export function player(){
         if(keys.delete(k)) steer();
         if(k === 'q' || k === 'e') rTdir = 0;
       });
-      addEventListener('blur', () => { keys.clear(); rTdir = 0; steer(); });
+      addEventListener('blur', () => { keys.clear(); rTdir = 0; mouseSteer = null; steer(); });
 
       api.on('frame', ({ dtR }) => {
         if(!api.S.isLive) api.time.goLive();          // 遊戲進行中不能回看
         const B = P();
         if(B && rTdir){ rT = Math.max(2*api.S.R0, Math.min(.95*api.S.RH, rT*Math.exp(rTdir*.7*dtR))); steer(); }
+        else if(B && mouseSteer !== null) steer();          // 按住右鍵時，玩家或游標移動都會改變方向
         // 曲速結束：顯示借貸與應還的量子利息
         const lw = B && B.ctl.lastWarp;
         if(lw && lw !== seenWarp){ seenWarp = lw; say(`曲速結束（${lw.why}）：${lw.tau.toFixed(1)} 秒，借 ${lw.borrowed.toFixed(2)}，連本帶利償還 ${lw.due.toFixed(2)}`, 3500); }
@@ -203,7 +225,8 @@ export function player(){
         if(B){
           // 方案 B：所在區域的膨脹率 h 決定當地的哈伯半徑 c/h（最高速度 = c·(1 − r·h/c)）
           const C = B.ctl, c = api.U.circleAt(B, t), rr = c.r/S.RH, hl = C.h && C.h.length ? C.h[C.h.length - 1] : S.HUB, rl = rr*hl/S.HUB, um = Math.max(0, 1 - rl), w = 220;
-          const state = rl >= 1 ? '失控：大於哈伯半徑，連大小都維持不住（按 N 重新誕生）' : C.exhausted ? '力竭：泡壁以光速自由膨脹（吞入假真空可回復）'
+          const state = C.trap > 0 ? `困在 Λ ≤ 0 的宇宙，無法再循環：${Math.max(0, api.PLAYER.recycle.trapT - C.trap).toFixed(1)} 秒後遊戲結束（用曲速逃出！）`
+            : rl >= 1 ? '失控：大於哈伯半徑，連大小都維持不住（按 N 重新誕生）' : C.exhausted ? '力竭：泡壁以光速自由膨脹（吞入假真空可回復）'
             : C.E < 0 ? '能量透支：技能無法使用（吞食真空能比你高的宇宙來補充）' : '';
           ctx.fillStyle = 'rgba(10,6,24,.7)'; ctx.fillRect(x - w/2 - 12, y - 16, w + 24, state ? 62 : 46);
           ctx.fillStyle = 'rgba(255,255,255,.15)'; ctx.fillRect(x - w/2, y - 6, w, 10);
@@ -221,9 +244,19 @@ export function player(){
           } else if(C.repay) wl = `償還量子利息：剩 ${C.repay.left.toFixed(2)}（還完才能再啟動曲速）`;
           if(wl){ const tw = ctx.measureText(wl).width + 20; ctx.fillStyle = 'rgba(10,6,24,.7)'; ctx.fillRect(x - tw/2, wy - 11, tw, 22); ctx.fillStyle = C.warp ? '#bfe6ff' : '#ffb4a6'; ctx.fillText(wl, x, wy); }
         } else {
-          const last = api.U.hist.concat(api.U.longs).find(b => b.ctl && b.ctl.fate === 'eaten');
-          ctx.fillStyle = 'rgba(10,6,24,.7)'; ctx.fillRect(x - 190, y - 14, 380, 28);
-          ctx.fillStyle = '#f4ecff'; ctx.fillText(last ? '你的宇宙被吞沒了。挑選真空後按 N 重新誕生' : '挑選真空後按 N（或「誕生」）成為一個有自我意識的宇宙', x, y);
+          const last = api.U.hist.concat(api.U.longs).filter(b => b.ctl && b.ctl.fate).sort((a, b) => b.ctl.t[b.ctl.t.length - 1] - a.ctl.t[a.ctl.t.length - 1])[0];
+          const fate = last && last.ctl.fate;
+          if(fate === 'trapped'){
+            // 遊戲結束：困在不再暴脹、也無法再循環的宇宙
+            ctx.fillStyle = 'rgba(10,6,24,.82)'; ctx.fillRect(x - 250, S.vh/2 - 70, 500, 120);
+            ctx.font = '600 26px "Noto Serif TC", serif'; ctx.fillStyle = '#ffd6a0'; ctx.fillText('遊戲結束', x, S.vh/2 - 36);
+            ctx.font = '13px "Noto Sans TC", sans-serif'; ctx.fillStyle = '#f4ecff';
+            ctx.fillText('你困在 Λ ≤ 0 的宇宙裡：它不再暴脹，也無法向上穿隧再循環。', x, S.vh/2 - 4);
+            ctx.fillText('你的自我意識隨著這個宇宙走向終結。挑選真空後按 N 重新開始', x, S.vh/2 + 20);
+          } else {
+            ctx.fillStyle = 'rgba(10,6,24,.7)'; ctx.fillRect(x - 190, y - 14, 380, 28);
+            ctx.fillStyle = '#f4ecff'; ctx.fillText(fate === 'eaten' ? '你的宇宙被吞沒了。挑選真空後按 N 重新誕生' : '挑選真空後按 N（或「誕生」）成為一個有自我意識的宇宙', x, y);
+          }
         }
         if(now < msgUntil){ ctx.fillStyle = 'rgba(255,236,190,.95)'; ctx.fillText(msg, x, S.vh - 140); }
         ctx.restore();
@@ -239,7 +272,9 @@ export function player(){
         T.act({ type: 'steer', dx: 1, dy: 0, rT: 30 }); T.presim(2);
         // 扣掉哈伯流：前進量 = 現在的中心 − 誕生點隨哈伯流移動後的位置
         const c = T.circleAt(B, T.tSim), e = Math.exp(p.H*(T.tSim - B.tn)), fwd = c.cx - pos[0]*e, side = Math.abs(c.cy - pos[1]*e);
-        // 曲速 5c 往上 0.5 秒：中心相對當地空間的位移約 5c × 0.5（期間若重新置中，座標會整體平移，要加回來）
+        // 曲速 5c 往上 0.5 秒：中心相對當地空間的位移約 5c × 0.5（期間若重新置中，座標會整體平移，要加回來）。
+        // 曲速的方向會跟著輸入，所以先放開方向（否則會被「往右」的輸入轉向）
+        T.act({ type: 'steer', dx: 0, dy: 0, rT: 30 }); T.advance(api.STEP);
         const t0 = T.tSim, c0 = T.circleAt(B, t0), shifts = []; T.on('rebase', e => shifts.push(e));
         const wa = T.act({ type: 'warp', on: true, dx: 0, dy: -1, k: 5 }); T.advance(api.STEP);
         T.presim(.5); T.act({ type: 'warp', on: false }); T.advance(api.STEP);

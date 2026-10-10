@@ -96,7 +96,7 @@ export function parseSeed(str){
 export function landHTML(){
   return S.U.VAC.map(V => {
     const p = S.PAL[V.i];
-    const tag = V.kind === 'up' ? '比假真空更高，只能由向上穿隧產生，會被周圍吃掉' : V.kind === 'ads' ? `Λ<0，${V.crunchT.toFixed(1)} s 後大擠壓` : V.kind === 'tiny' ? `Λ≈0，不再暴脹，${V.hdT.toFixed(0)} s 後熱寂` : `Λ>0，仍在暴脹，內部穿隧 ${V.grel.toFixed(2)}Γ`;
+    const tag = V.kind === 'up' ? '比假真空更高，只能由向上穿隧產生，會被周圍吃掉' : V.kind === 'rf' ? '與假真空相同，只能由玩家的再循環產生，重新開始永恆暴脹' : V.kind === 'ads' ? `Λ<0，${V.crunchT.toFixed(1)} s 後大擠壓` : V.kind === 'tiny' ? `Λ≈0，不再暴脹，${V.hdT.toFixed(0)} s 後熱寂` : `Λ>0，仍在暴脹，內部穿隧 ${V.grel.toFixed(2)}Γ`;
     const hab = isHab({ vac: V.i }) ? ' ✦' : '';
     return `<div class="vr"><i style="background:radial-gradient(circle,${rgba(p.core,1)} 40%,${rgba(p.rim,1)} 75%,${rgba(p.wall,1)} 100%)"></i>`+
       `<span><b>${V.name}${hab}</b>　${tag}${V.dims !== 3 ? `，${V.dims} 維` : ''}</span><em id="vc${V.i}">0</em></div>`;

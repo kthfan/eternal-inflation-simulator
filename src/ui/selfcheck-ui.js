@@ -115,6 +115,38 @@ export function init(){
       } catch(e){ return { pass: false, detail: '發生錯誤：' + e.message }; }
       finally { S.U = keep.U; S.PAL = keep.PAL; S.HUB = keep.HUB; S.RH = keep.RH; S.R0 = keep.R0; S.RGEN = keep.RGEN; S.Z = keep.Z; P.x = keep.px; P.y = keep.py; S.anchorFade = keep.fade; S.tView = keep.tv; }
       return { pass: n > 300 && !bad, detail: `${scene}；${n} 個點中 ${bad} 個畫面與歸屬不一致` };
+    }}, { name: '再循環區域的繪製', desc: '玩家在 Λ > 0 的口袋宇宙中以自己為中心再循環（區域與玩家同心）：繪製不得出錯（同心的兩圓沒有交點，之前相撞閃光讀到不存在的交點而中斷繪製），玩家附近每一點最後畫到的宇宙等於 ownerAt', run(){
+      const keep = { U: S.U, PAL: S.PAL, HUB: S.HUB, RH: S.RH, R0: S.R0, RGEN: S.RGEN, Z: S.Z, px: P.x, py: P.y, fade: S.anchorFade, tv: S.tView };
+      let n = 0, bad = 0;
+      try {
+        const T = createUniverse({ seed: 4242, H: .25, RH: 140, R0: 3, RGEN: 3000, typical: false, vacN: 12, crunchP: .25, oddDimP: .15 }, { gamma: 2.5e-6, innerMul: 1, wallK: 1 });
+        T.presim(1);
+        const V = T.VAC.filter(v => v.eps < 1 && v.kind !== 'rf' && v.kind !== 'up').sort((a, b) => a.eps - b.eps);
+        let ok = false;
+        // 誕生在原點（後選模式下原點一定是假真空）：玩家不動時中心恆為 (0, 0)，再循環區域與玩家精確同心（遊戲中重新置中後就是這樣）
+        for(let k=0;k<400 && !ok;k++){ const a = k*2.399, rr = k*6, x = Math.cos(a)*rr, y = Math.sin(a)*rr; if(T.ownerAt(x, y, T.tSim)) continue; ok = T.act({ type: 'spawn', x, y, vac: V[0].i, r: 20 }); T.advance(1/30); ok = ok.result.ok; }
+        const Pl = T.player; if(!Pl) throw new Error('玩家誕生失敗');
+        const c0 = T.circleAt(Pl, T.tSim); T.act({ type: 'nucleate', x: c0.cx + 30, y: c0.cy, vac: V.filter(v => v.kind === 'ds').pop().i }); T.presim(5);
+        const ra = T.act({ type: 'recycle' }); T.advance(1/30);
+        if(!ra.result.ok) throw new Error('無法再循環：' + ra.result.reason);
+        T.presim(2);
+        { const c = T.circleAt(Pl, T.tSim), R = T.hist.find(b => b.id === ra.result.id), q = T.circleAt(R, T.tSim); if(Math.hypot(c.cx - q.cx, c.cy - q.cy) !== 0) throw new Error('情境失效：再循環區域與玩家不是精確同心'); }
+        S.U = T; S.PAL = buildPalettes(T.VAC); S.HUB = T.p.H; S.RH = T.p.RH; S.R0 = T.p.R0; S.RGEN = T.p.RGEN; S.anchorFade = null; S.tView = T.tSim;
+        for(const z of [defaultZoom(), defaultZoom()*.4]){
+          const c = T.circleAt(Pl, S.tView); S.Z = z; P.x = c.cx; P.y = c.cy;
+          render(S.tView);
+          const vP = S.vis.find(v => v.b === Pl);
+          for(let k=0;k<48;k++) for(const f of [.4, 1.3, 2.5, 4, 6]){
+            const a = Math.PI*2*k/48, sx = vP.cx + Math.cos(a)*vP.r*f, sy = vP.cy + Math.sin(a)*vP.r*f;
+            if(sx < 0 || sy < 0 || sx > S.vw || sy > S.vh || Math.abs(Math.hypot(sx - vP.cx, sy - vP.cy) - vP.r) < 3) continue;
+            const [x, y] = [P.x + (sx - S.vw/2)/S.Z, P.y + (sy - S.vh/2)/S.Z];
+            const pv = paintedAt(sx, sy), o = T.ownerAt(x, y, S.tView);
+            n++; if((pv ? pv.b : null) !== (o ? o.b : null)) bad++;
+          }
+        }
+      } catch(e){ return { pass: false, detail: '發生錯誤：' + e.message }; }
+      finally { S.U = keep.U; S.PAL = keep.PAL; S.HUB = keep.HUB; S.RH = keep.RH; S.R0 = keep.R0; S.RGEN = keep.RGEN; S.Z = keep.Z; P.x = keep.px; P.y = keep.py; S.anchorFade = keep.fade; S.tView = keep.tv; }
+      return { pass: n > 200 && bad <= n*.01, detail: `繪製沒有錯誤；${n} 個點中 ${bad} 個畫面與歸屬不一致` };
     }}, { name: '方案 B 的繪製效能', desc: '同一組種子分別以「單一膨脹率」與「各區域各自的膨脹率（方案 B）」演化後繪製。以每格時間的中位數比較（無頭瀏覽器偶爾會有與內容無關的數秒停頓）：預設縮放下方案 B 仍應低於 16 毫秒；縮到最小只列出供參考（方案 B 的口袋內兄弟泡泡較擁擠、疇壁較多）', run(){
       const keep = { U: S.U, PAL: S.PAL, HUB: S.HUB, RH: S.RH, R0: S.R0, RGEN: S.RGEN, Z: S.Z, px: P.x, py: P.y, fade: S.anchorFade, tv: S.tView };
       const ms = { off: [0, 0], on: [0, 0] };

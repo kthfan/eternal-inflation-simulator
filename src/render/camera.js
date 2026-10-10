@@ -80,7 +80,7 @@ export function onRebase({ x, y, t, smooth }){
 export function buildPalettes(VAC){
   return VAC.map(V => {
     const wall = hsl2rgb(V.hue, 95, 74);
-    return { wall, core: hsl2rgb(V.hue, 70, 9), rim: hsl2rgb(V.hue, 58, 40), neb: V.kind === 'ds' || V.kind === 'up' ? tintedNebula(wall) : null };
+    return { wall, core: hsl2rgb(V.hue, 70, 9), rim: hsl2rgb(V.hue, 58, 40), neb: V.kind === 'ds' || V.kind === 'up' || V.kind === 'rf' ? tintedNebula(wall) : null };
   });
 }
 

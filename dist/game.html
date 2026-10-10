@@ -1048,7 +1048,10 @@ details[open] summary::after{content:" －"}
     /* 曲速（D12）：k 預設倍率（×c）、kMax 上限（保證 A2 的丟棄仍精確：(1 + kMax)·RH 要小於 RGEN）；
        借貸速率 kappa·k²·(r/RH)²（Alcubierre：負能量 ∝ v²R²）；量子不等式：借貸速率 × 持續時間² ≤ Q；
        量子利息：結束後在 repayT 秒內償還 借貸 × (1 + 持續時間/TI) */
-    warp: { k: 5, kMax: 15, kappa: 0.25, Q: 4, TI: 4, repayT: 1.5 }
+    warp: { k: 5, kMax: 15, kappa: 0.25, Q: 4, TI: 4, repayT: 1.5 },
+    /* 再循環（D13）：在 Λ > 0 的口袋宇宙中，以自己為中心向上穿隧出半徑 margin × 當地哈伯半徑的假真空區域（大於哈伯半徑 → 永遠縮不掉、重新永恆暴脹）；
+       所在處 Λ ≤ 0（無法再循環）持續 trapT 秒就遊戲結束 */
+    recycle: { margin: 1.05, trapT: 8 }
   };
   var VNAMES = "子丑寅卯辰巳午未申酉戌亥甲乙丙丁";
   function makeLandscape(r, p) {
@@ -1120,6 +1123,26 @@ details[open] summary::after{content:" －"}
         mratio: 300 + r2() * 3600,
         grel: 0,
         hue: 40 + r2() * 20,
+        w: 0,
+        crunchT: Infinity,
+        hdT: Infinity
+      });
+    }
+    {
+      const val = FALSE_EPS * 1e-10, lexp = Math.ceil(-Math.log10(val));
+      VAC.push({
+        i: n + 1,
+        name: "再循環假真空",
+        kind: "rf",
+        eps: FALSE_EPS,
+        lexp,
+        lman: val * Math.pow(10, lexp),
+        lsign: 1,
+        dims: 3,
+        ainv: 60 + r2() * 190,
+        mratio: 300 + r2() * 3600,
+        grel: 0,
+        hue: 268 + r2() * 14,
         w: 0,
         crunchT: Infinity,
         hdT: Infinity
@@ -1508,7 +1531,7 @@ details[open] summary::after{content:" －"}
         if (own && own.b.player) continue;
         if (own) {
           if (Territory.arrival(own, x, y) > -p.R0 * 2) continue;
-          rel = VAC[own.b.vac].grel * tune2.innerMul;
+          rel = VAC[own.b.vac].kind === "rf" ? 1 : VAC[own.b.vac].grel * tune2.innerMul;
         }
         if (u * gmax >= rel) continue;
         const b = addBubble(x, y, rr, t, own ? own.b : null);
@@ -1637,6 +1660,38 @@ details[open] summary::after{content:" －"}
       C.warp = { k, dx: dx / m, dy: dy / m, t0: t, tAcc: t, B: 0 };
       return { ok: true, k };
     }
+    const rfVac = VAC.findIndex((v) => v.kind === "rf");
+    function recycleAt(P2, t) {
+      const c = U.circleAt(P2, t), Q = regionOf(P2, t, c);
+      if (!Q) return { reason: "你在假真空中，這裡仍在暴脹，不需要再循環" };
+      const V = VAC[Q.vac];
+      if (V.kind === "rf") return { reason: "這裡已經是再循環的假真空" };
+      if (V.kind === "up") return { reason: "激發態區域比假真空還高，不需要再循環" };
+      if (!(V.eps > 0) || U.crunchedAt(Q, c.cx, c.cy, t)) return { reason: "所在的宇宙 Λ ≤ 0：反德西特會塌縮、閔考斯基無法向上穿隧，無法再循環", trapped: true };
+      if (V.eps < VAC[P2.vac].eps) return { reason: "所在的宇宙真空能比你低（正在吞沒你），無法在這裡再循環" };
+      const r0 = PLAYER.recycle.margin * (LH ? cLight / hIn(Q) : p.RH);
+      return { Q, c, r0, cost: (FALSE_EPS - V.eps) * Math.PI * r0 * r0 / (p.RH * p.RH) };
+    }
+    function actRecycle(a, t, k) {
+      const P2 = U.player;
+      if (!P2) return { ok: false, reason: "沒有玩家宇宙" };
+      const R = recycleAt(P2, t);
+      if (R.reason) return { ok: false, reason: R.reason };
+      const { Q, c, r0, cost } = R, F = U.frame(t), circles = [];
+      for (const b2 of U.live) if (b2.texit > t && b2 !== P2) circles.push(U.circleAt(b2, t));
+      const qc = circles.find((o) => o.b === Q);
+      if (Territory.arrival(qc, c.cx, c.cy) > -(r0 + 2)) return { ok: false, reason: `口袋宇宙不夠大（需要半徑 ${(r0 / p.RH).toFixed(2)} RH 的空間）` };
+      for (let j = 0; j < 24; j++) {
+        const th = TAU * j / 24, o = Territory.ownerAt(F, circles, c.cx + Math.cos(th) * (r0 + 2), c.cy + Math.sin(th) * (r0 + 2));
+        if (!o || o.b !== Q) return { ok: false, reason: "範圍跨越了其他宇宙的地盤" };
+      }
+      if (P2.ctl.E < cost) return { ok: false, reason: `能量不足（需要 ${cost.toFixed(2)}）` };
+      const b = addBubble(c.cx, c.cy, Math.hypot(c.cx, c.cy), t, Q, { vac: rfVac, s: -1, r0, seed: hash(p.seed, a.step, k) });
+      P2.ctl.E -= cost;
+      P2.ctl.loss += cost;
+      return { ok: true, id: b.id, cost, r0 };
+    }
+    U.recycleCheck = () => U.player ? recycleAt(U.player, U.tSim) : null;
     function release(b, t) {
       b.player = false;
       if (U.player === b) U.player = null;
@@ -1701,6 +1756,11 @@ details[open] summary::after{content:" －"}
       } else {
         w = Math.max(-c, Math.min(c, -h * cur.r + PLAYER.k * (C.in.rT - cur.r)));
         if (C.warp) {
+          const m = Math.hypot(C.in.dx, C.in.dy);
+          if (m > 0) {
+            C.warp.dx = C.in.dx / m;
+            C.warp.dy = C.in.dy / m;
+          }
           vx = C.warp.dx * C.warp.k * c;
           vy = C.warp.dy * C.warp.k * c;
         } else {
@@ -1769,7 +1829,6 @@ details[open] summary::after{content:" －"}
     }
     function contacts(b, t) {
       const C = b.ctl, cb = U.circleAt(b, t), t0 = t - STEP;
-      let opened = 0;
       for (const o of U.live) {
         if (o === b || o.tn > t || o.texit <= t) continue;
         const co = U.circleAt(o, t), ov = Math.hypot(cb.cx - co.cx, cb.cy - co.cy) < cb.r + co.r;
@@ -1790,7 +1849,6 @@ details[open] summary::after{content:" －"}
           }
           if (!arr) C.contacts.set(o.id, arr = []);
           arr.push([hi, Infinity]);
-          opened++;
         } else {
           for (let i = 0; i < 30; i++) {
             const m = (lo + hi) / 2;
@@ -1800,25 +1858,23 @@ details[open] summary::after{content:" －"}
           arr[arr.length - 1][1] = lo;
         }
       }
-      return opened;
     }
     function playerStep(t) {
+      for (const b of U.live) if (b.ctl && b.texit > t) contacts(b, t);
       const P2 = U.player;
-      let opened = 0;
-      for (const b of U.live) if (b.ctl && b.texit > t) {
-        const n = contacts(b, t);
-        if (b === P2) opened = n;
-      }
       if (!P2) return;
       const C = P2.ctl;
       if (C.warp) {
-        if (opened) endWarp(P2, t, "碰撞");
-        else {
-          const r = U.circleAt(P2, t).r;
-          accrue(C, t, r);
-          const tau = t - C.warp.t0;
-          if (warpRate(C.warp.k, r) * tau * tau >= PLAYER.warp.Q) endWarp(P2, t, "量子不等式的上限");
-        }
+        const r = U.circleAt(P2, t).r;
+        accrue(C, t, r);
+        const tau = t - C.warp.t0;
+        if (warpRate(C.warp.k, r) * tau * tau >= PLAYER.warp.Q) endWarp(P2, t, "量子不等式的上限");
+      }
+      C.trap = recycleAt(P2, t).trapped ? (C.trap || 0) + STEP : 0;
+      if (C.trap >= PLAYER.recycle.trapT) {
+        C.fate = "trapped";
+        release(P2, t);
+        return;
       }
       ledger(P2, t);
       if (C.repay && U.player === P2) {
@@ -1913,7 +1969,7 @@ details[open] summary::after{content:" －"}
       while (pendingAct < U.actions.length && U.actions[pendingAct].step <= step) {
         const a = U.actions[pendingAct++];
         a.t = U.tSim;
-        a.result = a.type === "nucleate" ? actNucleate(a, U.tSim, k++) : a.type === "spawn" ? actSpawn(a, U.tSim, k++) : a.type === "steer" ? actSteer(a) : a.type === "warp" ? actWarp(a, U.tSim) : { ok: false, reason: "未知的動作" };
+        a.result = a.type === "nucleate" ? actNucleate(a, U.tSim, k++) : a.type === "spawn" ? actSpawn(a, U.tSim, k++) : a.type === "steer" ? actSteer(a) : a.type === "warp" ? actWarp(a, U.tSim) : a.type === "recycle" ? actRecycle(a, U.tSim, k++) : { ok: false, reason: "未知的動作" };
         for (const fn of listeners.act) fn(a);
       }
     }
@@ -2073,7 +2129,7 @@ details[open] summary::after{content:" －"}
         if (i % 6 === 0) {
           const rr = 2200 * Math.sqrt(r()), a = r() * TAU, x = Math.cos(a) * rr, y = Math.sin(a) * rr;
           const own = U.ownerAt(x, y, U.tSim), pe = own ? U.VAC[own.b.vac].eps : 1;
-          const ups = U.VAC.filter((v) => v.eps > pe), downs = U.VAC.filter((v) => v.eps < pe);
+          const ups = U.VAC.filter((v) => v.eps > pe && v.kind !== "rf"), downs = U.VAC.filter((v) => v.eps < pe);
           const list = r() < 0.6 && ups.length ? ups : downs, V = list[r() * list.length | 0];
           if (V) U.act({ type: "nucleate", x, y, vac: V.i, r: 40 + r() * 120 });
         }
@@ -2108,7 +2164,7 @@ details[open] summary::after{content:" －"}
         if (U.player && r() < 0.15) {
           const c = U.circleAt(U.player, U.tSim), th = r() * TAU, d = c.r + 20 + r() * 100, x = c.cx + Math.cos(th) * d, y = c.cy + Math.sin(th) * d;
           const own = U.ownerAt(x, y, U.tSim), pe = own ? U.VAC[own.b.vac].eps : 1, up = r() < 0.5;
-          const list = U.VAC.filter((v) => up ? v.eps > pe : v.eps < pe), V = list[r() * list.length | 0];
+          const list = U.VAC.filter((v) => up ? v.eps > pe && v.kind !== "rf" : v.eps < pe), V = list[r() * list.length | 0];
           if (V) U.act({ type: "nucleate", by: "player", x, y, vac: V.i, r: 30 + r() * 40 });
         }
         U.presim(0.5);
@@ -2153,7 +2209,7 @@ details[open] summary::after{content:" －"}
             const own = Territory.ownerAt(F, cs, b.x, b.y);
             n++;
             if ((own ? own.b : null) !== b.parent) bad++;
-            if (b.parent && U.VAC[b.parent.vac].kind !== "ds") ads++;
+            if (b.parent && U.VAC[b.parent.vac].kind !== "ds" && U.VAC[b.parent.vac].kind !== "rf") ads++;
             if (b.parent && U.crunchedAt(b.parent, b.x, b.y, t)) crunched++;
           }
         }
@@ -2441,7 +2497,7 @@ details[open] summary::after{content:" －"}
         }
         return { pass: rays > 100 && mis / n < 2e-3 && bad / rays < 0.01, detail: `${n} 個取樣點中 ${mis} 個不一致；玩家與鄰居 ${rays} 條射線中 ${bad} 條不吻合（${(bad / Math.max(1, rays) * 100).toFixed(2)}%）` };
       } },
-      { name: "玩家宇宙：曲速與量子利息", desc: "曲速（D12）：中心以 k·c 被搬動（空間本身移動，可超過光速），泡壁相對被搬動的空間仍不超光速、軌跡連續；方向鎖定；借貸速率 × 持續時間² 到上限 Q 自動結束；結束後在 repayT 秒內償還 借貸 × (1 + 持續時間/TI)，償還期間不能再啟動；搬動本身不轉手地盤（曲速期間的花費與只維持大小相同）；碰到其他泡泡就脫離；能從以光速擴張、包住自己的泡泡裡逃出去（光速以內做不到）；重播完全相同", run() {
+      { name: "玩家宇宙：曲速與量子利息", desc: "曲速（D12）：中心以 k·c 被搬動（空間本身移動，可超過光速），泡壁相對被搬動的空間仍不超光速、軌跡連續；方向跟著輸入改變、放開則維持；借貸速率 × 持續時間² 到上限 Q 自動結束；結束後在 repayT 秒內償還 借貸 × (1 + 持續時間/TI)，償還期間不能再啟動；搬動本身不轉手地盤（曲速期間的花費與只維持大小相同）；碰到其他泡泡不脫離、可以穿過較高真空的泡泡；能從以光速擴張、包住自己的泡泡裡逃出去（光速以內做不到）；重播完全相同", run() {
         const W = PLAYER.warp, fails = [];
         const mk = (gamma = 0) => {
           const U2 = createUniverse({ ...baseP, seed: 5 }, { ...baseT(), gamma });
@@ -2452,20 +2508,23 @@ details[open] summary::after{content:" －"}
         const U = mk(), P2 = U.player, C = P2.ctl, c = U.p.H * U.p.RH;
         const E0 = C.E, a = U.act({ type: "warp", on: true, dx: 1, dy: 0, k: 5 });
         U.advance(STEP);
-        U.act({ type: "steer", dx: 0, dy: 1, rT: 28 });
-        let speedErr = 0, ySpan = 0, restart2 = null;
+        let speedErr = 0, dirR = 1, dirD = 1, dirKeep = 1, restart2 = null;
         for (let i = 0; i < 400 && C.warp; i++) {
+          if (i === 30) U.act({ type: "steer", dx: 0, dy: 1, rT: 28 });
+          if (i === 60) U.act({ type: "steer", dx: 0, dy: 0, rT: 28 });
           const t = U.tSim, A = U.circleAt(P2, t + STEP / 2), B = U.circleAt(P2, t), H = U.p.H, e = Math.exp(H * STEP / 2);
-          const vx = (A.cx - B.cx * e) * H / (e - 1), vy = (A.cy - B.cy * e) * H / (e - 1);
-          speedErr = Math.max(speedErr, Math.abs(Math.hypot(vx, vy) - 5 * c) / (5 * c));
-          ySpan = Math.max(ySpan, Math.abs(B.cy));
+          const vx = (A.cx - B.cx * e) * H / (e - 1), vy = (A.cy - B.cy * e) * H / (e - 1), v = Math.hypot(vx, vy);
+          speedErr = Math.max(speedErr, Math.abs(v - 5 * c) / (5 * c));
+          if (i > 2 && i < 30) dirR = Math.min(dirR, vx / v);
+          else if (i > 32 && i < 60) dirD = Math.min(dirD, vy / v);
+          else if (i > 62) dirKeep = Math.min(dirKeep, vy / v);
           U.advance(STEP);
         }
         const lw = C.lastWarp, rate = W.kappa * 25 * (28 / U.p.RH) ** 2, tauMax = Math.sqrt(W.Q / rate);
         if (!lw) return { pass: false, detail: `曲速 ${(400 * STEP).toFixed(0)} 秒內沒有結束（量子不等式的上限沒有作用）` };
         if (!a.result.ok) fails.push("啟動失敗");
         if (speedErr > 1e-3) fails.push(`速度誤差 ${speedErr.toExponential(1)}`);
-        if (ySpan > 1) fails.push(`方向沒有鎖定（偏移 ${ySpan.toFixed(1)}）`);
+        if (dirR < 0.9999 || dirD < 0.9999 || dirKeep < 0.9999) fails.push(`轉向不正確（往右 ${dirR.toFixed(4)}、轉下 ${dirD.toFixed(4)}、放開後 ${dirKeep.toFixed(4)}）`);
         if (!lw || lw.why !== "量子不等式的上限" || Math.abs(lw.tau - tauMax) > 2 * STEP) fails.push(`上限不符（${lw && lw.tau.toFixed(2)} 秒，理論 ${tauMax.toFixed(2)}）`);
         if (lw && Math.abs(lw.due - lw.borrowed * (1 + lw.tau / W.TI)) > 1e-9) fails.push("利息不符");
         if (lw && Math.abs(lw.borrowed - rate * lw.tau) / (rate * lw.tau) > 0.03) fails.push(`借貸不符（${lw.borrowed.toFixed(3)}，理論 ${(rate * lw.tau).toFixed(3)}）`);
@@ -2503,7 +2562,7 @@ details[open] summary::after{content:" －"}
         V4.advance(STEP);
         while (P4.ctl.warp) V4.advance(STEP);
         const X = V4.hist.find((b) => b.id === xa.result.id), px = V4.circleAt(P4, V4.tSim), qx = V4.circleAt(X, V4.tSim);
-        if (P4.ctl.lastWarp.why !== "碰撞" || px.cx > qx.cx) fails.push(`碰撞：${P4.ctl.lastWarp.why}`);
+        if (!V4.player || P4.ctl.lastWarp.why !== "量子不等式的上限" || !(px.cx > qx.cx + qx.r * 0.2) || !isFinite(P4.ctl.E)) fails.push(`穿過泡泡：${P4.ctl.lastWarp ? P4.ctl.lastWarp.why : "沒有結束"}，玩家${px.cx > qx.cx ? "已" : "未"}越過泡泡中心`);
         const esc = (warpOn) => {
           const U5 = mk(), P5 = U5.player, c5 = U5.circleAt(P5, U5.tSim);
           const qa = U5.act({ type: "nucleate", x: c5.cx + 40, y: c5.cy, vac: P5.vac });
@@ -2526,7 +2585,71 @@ details[open] summary::after{content:" －"}
         R.presim(U.tSim);
         const same = R.fingerprint(U.tSim) === U.fingerprint(U.tSim) && R.player && Math.abs(R.player.ctl.E - C.E) < 1e-12;
         if (!same) fails.push("重播不一致");
-        return { pass: !fails.length, detail: fails.length ? fails.join("；") : `5c：速度誤差 ${speedErr.toExponential(1)}、持續 ${lw.tau.toFixed(2)} 秒（上限 ${tauMax.toFixed(2)}）、借貸 ${lw.borrowed.toFixed(2)}、償還 ${lw.due.toFixed(2)}；曲速期間花費 ${during.toFixed(3)}（只維持大小 ${hold.toFixed(3)}）；撞到泡泡自動脫離；曲速能逃出包住自己的泡泡、光速以內不能；重播一致` };
+        return { pass: !fails.length, detail: fails.length ? fails.join("；") : `5c：速度誤差 ${speedErr.toExponential(1)}、可轉向、持續 ${lw.tau.toFixed(2)} 秒（上限 ${tauMax.toFixed(2)}）、借貸 ${lw.borrowed.toFixed(2)}、償還 ${lw.due.toFixed(2)}；曲速期間花費 ${during.toFixed(3)}（只維持大小 ${hold.toFixed(3)}）；穿過較高真空的泡泡；曲速能逃出包住自己的泡泡、光速以內不能；重播一致` };
+      } },
+      { name: "玩家宇宙：再循環與遊戲結束", desc: "再循環（D13）：在 Λ > 0 的口袋宇宙中以自己為中心向上穿隧出再循環假真空，半徑 = margin × 當地哈伯半徑、成本 = Δε × 面積；區域永遠縮不掉、內部以假真空的穿隧率重新成核（子泡泡的真空都比假真空低）。假真空中、Λ ≤ 0 的宇宙中不能使用；困在 Λ ≤ 0 處 trapT 秒就遊戲結束，及時用曲速逃出則不會；重播完全相同", run() {
+        const RC = PLAYER.recycle, fails = [];
+        const setup = (gamma, pick) => {
+          const U2 = createUniverse({ ...baseP, seed: 4242 }, { ...baseT(), gamma });
+          U2.presim(1);
+          const V = U2.VAC.filter((v) => v.eps < 1 && v.kind !== "rf" && v.kind !== "up").sort((a, b) => a.eps - b.eps);
+          const pv = V[0], qv = pick(V, pv);
+          spawnPlayer(U2, pv.i, 20, 0.8, 0, 0, "relaxed");
+          const P3 = U2.player, c = U2.circleAt(P3, U2.tSim);
+          return { U: U2, P: P3, c, qv };
+        };
+        const A = setup(3e-5, (V) => V.filter((v) => v.kind === "ds").pop()), U = A.U, P2 = A.P;
+        const r1 = U.act({ type: "recycle" });
+        U.advance(STEP);
+        if (r1.result.ok) fails.push("假真空中也能再循環");
+        const qa = U.act({ type: "nucleate", x: A.c.cx + 30, y: A.c.cy, vac: A.qv.i });
+        U.advance(STEP);
+        U.presim(5);
+        const Q = U.hist.find((b) => b.id === qa.result.id), E0 = P2.ctl.E, ra = U.act({ type: "recycle" });
+        U.advance(STEP);
+        let detail1 = "";
+        if (!ra.result.ok) fails.push(`口袋中無法再循環：${ra.result.reason}`);
+        else {
+          const R = U.hist.find((b) => b.id === ra.result.id), hq = U.hIn(Q), rWant = RC.margin * (U.p.localH ? U.p.H * U.p.RH / hq : U.p.RH);
+          const cost = (1 - U.VAC[Q.vac].eps) * Math.PI * rWant * rWant / (U.p.RH * U.p.RH);
+          if (Math.abs(ra.result.r0 - rWant) > 1e-9 || Math.abs(ra.result.cost - cost) > 1e-9) fails.push("半徑或成本不符");
+          if (R.parent !== Q || U.VAC[R.vac].kind !== "rf") fails.push("母宇宙或真空不符");
+          let shrink = 0, prev = U.circleAt(R, U.tSim).r;
+          for (let i = 0; i < 24; i++) {
+            U.presim(0.5);
+            const r = U.circleAt(R, U.tSim).r;
+            if (r < prev - 1e-9) shrink++;
+            prev = r;
+          }
+          const kids = U.hist.filter((b) => b.parent === R), badKid = kids.filter((b) => !(U.VAC[b.vac].eps < 1)).length;
+          if (shrink || !(prev > 1.5 * rWant)) fails.push(`區域沒有持續長大（縮小 ${shrink} 次，12 秒後 ${(prev / rWant).toFixed(2)} 倍）`);
+          if (kids.length < 3 || badKid) fails.push(`區域內重新成核 ${kids.length} 個（真空不低於假真空的 ${badKid} 個）`);
+          detail1 = `口袋中再循環：半徑 ${(rWant / U.p.RH).toFixed(2)} RH、成本 ${cost.toFixed(2)}、12 秒後長到 ${(prev / rWant).toFixed(2)} 倍、區域內成核 ${kids.length} 個`;
+        }
+        const trap = (escape) => {
+          const B = setup(0, (V, pv) => V.filter((v) => v.eps <= 0 && v.eps > pv.eps).pop()), W = B.U, P22 = B.P;
+          W.act({ type: "nucleate", x: B.c.cx + 30, y: B.c.cy, vac: B.qv.i });
+          W.advance(STEP);
+          let refused = null;
+          for (let i = 0; i < (RC.trapT + 6) * 30 && W.player; i++) {
+            if (P22.ctl.trap > 0.5 && refused === null) {
+              const a = W.act({ type: "recycle" });
+              W.advance(STEP);
+              refused = !a.result.ok;
+              continue;
+            }
+            if (escape && P22.ctl.trap > 1 && !P22.ctl.warp && !P22.ctl.repay && P22.ctl.E > 0) W.act({ type: "warp", on: true, dx: -1, dy: 0, k: 15 });
+            W.advance(STEP);
+          }
+          return { W, P2: P22, refused, fate: W.player ? "alive" : P22.ctl.fate };
+        };
+        const T0 = trap(false), T1 = trap(true);
+        if (T0.fate !== "trapped" || !T0.refused) fails.push(`困住：${T0.fate}、再循環${T0.refused ? "被拒絕" : "沒有被拒絕"}`);
+        if (T1.fate !== "alive") fails.push(`用曲速逃出仍${T1.fate === "trapped" ? "遊戲結束" : "死亡"}`);
+        const R2 = createUniverse({ ...baseP, seed: 4242 }, { ...baseT(), gamma: 0 }, { actions: T0.W.actionLog() });
+        R2.presim(T0.W.tSim);
+        if (R2.fingerprint(T0.W.tSim) !== T0.W.fingerprint(T0.W.tSim) || R2.player) fails.push("重播不一致");
+        return { pass: !fails.length, detail: fails.length ? fails.join("；") : `${detail1}；困在 Λ ≤ 0 ${RC.trapT} 秒後遊戲結束、曲速逃出則存活；重播一致` };
       } },
       { name: "焦點跟隨：平移不變", desc: "把原點換到另一個共動點：所有圓只差一個平移、半徑不變，每一點的歸屬與換之前相同；仍在模擬範圍內的泡泡不會被丟棄", run() {
         const U = createUniverse(baseP, baseT());
@@ -3302,7 +3425,7 @@ details[open] summary::after{content:" －"}
   function buildPalettes(VAC) {
     return VAC.map((V) => {
       const wall = hsl2rgb(V.hue, 95, 74);
-      return { wall, core: hsl2rgb(V.hue, 70, 9), rim: hsl2rgb(V.hue, 58, 40), neb: V.kind === "ds" || V.kind === "up" ? tintedNebula(wall) : null };
+      return { wall, core: hsl2rgb(V.hue, 70, 9), rim: hsl2rgb(V.hue, 58, 40), neb: V.kind === "ds" || V.kind === "up" || V.kind === "rf" ? tintedNebula(wall) : null };
     });
   }
   function init2() {
@@ -3959,7 +4082,7 @@ details[open] summary::after{content:" －"}
       ctx.fill();
       const cg = crunchGeo(v), gr = v.grp || v;
       const V = S.U.VAC[v.b.vac];
-      if (V.kind === "ds" || V.kind === "up") {
+      if (V.kind === "ds" || V.kind === "up" || V.kind === "rf") {
         const tf = v.b._tf;
         if (opt.neb && K.neb > 0 && tf > 0.01) {
           const sp = 2 + 6 * Math.sqrt(V.eps), ang = V.i * 2.39996, dx = Math.cos(ang) * sp * T_R, dy = Math.sin(ang) * sp * T_R;
@@ -4011,7 +4134,7 @@ details[open] summary::after{content:" －"}
         cellPath(v);
         ctx.fill();
       }
-      if (v.age < 3.5 && V.kind !== "ds" && V.kind !== "up") {
+      if (v.age < 3.5 && V.kind !== "ds" && V.kind !== "up" && V.kind !== "rf") {
         const a = Math.pow(1 - v.age / 3.5, 2) * 0.85, rr = Math.max(2, sr);
         ctx.globalCompositeOperation = "lighter";
         ctx.fillStyle = radialGrad(sx, sy, 0, rr, [[0, 255, 252, 240, a], [0.5, ...C4(pal.wall, a * 0.5)], [1, ...C4(pal.wall, 0)]]);
@@ -4117,7 +4240,7 @@ details[open] summary::after{content:" －"}
       }
     } else wallFade.clear();
     for (const R of walls) {
-      if (R.kind !== "wall") continue;
+      if (R.kind !== "wall" || !(R.g.h > 0)) continue;
       const A = R.W, B = R.L, x1 = R.g.p1x, y1 = R.g.p1y, x2 = R.g.p2x, y2 = R.g.p2y;
       const ck = A.b.id + ":" + B.b.id;
       if (!colSeen.has(ck)) {
@@ -4550,7 +4673,7 @@ details[open] summary::after{content:" －"}
   function landHTML() {
     return S.U.VAC.map((V) => {
       const p = S.PAL[V.i];
-      const tag = V.kind === "up" ? "比假真空更高，只能由向上穿隧產生，會被周圍吃掉" : V.kind === "ads" ? `Λ<0，${V.crunchT.toFixed(1)} s 後大擠壓` : V.kind === "tiny" ? `Λ≈0，不再暴脹，${V.hdT.toFixed(0)} s 後熱寂` : `Λ>0，仍在暴脹，內部穿隧 ${V.grel.toFixed(2)}Γ`;
+      const tag = V.kind === "up" ? "比假真空更高，只能由向上穿隧產生，會被周圍吃掉" : V.kind === "rf" ? "與假真空相同，只能由玩家的再循環產生，重新開始永恆暴脹" : V.kind === "ads" ? `Λ<0，${V.crunchT.toFixed(1)} s 後大擠壓` : V.kind === "tiny" ? `Λ≈0，不再暴脹，${V.hdT.toFixed(0)} s 後熱寂` : `Λ>0，仍在暴脹，內部穿隧 ${V.grel.toFixed(2)}Γ`;
       const hab = isHab({ vac: V.i }) ? " ✦" : "";
       return `<div class="vr"><i style="background:radial-gradient(circle,${rgba(p.core, 1)} 40%,${rgba(p.rim, 1)} 75%,${rgba(p.wall, 1)} 100%)"></i><span><b>${V.name}${hab}</b>　${tag}${V.dims !== 3 ? `，${V.dims} 維` : ""}</span><em id="vc${V.i}">0</em></div>`;
     }).join("");
@@ -4875,6 +4998,74 @@ details[open] summary::after{content:" －"}
           S.tView = keep.tv;
         }
         return { pass: n > 300 && !bad, detail: `${scene}；${n} 個點中 ${bad} 個畫面與歸屬不一致` };
+      } }, { name: "再循環區域的繪製", desc: "玩家在 Λ > 0 的口袋宇宙中以自己為中心再循環（區域與玩家同心）：繪製不得出錯（同心的兩圓沒有交點，之前相撞閃光讀到不存在的交點而中斷繪製），玩家附近每一點最後畫到的宇宙等於 ownerAt", run() {
+        const keep = { U: S.U, PAL: S.PAL, HUB: S.HUB, RH: S.RH, R0: S.R0, RGEN: S.RGEN, Z: S.Z, px: P.x, py: P.y, fade: S.anchorFade, tv: S.tView };
+        let n = 0, bad = 0;
+        try {
+          const T = createUniverse({ seed: 4242, H: 0.25, RH: 140, R0: 3, RGEN: 3e3, typical: false, vacN: 12, crunchP: 0.25, oddDimP: 0.15 }, { gamma: 25e-7, innerMul: 1, wallK: 1 });
+          T.presim(1);
+          const V = T.VAC.filter((v) => v.eps < 1 && v.kind !== "rf" && v.kind !== "up").sort((a, b) => a.eps - b.eps);
+          let ok = false;
+          for (let k = 0; k < 400 && !ok; k++) {
+            const a = k * 2.399, rr = k * 6, x = Math.cos(a) * rr, y = Math.sin(a) * rr;
+            if (T.ownerAt(x, y, T.tSim)) continue;
+            ok = T.act({ type: "spawn", x, y, vac: V[0].i, r: 20 });
+            T.advance(1 / 30);
+            ok = ok.result.ok;
+          }
+          const Pl = T.player;
+          if (!Pl) throw new Error("玩家誕生失敗");
+          const c0 = T.circleAt(Pl, T.tSim);
+          T.act({ type: "nucleate", x: c0.cx + 30, y: c0.cy, vac: V.filter((v) => v.kind === "ds").pop().i });
+          T.presim(5);
+          const ra = T.act({ type: "recycle" });
+          T.advance(1 / 30);
+          if (!ra.result.ok) throw new Error("無法再循環：" + ra.result.reason);
+          T.presim(2);
+          {
+            const c = T.circleAt(Pl, T.tSim), R = T.hist.find((b) => b.id === ra.result.id), q = T.circleAt(R, T.tSim);
+            if (Math.hypot(c.cx - q.cx, c.cy - q.cy) !== 0) throw new Error("情境失效：再循環區域與玩家不是精確同心");
+          }
+          S.U = T;
+          S.PAL = buildPalettes(T.VAC);
+          S.HUB = T.p.H;
+          S.RH = T.p.RH;
+          S.R0 = T.p.R0;
+          S.RGEN = T.p.RGEN;
+          S.anchorFade = null;
+          S.tView = T.tSim;
+          for (const z of [defaultZoom(), defaultZoom() * 0.4]) {
+            const c = T.circleAt(Pl, S.tView);
+            S.Z = z;
+            P.x = c.cx;
+            P.y = c.cy;
+            render(S.tView);
+            const vP = S.vis.find((v) => v.b === Pl);
+            for (let k = 0; k < 48; k++) for (const f of [0.4, 1.3, 2.5, 4, 6]) {
+              const a = Math.PI * 2 * k / 48, sx = vP.cx + Math.cos(a) * vP.r * f, sy = vP.cy + Math.sin(a) * vP.r * f;
+              if (sx < 0 || sy < 0 || sx > S.vw || sy > S.vh || Math.abs(Math.hypot(sx - vP.cx, sy - vP.cy) - vP.r) < 3) continue;
+              const [x, y] = [P.x + (sx - S.vw / 2) / S.Z, P.y + (sy - S.vh / 2) / S.Z];
+              const pv = paintedAt(sx, sy), o = T.ownerAt(x, y, S.tView);
+              n++;
+              if ((pv ? pv.b : null) !== (o ? o.b : null)) bad++;
+            }
+          }
+        } catch (e) {
+          return { pass: false, detail: "發生錯誤：" + e.message };
+        } finally {
+          S.U = keep.U;
+          S.PAL = keep.PAL;
+          S.HUB = keep.HUB;
+          S.RH = keep.RH;
+          S.R0 = keep.R0;
+          S.RGEN = keep.RGEN;
+          S.Z = keep.Z;
+          P.x = keep.px;
+          P.y = keep.py;
+          S.anchorFade = keep.fade;
+          S.tView = keep.tv;
+        }
+        return { pass: n > 200 && bad <= n * 0.01, detail: `繪製沒有錯誤；${n} 個點中 ${bad} 個畫面與歸屬不一致` };
       } }, { name: "方案 B 的繪製效能", desc: "同一組種子分別以「單一膨脹率」與「各區域各自的膨脹率（方案 B）」演化後繪製。以每格時間的中位數比較（無頭瀏覽器偶爾會有與內容無關的數秒停頓）：預設縮放下方案 B 仍應低於 16 毫秒；縮到最小只列出供參考（方案 B 的口袋內兄弟泡泡較擁擠、疇壁較多）", run() {
         const keep = { U: S.U, PAL: S.PAL, HUB: S.HUB, RH: S.RH, R0: S.R0, RGEN: S.RGEN, Z: S.Z, px: P.x, py: P.y, fade: S.anchorFade, tv: S.tView };
         const ms = { off: [0, 0], on: [0, 0] };
@@ -5840,7 +6031,7 @@ details[open] summary::after{content:" －"}
 
   // plugins/player/index.js
   function player() {
-    let api, panel, mx = -1, my = -1, follow = true, seenWarp = null;
+    let api, panel, mx = -1, my = -1, follow = true, seenWarp = null, mouseSteer = null;
     const keys = /* @__PURE__ */ new Set();
     let sent = { dx: 0, dy: 0, rT: 0 }, rT = 0, rTdir = 0, msg = "", msgUntil = 0;
     const $p = (id) => panel.querySelector("#" + id);
@@ -5878,14 +6069,26 @@ details[open] summary::after{content:" －"}
     function steer() {
       if (!P2()) return;
       let dx = 0, dy = 0;
-      if (keys.has("a") || keys.has("arrowleft")) dx--;
-      if (keys.has("d") || keys.has("arrowright")) dx++;
-      if (keys.has("w") || keys.has("arrowup")) dy--;
-      if (keys.has("s") || keys.has("arrowdown")) dy++;
-      const m = Math.hypot(dx, dy);
-      if (m) {
-        dx /= m;
-        dy /= m;
+      if (mouseSteer !== null && mx >= 0) {
+        const c = api.U.circleAt(P2(), api.tView), [x, y] = api.camera.toPhysical(mx, my), m = Math.hypot(x - c.cx, y - c.cy);
+        if (m > 1) {
+          dx = (x - c.cx) / m;
+          dy = (y - c.cy) / m;
+          if (Math.abs(dx - sent.dx) + Math.abs(dy - sent.dy) < 0.025) {
+            dx = sent.dx;
+            dy = sent.dy;
+          }
+        }
+      } else {
+        if (keys.has("a") || keys.has("arrowleft")) dx--;
+        if (keys.has("d") || keys.has("arrowright")) dx++;
+        if (keys.has("w") || keys.has("arrowup")) dy--;
+        if (keys.has("s") || keys.has("arrowdown")) dy++;
+        const m = Math.hypot(dx, dy);
+        if (m) {
+          dx /= m;
+          dy /= m;
+        }
       }
       if (!rTdir) rT = P2().ctl.in.rT;
       if (dx !== sent.dx || dy !== sent.dy || Math.abs(rT - sent.rT) > 0.02 * sent.rT) {
@@ -5968,8 +6171,10 @@ details[open] summary::after{content:" －"}
           <input type="range" id="plWarp" min="2" max="${api.PLAYER.warp.kMax}" step="1" value="${api.PLAYER.warp.k}">
           <p class="note">曲速搬動的是空間本身（前方收縮、後方膨脹），所以可以超過光速；泡壁相對被搬動的空間仍不超光速。
             代價是負能量：向真空借貸，越快、泡泡越大借得越多，能撐的時間越短（量子不等式）；結束後要在 ${api.PLAYER.warp.repayT} 秒內連本帶利償還，借越久利息越高（量子利息）。
-            方向在啟動時鎖定，碰到其他泡泡會自動脫離。</p></div>
-        <p class="note">WASD／方向鍵：控制膨脹方向（前脹後縮 → 前進）　Q／E：縮小／放大　1、2：在游標處施放技能　3：曲速（朝按住的方向，沒按則朝游標；再按一次停下）　空白鍵：暫停演化　F：鏡頭跟隨<br>
+            方向跟著方向鍵或滑鼠改變；碰到其他泡泡不會停下（搬動的是空間本身），進入別的宇宙後照一般規則吞食或被吞食。</p></div>
+        <p class="note"><b>再循環（4）</b>：在 Λ > 0 的口袋宇宙中，以自己為中心向上穿隧回假真空（半徑略大於當地的哈伯半徑，永遠縮不掉），重新開始永恆暴脹。
+          成本 = Δε × 面積。Λ ≤ 0 的宇宙無法再循環（反德西特會塌縮、閔考斯基無法向上穿隧）：困在那裡 ${api.PLAYER.recycle.trapT} 秒就<b>遊戲結束</b>，要及時用曲速逃出。</p>
+        <p class="note">WASD／方向鍵：控制膨脹方向（前脹後縮 → 前進）　Q／E：縮小／放大　滑鼠右鍵（按住）：朝游標方向前進　1、2：在游標處施放技能　3：曲速（朝前進的方向，沒有則朝游標；再按一次停下）　4：再循環　空白鍵：暫停演化　F：鏡頭跟隨<br>
           越大越慢：最高速度 = c·(1 − r/R<sub>H</sub>)；超過哈伯半徑就無法控制。維持大小要持續花能量。</p>` });
         const wOut = () => {
           $p("plWarpo").textContent = `${$p("plWarp").value} c`;
@@ -5990,6 +6195,7 @@ details[open] summary::after{content:" －"}
             if (a2.type === "spawn") say(a2.result.ok ? `你誕生了：#${a2.result.id}（${U.VAC[a2.vac].name}）` : `無法誕生：${a2.result.reason}`);
             if (a2.type === "nucleate" && a2.by === "player") say(a2.result.ok ? `施放成功（花費 ${a2.result.cost.toFixed(2)}）` : `無法施放：${a2.result.reason}`);
             if (a2.type === "warp" && a2.on) say(a2.result.ok ? `曲速 ${a2.result.k} c：向真空借貸負能量` : `無法啟動曲速：${a2.result.reason}`);
+            if (a2.type === "recycle") say(a2.result.ok ? `再循環：重新開始永恆暴脹（半徑 ${(a2.result.r0 / api.S.RH).toFixed(2)} R_H，花費 ${a2.result.cost.toFixed(2)}）` : `無法再循環：${a2.result.reason}`, 3500);
           });
         });
         api.camera.cv.addEventListener("pointermove", (e) => {
@@ -5999,8 +6205,26 @@ details[open] summary::after{content:" －"}
         api.camera.cv.addEventListener("pointerleave", () => {
           mx = -1;
         });
-        api.on("pointerdown", () => {
+        api.camera.cv.addEventListener("contextmenu", (e) => e.preventDefault());
+        api.on("pointerdown", (e) => {
+          if (e.button === 2) {
+            mouseSteer = e.pointerId;
+            mx = e.clientX;
+            my = e.clientY;
+            api.camera.cv.setPointerCapture(e.pointerId);
+            follow = true;
+            steer();
+            return true;
+          }
           follow = false;
+          return false;
+        });
+        api.on("pointerup", (e) => {
+          if (e.button === 2 && mouseSteer !== null) {
+            mouseSteer = null;
+            steer();
+            return true;
+          }
           return false;
         });
         const MOVE = ["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright"];
@@ -6043,6 +6267,11 @@ details[open] summary::after{content:" －"}
             warp2();
             return true;
           }
+          if (k === "4") {
+            if (P2()) api.act({ type: "recycle" });
+            else say("先誕生玩家宇宙");
+            return true;
+          }
           return false;
         });
         addEventListener("keyup", (e) => {
@@ -6053,6 +6282,7 @@ details[open] summary::after{content:" －"}
         addEventListener("blur", () => {
           keys.clear();
           rTdir = 0;
+          mouseSteer = null;
           steer();
         });
         api.on("frame", ({ dtR }) => {
@@ -6061,7 +6291,7 @@ details[open] summary::after{content:" －"}
           if (B && rTdir) {
             rT = Math.max(2 * api.S.R0, Math.min(0.95 * api.S.RH, rT * Math.exp(rTdir * 0.7 * dtR)));
             steer();
-          }
+          } else if (B && mouseSteer !== null) steer();
           const lw = B && B.ctl.lastWarp;
           if (lw && lw !== seenWarp) {
             seenWarp = lw;
@@ -6153,7 +6383,7 @@ details[open] summary::after{content:" －"}
           const x = S2.vw / 2, y = 26;
           if (B) {
             const C = B.ctl, c = api.U.circleAt(B, t), rr = c.r / S2.RH, hl = C.h && C.h.length ? C.h[C.h.length - 1] : S2.HUB, rl = rr * hl / S2.HUB, um = Math.max(0, 1 - rl), w = 220;
-            const state = rl >= 1 ? "失控：大於哈伯半徑，連大小都維持不住（按 N 重新誕生）" : C.exhausted ? "力竭：泡壁以光速自由膨脹（吞入假真空可回復）" : C.E < 0 ? "能量透支：技能無法使用（吞食真空能比你高的宇宙來補充）" : "";
+            const state = C.trap > 0 ? `困在 Λ ≤ 0 的宇宙，無法再循環：${Math.max(0, api.PLAYER.recycle.trapT - C.trap).toFixed(1)} 秒後遊戲結束（用曲速逃出！）` : rl >= 1 ? "失控：大於哈伯半徑，連大小都維持不住（按 N 重新誕生）" : C.exhausted ? "力竭：泡壁以光速自由膨脹（吞入假真空可回復）" : C.E < 0 ? "能量透支：技能無法使用（吞食真空能比你高的宇宙來補充）" : "";
             ctx2.fillStyle = "rgba(10,6,24,.7)";
             ctx2.fillRect(x - w / 2 - 12, y - 16, w + 24, state ? 62 : 46);
             ctx2.fillStyle = "rgba(255,255,255,.15)";
@@ -6181,11 +6411,24 @@ details[open] summary::after{content:" －"}
               ctx2.fillText(wl, x, wy);
             }
           } else {
-            const last = api.U.hist.concat(api.U.longs).find((b) => b.ctl && b.ctl.fate === "eaten");
-            ctx2.fillStyle = "rgba(10,6,24,.7)";
-            ctx2.fillRect(x - 190, y - 14, 380, 28);
-            ctx2.fillStyle = "#f4ecff";
-            ctx2.fillText(last ? "你的宇宙被吞沒了。挑選真空後按 N 重新誕生" : "挑選真空後按 N（或「誕生」）成為一個有自我意識的宇宙", x, y);
+            const last = api.U.hist.concat(api.U.longs).filter((b) => b.ctl && b.ctl.fate).sort((a2, b) => b.ctl.t[b.ctl.t.length - 1] - a2.ctl.t[a2.ctl.t.length - 1])[0];
+            const fate = last && last.ctl.fate;
+            if (fate === "trapped") {
+              ctx2.fillStyle = "rgba(10,6,24,.82)";
+              ctx2.fillRect(x - 250, S2.vh / 2 - 70, 500, 120);
+              ctx2.font = '600 26px "Noto Serif TC", serif';
+              ctx2.fillStyle = "#ffd6a0";
+              ctx2.fillText("遊戲結束", x, S2.vh / 2 - 36);
+              ctx2.font = '13px "Noto Sans TC", sans-serif';
+              ctx2.fillStyle = "#f4ecff";
+              ctx2.fillText("你困在 Λ ≤ 0 的宇宙裡：它不再暴脹，也無法向上穿隧再循環。", x, S2.vh / 2 - 4);
+              ctx2.fillText("你的自我意識隨著這個宇宙走向終結。挑選真空後按 N 重新開始", x, S2.vh / 2 + 20);
+            } else {
+              ctx2.fillStyle = "rgba(10,6,24,.7)";
+              ctx2.fillRect(x - 190, y - 14, 380, 28);
+              ctx2.fillStyle = "#f4ecff";
+              ctx2.fillText(fate === "eaten" ? "你的宇宙被吞沒了。挑選真空後按 N 重新誕生" : "挑選真空後按 N（或「誕生」）成為一個有自我意識的宇宙", x, y);
+            }
           }
           if (now < msgUntil) {
             ctx2.fillStyle = "rgba(255,236,190,.95)";
@@ -6205,6 +6448,8 @@ details[open] summary::after{content:" －"}
           T.act({ type: "steer", dx: 1, dy: 0, rT: 30 });
           T.presim(2);
           const c = T.circleAt(B, T.tSim), e = Math.exp(p.H * (T.tSim - B.tn)), fwd = c.cx - pos[0] * e, side = Math.abs(c.cy - pos[1] * e);
+          T.act({ type: "steer", dx: 0, dy: 0, rT: 30 });
+          T.advance(api.STEP);
           const t0 = T.tSim, c0 = T.circleAt(B, t0), shifts = [];
           T.on("rebase", (e2) => shifts.push(e2));
           const wa = T.act({ type: "warp", on: true, dx: 0, dy: -1, k: 5 });
