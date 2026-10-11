@@ -1387,7 +1387,13 @@ details[open] summary::after{content:" －"}
         const a = U.circleAt(Wb, iv[0]), b = U.circleAt(L, iv[0]);
         iv[2] = Math.hypot(a.cx - b.cx, a.cy - b.cy) - b.r;
       }
-      const D = U.eps(L) - U.eps(Wb), vH = 0.85 * D / (Math.abs(D) + 0.25) * tune2.wallK * p.RH;
+      const D = U.eps(L) - U.eps(Wb), vc = 0.85 * D / (Math.abs(D) + 0.25) * tune2.wallK;
+      const sp = W.spaceOf(Wb);
+      if (sp.region) {
+        const h = sp.h, v = vc * cLight, d = t - iv[0];
+        return h > 1e-9 ? (iv[2] + v / h) * Math.min(EMAX, Math.exp(h * d)) - v / h : iv[2] + v * d;
+      }
+      const vH = vc * p.RH;
       return (iv[2] + vH) * Math.min(EMAX, Math.exp(p.H * (t - iv[0]))) - vH;
     };
     U.frame = (t, scale = 1, circ) => ({ t, eps: U.eps, shift: (Wb, L) => U.shift(Wb, L, t) * scale, ring: (Wb, L) => U.ringR(Wb, L, t) * scale, circ: circ || ((b) => U.circleAt(b, t)) });
@@ -2935,6 +2941,46 @@ details[open] summary::after{content:" －"}
           }
         }
         return { pass: frames >= 5 && n > 1e3 && !bad, detail: `有洞的時刻 ${frames} 個；${n} 個點中 ${bad} 個與 drawContains 不一致` };
+      } },
+      { name: "玩家宇宙：修剪回放視窗", desc: "回放視窗很短（12 秒）時，玩家一邊移動一邊反覆曲速 25 秒（原本的模型與方案 B 各一次）：修剪之後軌跡段的每個欄位（含曲速速度、所在區域、膨脹率）長度一致，保留範圍內每個時刻的圓與不修剪的宇宙完全相同（曾經只裁掉部分欄位，曲速速度錯位到別的段上）", run() {
+        const fails = [];
+        let segs = 0, cuts = 0;
+        for (const extraP of [{}, { localH: true }]) {
+          const run = (win) => {
+            const U = createUniverse({ ...baseP, ...extraP, seed: 777 }, baseT()), r = mulberry32(31);
+            U.window = win;
+            U.presim(20);
+            const vacs = U.VAC.filter((v) => v.eps < 1 && v.eps > 0 && v.kind !== "up");
+            spawnPlayer(U, vacs[0].i, 30, 1);
+            for (let i = 0; i < 50 && U.player; i++) {
+              const a = r() * TAU, C2 = U.player.ctl;
+              if (!C2.warp && !C2.repay && r() < 0.5) U.act({ type: "warp", on: true, dx: Math.cos(a), dy: Math.sin(a), k: 2 + r() * 6 });
+              else U.act({ type: "steer", dx: Math.cos(a), dy: Math.sin(a), rT: 20 + r() * 30 });
+              U.presim(0.5);
+            }
+            return U;
+          };
+          const A = run(12), B = run(1200), PA = A.hist.find((b) => b.ctl) || A.longs.find((b) => b.ctl), PB = B.hist.find((b) => b.ctl) || B.longs.find((b) => b.ctl);
+          const tag = extraP.localH ? "方案 B" : "原本的模型";
+          if (!PA || !PB) {
+            fails.push(`${tag}：找不到玩家`);
+            continue;
+          }
+          const C = PA.ctl, n = C.t.length;
+          if (!(A.tStart > PA.tn + 5)) fails.push(`${tag}：沒有修剪到玩家的軌跡（tStart ${A.tStart.toFixed(1)}）`);
+          if (SEG.some((k) => C[k].length !== n)) fails.push(`${tag}：欄位長度不一致（${SEG.map((k) => k + " " + C[k].length).join("、")}）`);
+          if (!(PB.ctl.t.length > n)) fails.push(`${tag}：修剪後的段數 ${n} 沒有比不修剪的 ${PB.ctl.t.length} 少`);
+          if (!C.lastWarp && !C.warp) fails.push(`${tag}：沒有用到曲速`);
+          segs += n;
+          cuts += PB.ctl.t.length - n;
+          let worst = 0;
+          for (let t = A.tStart + 0.5; t <= A.tSim; t += STEP * 1.7) {
+            const a = A.circleAt(PA, t), b = B.circleAt(PB, t);
+            worst = Math.max(worst, Math.hypot(a.cx - b.cx, a.cy - b.cy) + Math.abs(a.r - b.r));
+          }
+          if (!(worst < 1e-6)) fails.push(`${tag}：保留範圍內的圓與不修剪的宇宙差 ${worst.toExponential(2)}`);
+        }
+        return { pass: !fails.length, detail: fails.length ? fails.join("；") : `兩種模型各修剪掉 ${(cuts / 2).toFixed(0)} 段、保留 ${(segs / 2).toFixed(0)} 段：欄位長度一致，保留範圍內的軌跡與不修剪時完全相同` };
       } }
     ];
   };
@@ -3143,6 +3189,46 @@ details[open] summary::after{content:" －"}
         const h2 = U.hIn(Q), r = U.circleAt(P2, U.tSim).r, theory = 2 * Math.PI * h2 * (hi.eps - lo.eps) * (r / U.p.RH) ** 2 * 6, loss = E0 - P2.ctl.E;
         const fv = 2 * Math.PI * U.p.H * (1 - lo.eps) * (r / U.p.RH) ** 2 * 6;
         return { pass: inPocket && Math.abs(loss - theory) < 0.08 * theory + 5e-3, detail: `玩家${inPocket ? "在" : "不在"}口袋內；6 秒維持費 ${loss.toFixed(3)}（理論 ${theory.toFixed(3)}，在假真空中會是 ${fv.toFixed(3)}）` };
+      } },
+      { name: "方案 B：口袋內的推進前緣", desc: "玩家在 Λ > 0 的口袋宇宙內被較低真空的子泡泡 X 吞食：吞食的推進前緣與 X 的圓同心、在同一個空間（口袋內部）流動，每一步 ρ + v/h 都以 e^{h·Δt} 增長（h 是口袋的膨脹率 H·√ε，而不是外面假真空的 H），且永遠不超出 X 的光錐（曾誤用 H，前緣比光錐跑得還快）", run() {
+        const U = createUniverse(baseP, { ...baseT(), gamma: 0 });
+        U.presim(1);
+        const ds = U.VAC.filter((v3) => v3.eps > 0 && v3.eps < 1 && v3.kind === "ds").sort((a, b) => a.eps - b.eps);
+        const pv = ds[0], qv = ds[1], xv = U.VAC.find((v3) => v3.eps < 0);
+        spawnPlayer(U, pv.i, 30, 1);
+        const P2 = U.player;
+        let c = U.circleAt(P2, U.tSim);
+        const qa = U.act({ type: "nucleate", x: c.cx + 45, y: c.cy, vac: qv.i });
+        U.advance(STEP);
+        U.act({ type: "steer", dx: 1, dy: 0, rT: 30 });
+        U.presim(3);
+        U.act({ type: "steer", dx: 0, dy: 0, rT: 30 });
+        U.presim(2);
+        const Q = U.hist.find((b) => b.id === qa.result.id), inPocket = P2.ctl.reg[P2.ctl.reg.length - 1] === Q;
+        c = U.circleAt(P2, U.tSim);
+        const xa = U.act({ type: "nucleate", x: c.cx + c.r + 25, y: c.cy, vac: xv.i, r: 6 });
+        U.advance(STEP);
+        const X = xa.result.ok ? U.hist.find((b) => b.id === xa.result.id) : null;
+        if (!X || X.parent !== Q || !inPocket) return { pass: false, detail: `情境沒有成立（玩家${inPocket ? "在" : "不在"}口袋內，X ${X ? X.parent === Q ? "在口袋內" : "不在口袋內" : "沒有誕生"}）` };
+        const h2 = U.hIn(Q), D = pv.eps - xv.eps, v = 0.85 * D / (Math.abs(D) + 0.25) * U.tune.wallK * U.p.H * U.p.RH;
+        let n = 0, worst = 0, outside = 0, prev = null;
+        for (let i = 0; i < 6 * 30 && U.player; i++) {
+          U.advance(STEP);
+          const t = U.tSim, arr = P2.ctl.contacts.get(X.id);
+          if (!arr || arr[arr.length - 1][1] !== Infinity || t - arr[arr.length - 1][0] < STEP * 1.5) {
+            prev = null;
+            continue;
+          }
+          const rho = U.ringR(X, P2, t);
+          if (rho > U.circleAt(X, t).r * (1 + 1e-9)) outside++;
+          if (prev) {
+            const want = (prev.rho + v / h2) * Math.exp(h2 * (t - prev.t)) - v / h2;
+            worst = Math.max(worst, Math.abs(rho - want) / want);
+            n++;
+          }
+          prev = { t, rho };
+        }
+        return { pass: n >= 20 && worst < 1e-6 && !outside, detail: `${n} 步（口袋的 h = ${(h2 / U.p.H).toFixed(3)}·H）：前緣與 e^{h·Δt} 增長的最大相對誤差 ${worst.toExponential(1)}；超出 X 光錐 ${outside} 次` };
       } }
     ];
   };

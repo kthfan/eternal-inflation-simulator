@@ -2,6 +2,7 @@
 import { TAU, mulberry32 } from '../math.js';
 import { Territory } from '../territory.js';
 import { STEP, createUniverse, PLAYER } from '../universe.js';
+import { SEG } from '../player.js';
 
 export default h => {
   const { baseP, baseT, buildRules, ownerMismatch, rayMismatch, spawnPlayer, playerUniverse } = h;
@@ -299,6 +300,40 @@ export default h => {
         }
       }
       return { pass: frames >= 5 && n > 1000 && !bad, detail: `有洞的時刻 ${frames} 個；${n} 個點中 ${bad} 個與 drawContains 不一致` };
+    }},
+    { name: '玩家宇宙：修剪回放視窗', desc: '回放視窗很短（12 秒）時，玩家一邊移動一邊反覆曲速 25 秒（原本的模型與方案 B 各一次）：修剪之後軌跡段的每個欄位（含曲速速度、所在區域、膨脹率）長度一致，保留範圍內每個時刻的圓與不修剪的宇宙完全相同（曾經只裁掉部分欄位，曲速速度錯位到別的段上）', run(){
+      const fails = []; let segs = 0, cuts = 0;
+      for(const extraP of [{}, { localH: true }]){
+        const run = win => {
+          const U = createUniverse({ ...baseP, ...extraP, seed: 777 }, baseT()), r = mulberry32(31);
+          U.window = win; U.presim(20);
+          const vacs = U.VAC.filter(v => v.eps < 1 && v.eps > 0 && v.kind !== 'up');
+          spawnPlayer(U, vacs[0].i, 30, 1);
+          for(let i=0;i<50 && U.player;i++){
+            const a = r()*TAU, C = U.player.ctl;
+            if(!C.warp && !C.repay && r() < .5) U.act({ type: 'warp', on: true, dx: Math.cos(a), dy: Math.sin(a), k: 2 + r()*6 });
+            else U.act({ type: 'steer', dx: Math.cos(a), dy: Math.sin(a), rT: 20 + r()*30 });
+            U.presim(.5);
+          }
+          return U;
+        };
+        const A = run(12), B = run(1200), PA = A.hist.find(b => b.ctl) || A.longs.find(b => b.ctl), PB = B.hist.find(b => b.ctl) || B.longs.find(b => b.ctl);
+        const tag = extraP.localH ? '方案 B' : '原本的模型';
+        if(!PA || !PB){ fails.push(`${tag}：找不到玩家`); continue; }
+        const C = PA.ctl, n = C.t.length;
+        if(!(A.tStart > PA.tn + 5)) fails.push(`${tag}：沒有修剪到玩家的軌跡（tStart ${A.tStart.toFixed(1)}）`);
+        if(SEG.some(k => C[k].length !== n)) fails.push(`${tag}：欄位長度不一致（${SEG.map(k => k + ' ' + C[k].length).join('、')}）`);
+        if(!(PB.ctl.t.length > n)) fails.push(`${tag}：修剪後的段數 ${n} 沒有比不修剪的 ${PB.ctl.t.length} 少`);
+        if(!C.lastWarp && !C.warp) fails.push(`${tag}：沒有用到曲速`);
+        segs += n; cuts += PB.ctl.t.length - n;
+        let worst = 0;
+        for(let t = A.tStart + .5; t <= A.tSim; t += STEP*1.7){
+          const a = A.circleAt(PA, t), b = B.circleAt(PB, t);
+          worst = Math.max(worst, Math.hypot(a.cx - b.cx, a.cy - b.cy) + Math.abs(a.r - b.r));
+        }
+        if(!(worst < 1e-6)) fails.push(`${tag}：保留範圍內的圓與不修剪的宇宙差 ${worst.toExponential(2)}`);
+      }
+      return { pass: !fails.length, detail: fails.length ? fails.join('；') : `兩種模型各修剪掉 ${(cuts/2).toFixed(0)} 段、保留 ${(segs/2).toFixed(0)} 段：欄位長度一致，保留範圍內的軌跡與不修剪時完全相同` };
     }},
   ];
 };

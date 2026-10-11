@@ -51,14 +51,22 @@ export function installWalls(W){
     return Infinity;
   };
   /* 推進前緣的半徑（玩家輸的時候）：從接觸那一刻贏家中心到輸家圓的距離起算，以疇壁速度 v 相對當地空間向外推進：
-     ρ(t) = (ρ₀ + v/H)·e^{HΔt} − v/H。還沒有接觸紀錄（兩步之間剛碰到）時，前緣就在輸家圓上，輸家尚未失去地盤 */
+     ρ(t) = (ρ₀ + v/h)·e^{hΔt} − v/h（h → 0 時 ρ₀ + v·Δt）。前緣與贏家的圓同心、在同一個空間裡流動，所以 h 是贏家所在空間的膨脹率
+     （原本的模型一律是 H；方案 B 曾誤用 H，口袋內的前緣跑得比贏家的光錐還快）。
+     還沒有接觸紀錄（兩步之間剛碰到）時，前緣就在輸家圓上，輸家尚未失去地盤 */
   U.ringR = (Wb, L, t) => {
     const P = Wb.ctl ? Wb : L, arr = P.ctl.contacts.get((P === Wb ? L : Wb).id);
     let iv = null;
     if(arr) for(let i = arr.length - 1; i >= 0; i--) if(arr[i][0] <= t + 1e-9){ if(t <= arr[i][1] + 1e-9) iv = arr[i]; break; }
     if(!iv){ const a = U.circleAt(Wb, t), b = U.circleAt(L, t); return Math.hypot(a.cx - b.cx, a.cy - b.cy) - b.r; }
     if(iv[2] === undefined){ const a = U.circleAt(Wb, iv[0]), b = U.circleAt(L, iv[0]); iv[2] = Math.hypot(a.cx - b.cx, a.cy - b.cy) - b.r; }
-    const D = U.eps(L) - U.eps(Wb), vH = .85*D/(Math.abs(D) + .25)*tune.wallK*p.RH;   // v/H，v = 0.85c·Δε/(|Δε|+0.25)（與 U.shift 相同）
+    const D = U.eps(L) - U.eps(Wb), vc = .85*D/(Math.abs(D) + .25)*tune.wallK;   // v/c，v = 0.85c·Δε/(|Δε|+0.25)（與 U.shift 相同）
+    const sp = W.spaceOf(Wb);
+    if(sp.region){
+      const h = sp.h, v = vc*cLight, d = t - iv[0];
+      return h > 1e-9 ? (iv[2] + v/h)*Math.min(EMAX, Math.exp(h*d)) - v/h : iv[2] + v*d;
+    }
+    const vH = vc*p.RH;
     return (iv[2] + vH)*Math.min(EMAX, Math.exp(p.H*(t - iv[0]))) - vH;
   };
   /* 交給 Territory 的規則情境：時刻、真空能、疇壁位移、推進前緣、圓（scale 為畫面縮放倍率） */
