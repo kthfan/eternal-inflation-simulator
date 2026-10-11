@@ -15,9 +15,9 @@ import { TAU } from './math.js';
    有親緣關係的泡泡之間沒有規則：子泡泡永遠蓋在母泡泡之上。
    向上穿隧（使用者動作）會產生真空能比母宇宙「高」的子泡泡；繪製順序因此改用「繪製鍵」（見 drawOrder），
    當輸家因而畫在贏家之後，輸家要明確讓出贏家那一側（R.lYield）。沒有向上穿隧時，行為與原本完全相同。
-   可控制的泡泡（玩家，b.ctl）的泡壁不以光速擴張，「光錐被包住」不再代表「早已被入侵」，所以與它有關的不同真空之間一律用「推進前緣」：
-   · 玩家贏：它自己控制的泡壁就是交界，圓內全歸它；
-   · 玩家輸：贏家的真空以疇壁速度從贏家中心向外推進（以贏家中心為圓心、半徑 F.ring(W, L) 的圓），玩家只失去圓內的部分。
+   可控制的泡泡（玩家，b.ctl）的泡壁不以光速擴張，「光錐被包住」不再代表「早已被入侵」。玩家的泡壁碰到其他宇宙時，
+   接觸的那一段就是兩者之間的疇壁，由兩側的真空能差推動（壓力，見 player.js）：玩家的圓本身就是交界，圓內全歸玩家，
+   不論誰的真空能較低（較低的一方是以壓力把玩家的泡壁推回，而不是直接穿進玩家的圓）。疇壁畫在玩家的圓落在對方圓內的那一段。
    同種真空：無縫融合（不畫疇壁），玩家保有自己泡壁內的地盤。 */
 export const Territory = (() => {
   const isAncestor = (a, b) => { for(let p = b.parent; p; p = p.parent) if(p === a) return true; return false; };
@@ -54,13 +54,15 @@ export const Territory = (() => {
      射線法（cellRay，假設領域對中心呈星形）畫不出玩家背後的那一片。玩家後畫則泡泡畫整圓、玩家蓋在上面，不會有洞 */
   const drawOrder = (F, a, b) => (dkey(F, b.b) - dkey(F, a.b)) || ((a.b.ctl ? 1 : 0) - (b.b.ctl ? 1 : 0)) || (a.b.tn - b.b.tn);
 
-  /* 推進前緣：以 W 的中心為圓心、半徑 R 的圓；輸家側 = 圓外。沿用 wallGeom 求出與輸家圓的交點（畫疇壁用），再改寫成這個圓 */
-  function ringGeom(W, L, R){
-    const d = Math.hypot(L.cx - W.cx, L.cy - W.cy), RR = Math.max(0, Math.min(R, d + L.r + W.r + 1));
-    const g = (d > 0 && wallGeom(W.cx, W.cy, RR, L.cx, L.cy, L.r, Infinity)) || { wx: W.cx, wy: W.cy, ux: 1, uy: 0, xc: 0, h: 0, xv: RR };
-    g.line = false; g.cx = W.cx; g.cy = W.cy; g.R = RR; g.sig = 1; g.full = d + RR <= L.r;
-    if(!(RR > d - L.r)) g.h = 0;                      // 前緣還沒碰到輸家：沒有疇壁
-    g.lSide = (x, y) => (x - W.cx)**2 + (y - W.cy)**2 >= RR*RR;
+  /* 接觸處的疇壁：就是可控制泡泡 P 自己的泡壁。P 保有自己圓內的全部地盤；疇壁 = P 的圓落在對方 O 圓內的那一段（P 整個在 O 內時是整圈）。
+     pIsL：P 是規則中的輸家 L（對方真空能較低）。lSide（輸家側）：P 是輸家時為 P 的圓內，否則為 P 的圓外 */
+  function contactGeom(P, O, pIsL){
+    const d = Math.hypot(O.cx - P.cx, O.cy - P.cy);
+    const g = (d > 0 && wallGeom(P.cx, P.cy, P.r, O.cx, O.cy, O.r, 0)) || { wx: P.cx, wy: P.cy, ux: 1, uy: 0, xc: 0, h: 0 };
+    g.line = false; g.cx = P.cx; g.cy = P.cy; g.R = P.r; g.xv = P.r; g.sig = pIsL ? -1 : 1;   // 頂點：P 的圓上面向 O 的那一點
+    g.full = d + P.r <= O.r;
+    const r2 = P.r*P.r;
+    g.lSide = pIsL ? (x, y) => (x - P.cx)**2 + (y - P.cy)**2 < r2 : (x, y) => (x - P.cx)**2 + (y - P.cy)**2 >= r2;
     return g;
   }
   function rule(F, A, B){
@@ -72,7 +74,9 @@ export const Territory = (() => {
       const same = A.b.vac === B.b.vac;
       if(same && A.b.ctl && B.b.ctl) return { kind:'merge', A, B };
       const [W, L] = same ? (A.b.ctl ? [A, B] : [B, A]) : beats(F, A.b, B.b) ? [A, B] : [B, A];
-      const R = { kind:'wall', W, L, g: ringGeom(W, L, W.b.ctl || !F.ring ? Infinity : F.ring(W.b, L.b)), ring: true };
+      const P = W.b.ctl ? W : L;                     // 交界是這個泡泡的泡壁（兩個都可控制時是勝者）
+      const R = { kind:'wall', W, L, g: contactGeom(P, P === W ? L : W, P === L), ring: true };
+      if(same){ R.g.h = 0; R.g.full = false; }        // 同種真空無縫融合：不畫疇壁
       if(drawOrder(F, L, W) > 0){ R.lYield = true; R.cE = arrival(W, L.cx, L.cy) < 0 && !R.g.lSide(L.cx, L.cy); }
       return R;
     }
@@ -158,22 +162,13 @@ export const Territory = (() => {
     return (x, y) => { let own = null; for(const c of cs) if(drawContains(c, x, y)) own = c; return own ? own.src : null; };
   }
   /* ---------- 領域中的「洞」 ----------
-     玩家（可控制的泡泡）被真空能較低的泡泡 W 的光錐整個包住、W 的推進前緣卻還沒掃到玩家時，W 要讓出「玩家圓內、前緣外」的部分。
-     這一塊完全在 W 的圓內、不碰 W 的泡壁，W 的領域因此不是對中心呈星形的：射線法（cellRay）碰到它就停，玩家背後整片都會漏畫
-     （畫面上從玩家到 W 的泡壁之間露出背景）。所以畫面改為：W 的射線不理會這種規則（cellRay 略過），另外把洞挖掉；
-     洞的形狀以玩家的中心沿射線求出（holeSpan）。歸屬（drawContains、ownerAt）完全不變。 */
-  const isHole = (R, v) => R.kind === 'wall' && !!R.ring && R.W === v && Math.hypot(R.L.cx - v.cx, R.L.cy - v.cy) + R.L.r < v.r;
-  /* 洞沿著「從輸家中心出發、方向 (ex,ey)」的射線所佔的區間 [a, b]（a = b 表示這個方向沒有洞）。
-     前緣是以 W 中心為圓心、半徑 g.R 的圓，洞 = 輸家圓內、前緣圓外。前緣圓遠大於玩家，射線在玩家圓內最多穿過它一次 */
-  function holeSpan(R, ex, ey){
-    const L = R.L, g = R.g, gx = L.cx - g.cx, gy = L.cy - g.cy, bb = ex*gx + ey*gy, c0 = gx*gx + gy*gy - g.R*g.R, dd = bb*bb - c0;
-    if(c0 >= 0){                                      // 輸家中心在前緣外：從中心到碰上前緣（或輸家泡壁）為止
-      if(dd > 0){ const t1 = -bb - Math.sqrt(dd); if(t1 > 0) return [0, Math.min(L.r, t1)]; }
-      return [0, L.r];
-    }
-    const t2 = -bb + Math.sqrt(Math.max(0, dd));      // 輸家中心已在前緣內：剩下前緣外的一彎
-    return t2 < L.r ? [t2, L.r] : [L.r, L.r];
-  }
+     真空能較低的泡泡 W 碰到玩家（可控制的泡泡）時，W 要讓出玩家的整個圓。玩家在 W 的圓內時這一塊不碰 W 的泡壁；
+     玩家蓋住 W 的中心時 W 剩下一彎。兩種情況 W 的領域都不是對中心呈星形的：射線法（cellRay）碰到它就停，玩家背後整片都會漏畫
+     （畫面上從玩家到 W 的泡壁之間露出背景）。所以畫面改為：W 的射線不理會這種規則（cellRay 略過），另外把洞（玩家的圓）挖掉。
+     歸屬（drawContains、ownerAt）完全不變。 */
+  const isHole = (R, v) => R.kind === 'wall' && !!R.ring && R.W === v && R.g.sig < 0;
+  /* 洞沿著「從玩家中心出發、方向 (ex,ey)」的射線所佔的區間 [a, b]：洞就是玩家的整個圓 */
+  const holeSpan = R => [0, R.L.r];
   /* drawContains 的解析版本：沿射線方向 (ex,ey) 求出領域的邊界距離（領域對中心呈星形）。洞（isHole）不算在內，由畫面另外挖掉 */
   function cellRay(v, ex, ey, lim){
     let rho = lim;

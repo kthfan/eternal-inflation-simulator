@@ -92,19 +92,20 @@ export function player(){
       api = a;
       panel = api.addPanel({ title: '玩家宇宙', open: true, html: `
         <div class="sl"><label for="plVac"><span>你的真空</span></label><select id="plVac"></select>
-          <p class="note">真空能越低越強：能吞掉比你高的宇宙並得到能量；碰上比你低的宇宙會被奪走地盤與能量。</p></div>
+          <p class="note">真空能越低越強：能吞掉比你高的宇宙並得到能量。碰上比你低的宇宙時，接觸處是一道疇壁，被真空能差的壓力推回；
+            有能量時會自動頂住（持續消耗能量），能量耗盡就頂不住、被逐步推回直到吞沒。</p></div>
         <div class="sl"><label for="plR"><span>誕生半徑</span><output id="plRo"></output></label>
           <input type="range" id="plR" min=".1" max=".6" step=".05" value=".2"></div>
         <div class="sl"><label for="plMode"><span>模式</span></label><select id="plMode">
           <option value="relaxed" selected>輕鬆：能量可以透支，只限制技能</option>
-          <option value="survival">生存：能量耗盡就力竭，泡壁以光速自由膨脹</option></select></div>
+          <option value="survival">生存：能量耗盡就力竭，泡壁回到自然狀態（無法控制）</option></select></div>
         <div class="btns"><button id="plSpawn">誕生（N）</button></div>
         <div class="sl"><label for="plDown"><span>技能 1（向下穿隧）的真空</span></label><select id="plDown"></select></div>
         <div class="sl"><label for="plWarp"><span>曲速倍率（技能 3）</span><output id="plWarpo"></output></label>
           <input type="range" id="plWarp" min="2" max="${api.PLAYER.warp.kMax}" step="1" value="${api.PLAYER.warp.k}">
           <p class="note">曲速搬動的是空間本身（前方收縮、後方膨脹），所以可以超過光速；泡壁相對被搬動的空間仍不超光速。
             代價是負能量：向真空借貸，越快、泡泡越大借得越多，能撐的時間越短（量子不等式）；結束後要在 ${api.PLAYER.warp.repayT} 秒內連本帶利償還，借越久利息越高（量子利息）。
-            方向跟著方向鍵或滑鼠改變；碰到其他泡泡不會停下（搬動的是空間本身），進入別的宇宙後照一般規則吞食或被吞食。</p></div>
+            方向跟著方向鍵或滑鼠改變；碰到其他泡泡不會停下（搬動的是空間本身），進入別的宇宙後照一般規則吞食或被推擠。</p></div>
         <p class="note"><b>再循環（4）</b>：在 Λ > 0 的口袋宇宙中，以自己為中心向上穿隧回假真空（半徑略大於當地的哈伯半徑，永遠縮不掉），重新開始永恆暴脹。
           成本 = Δε × 面積。Λ ≤ 0 的宇宙無法再循環（反德西特會塌縮、閔考斯基無法向上穿隧）：困在那裡 ${api.PLAYER.recycle.trapT} 秒就<b>遊戲結束</b>，要及時用曲速逃出。</p>
         <p class="note">WASD／方向鍵：控制膨脹方向（前脹後縮 → 前進）　Q／E：縮小／放大　滑鼠右鍵（按住）：朝游標方向前進　1、2：在游標處施放技能　3：曲速（朝前進的方向，沒有則朝游標；再按一次停下）　4：再循環　空白鍵：暫停演化　F：鏡頭跟隨<br>
@@ -226,7 +227,9 @@ export function player(){
           // 方案 B：所在區域的膨脹率 h 決定當地的哈伯半徑 c/h（最高速度 = c·(1 − r·h/c)）
           const C = B.ctl, c = api.U.circleAt(B, t), rr = c.r/S.RH, hl = C.h && C.h.length ? C.h[C.h.length - 1] : S.HUB, rl = rr*hl/S.HUB, um = Math.max(0, 1 - rl), w = 220;
           const state = C.trap > 0 ? `困在 Λ ≤ 0 的宇宙，無法再循環：${Math.max(0, api.PLAYER.recycle.trapT - C.trap).toFixed(1)} 秒後遊戲結束（用曲速逃出！）`
-            : rl >= 1 ? '失控：大於哈伯半徑，連大小都維持不住（按 N 重新誕生）' : C.exhausted ? '力竭：泡壁以光速自由膨脹（吞入假真空可回復）'
+            : rl >= 1 ? '失控：大於哈伯半徑，連大小都維持不住（按 N 重新誕生）' : C.exhausted ? '力竭：泡壁回到自然狀態（以光速吞入假真空可回復；碰到較低的真空會被推回）'
+            : C.pressed && !(C.E > 0) ? '能量耗盡：頂不住較低真空的壓力，正被推回（快逃！）'
+            : C.resist > 0 ? `頂住較低真空的壓力：每秒消耗 ${C.resist.toFixed(2)}（逃開或縮小可以省能量）`
             : C.E < 0 ? '能量透支：技能無法使用（吞食真空能比你高的宇宙來補充）' : '';
           ctx.fillStyle = 'rgba(10,6,24,.7)'; ctx.fillRect(x - w/2 - 12, y - 16, w + 24, state ? 62 : 46);
           ctx.fillStyle = 'rgba(255,255,255,.15)'; ctx.fillRect(x - w/2, y - 6, w, 10);
@@ -244,7 +247,7 @@ export function player(){
           } else if(C.repay) wl = `償還量子利息：剩 ${C.repay.left.toFixed(2)}（還完才能再啟動曲速）`;
           if(wl){ const tw = ctx.measureText(wl).width + 20; ctx.fillStyle = 'rgba(10,6,24,.7)'; ctx.fillRect(x - tw/2, wy - 11, tw, 22); ctx.fillStyle = C.warp ? '#bfe6ff' : '#ffb4a6'; ctx.fillText(wl, x, wy); }
         } else {
-          const last = api.U.hist.concat(api.U.longs).filter(b => b.ctl && b.ctl.fate).sort((a, b) => b.ctl.t[b.ctl.t.length - 1] - a.ctl.t[a.ctl.t.length - 1])[0];
+          const last = api.U.hist.concat(api.U.longs).filter(b => b.ctl && b.ctl.fate).sort((a, b) => b.ctl.releasedAt - a.ctl.releasedAt)[0];
           const fate = last && last.ctl.fate;
           if(fate === 'trapped'){
             // 遊戲結束：困在不再暴脹、也無法再循環的宇宙

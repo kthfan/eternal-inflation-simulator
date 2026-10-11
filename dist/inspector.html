@@ -581,17 +581,18 @@ details[open] summary::after{content:" －"}
       return e;
     };
     const drawOrder = (F, a, b) => dkey(F, b.b) - dkey(F, a.b) || (a.b.ctl ? 1 : 0) - (b.b.ctl ? 1 : 0) || a.b.tn - b.b.tn;
-    function ringGeom(W, L, R) {
-      const d = Math.hypot(L.cx - W.cx, L.cy - W.cy), RR = Math.max(0, Math.min(R, d + L.r + W.r + 1));
-      const g = d > 0 && wallGeom(W.cx, W.cy, RR, L.cx, L.cy, L.r, Infinity) || { wx: W.cx, wy: W.cy, ux: 1, uy: 0, xc: 0, h: 0, xv: RR };
+    function contactGeom(P2, O, pIsL) {
+      const d = Math.hypot(O.cx - P2.cx, O.cy - P2.cy);
+      const g = d > 0 && wallGeom(P2.cx, P2.cy, P2.r, O.cx, O.cy, O.r, 0) || { wx: P2.cx, wy: P2.cy, ux: 1, uy: 0, xc: 0, h: 0 };
       g.line = false;
-      g.cx = W.cx;
-      g.cy = W.cy;
-      g.R = RR;
-      g.sig = 1;
-      g.full = d + RR <= L.r;
-      if (!(RR > d - L.r)) g.h = 0;
-      g.lSide = (x, y) => (x - W.cx) ** 2 + (y - W.cy) ** 2 >= RR * RR;
+      g.cx = P2.cx;
+      g.cy = P2.cy;
+      g.R = P2.r;
+      g.xv = P2.r;
+      g.sig = pIsL ? -1 : 1;
+      g.full = d + P2.r <= O.r;
+      const r2 = P2.r * P2.r;
+      g.lSide = pIsL ? (x, y) => (x - P2.cx) ** 2 + (y - P2.cy) ** 2 < r2 : (x, y) => (x - P2.cx) ** 2 + (y - P2.cy) ** 2 >= r2;
       return g;
     }
     function rule(F, A, B) {
@@ -602,7 +603,12 @@ details[open] summary::after{content:" －"}
         const same = A.b.vac === B.b.vac;
         if (same && A.b.ctl && B.b.ctl) return { kind: "merge", A, B };
         const [W2, L2] = same ? A.b.ctl ? [A, B] : [B, A] : beats(F, A.b, B.b) ? [A, B] : [B, A];
-        const R2 = { kind: "wall", W: W2, L: L2, g: ringGeom(W2, L2, W2.b.ctl || !F.ring ? Infinity : F.ring(W2.b, L2.b)), ring: true };
+        const P2 = W2.b.ctl ? W2 : L2;
+        const R2 = { kind: "wall", W: W2, L: L2, g: contactGeom(P2, P2 === W2 ? L2 : W2, P2 === L2), ring: true };
+        if (same) {
+          R2.g.h = 0;
+          R2.g.full = false;
+        }
         if (drawOrder(F, L2, W2) > 0) {
           R2.lYield = true;
           R2.cE = arrival(W2, L2.cx, L2.cy) < 0 && !R2.g.lSide(L2.cx, L2.cy);
@@ -706,19 +712,8 @@ details[open] summary::after{content:" －"}
         return own ? own.src : null;
       };
     }
-    const isHole = (R, v) => R.kind === "wall" && !!R.ring && R.W === v && Math.hypot(R.L.cx - v.cx, R.L.cy - v.cy) + R.L.r < v.r;
-    function holeSpan(R, ex, ey) {
-      const L = R.L, g = R.g, gx = L.cx - g.cx, gy = L.cy - g.cy, bb = ex * gx + ey * gy, c0 = gx * gx + gy * gy - g.R * g.R, dd = bb * bb - c0;
-      if (c0 >= 0) {
-        if (dd > 0) {
-          const t1 = -bb - Math.sqrt(dd);
-          if (t1 > 0) return [0, Math.min(L.r, t1)];
-        }
-        return [0, L.r];
-      }
-      const t2 = -bb + Math.sqrt(Math.max(0, dd));
-      return t2 < L.r ? [t2, L.r] : [L.r, L.r];
-    }
+    const isHole = (R, v) => R.kind === "wall" && !!R.ring && R.W === v && R.g.sig < 0;
+    const holeSpan = (R) => [0, R.L.r];
     function cellRay(v, ex, ey, lim) {
       let rho = lim;
       for (const R of v.rules || []) {
@@ -1366,33 +1361,7 @@ details[open] summary::after{content:" －"}
       for (let i = arr.length - 1; i >= 0; i--) if (arr[i][0] <= t + 1e-9) return t <= arr[i][1] + 1e-9 ? arr[i][0] : Infinity;
       return Infinity;
     };
-    U.ringR = (Wb, L, t) => {
-      const P2 = Wb.ctl ? Wb : L, arr = P2.ctl.contacts.get((P2 === Wb ? L : Wb).id);
-      let iv = null;
-      if (arr) {
-        for (let i = arr.length - 1; i >= 0; i--) if (arr[i][0] <= t + 1e-9) {
-          if (t <= arr[i][1] + 1e-9) iv = arr[i];
-          break;
-        }
-      }
-      if (!iv) {
-        const a = U.circleAt(Wb, t), b = U.circleAt(L, t);
-        return Math.hypot(a.cx - b.cx, a.cy - b.cy) - b.r;
-      }
-      if (iv[2] === void 0) {
-        const a = U.circleAt(Wb, iv[0]), b = U.circleAt(L, iv[0]);
-        iv[2] = Math.hypot(a.cx - b.cx, a.cy - b.cy) - b.r;
-      }
-      const D = U.eps(L) - U.eps(Wb), vc = 0.85 * D / (Math.abs(D) + 0.25) * tune2.wallK;
-      const sp = W.spaceOf(Wb);
-      if (sp.region) {
-        const h = sp.h, v = vc * cLight, d = t - iv[0];
-        return h > 1e-9 ? (iv[2] + v / h) * Math.min(EMAX, Math.exp(h * d)) - v / h : iv[2] + v * d;
-      }
-      const vH = vc * p.RH;
-      return (iv[2] + vH) * Math.min(EMAX, Math.exp(p.H * (t - iv[0]))) - vH;
-    };
-    U.frame = (t, scale = 1, circ) => ({ t, eps: U.eps, shift: (Wb, L) => U.shift(Wb, L, t) * scale, ring: (Wb, L) => U.ringR(Wb, L, t) * scale, circ: circ || ((b) => U.circleAt(b, t)) });
+    U.frame = (t, scale = 1, circ) => ({ t, eps: U.eps, shift: (Wb, L) => U.shift(Wb, L, t) * scale, circ: circ || ((b) => U.circleAt(b, t)) });
   }
 
   // src/core/world.js
@@ -1615,7 +1584,7 @@ details[open] summary::after{content:" －"}
   };
   var SEG = ["t", "x", "y", "r", "ux", "uy", "vx", "vy", "w", "reg", "h"];
   function installPlayer(W) {
-    const { U, p, VAC } = W, LH = W.LH, cLight = W.cLight;
+    const { U, p, VAC, tune: tune2 } = W, LH = W.LH, cLight = W.cLight;
     U.player = null;
     function pushSeg(b, t, x, y, r, ux, uy, w, reg = null, vx = 0, vy = 0) {
       const C = b.ctl, n = C.t.length, sp = W.regionSpace(reg), h = sp.h;
@@ -1776,10 +1745,60 @@ details[open] summary::after{content:" －"}
       pushSeg(b, t, c.cx, c.cy, c.r, 0, 0, cLight, C.reg[W.segIndex(C, t)]);
       C.free = true;
       C.releasedAt = t;
+      drift(b, t);
       if (W.regionSpace(C.reg[C.reg.length - 1]).region) {
         b.texit = Infinity;
         b.dyn = true;
       } else b.texit = W.exitTime(1, Math.hypot(c.cx, c.cy), c.r, t);
+    }
+    const NS = 36;
+    function neighbors(b, t, c) {
+      const R = c.r, dl = Math.max(0.5, R * 0.01), cs = [];
+      for (const o of U.live) {
+        if (o === b || o.tn > t || o.texit <= t) continue;
+        const oc = U.circleAt(o, t);
+        if (Math.hypot(oc.cx - c.cx, oc.cy - c.cy) < oc.r + R + dl + 1) cs.push(oc);
+      }
+      if (!cs.length) return null;
+      const own = Territory.locator(U.frame(t), cs), eP = VAC[b.vac].eps, out = [];
+      let any = false;
+      for (let j = 0; j < NS; j++) {
+        const th = TAU * j / NS, o = own(c.cx + Math.cos(th) * (R + dl), c.cy + Math.sin(th) * (R + dl));
+        const d = o && o.b.vac !== b.vac && !Territory.isAncestor(b, o.b) ? VAC[o.b.vac].eps - eP : null;
+        if (d !== null) any = true;
+        out.push(d);
+      }
+      return any ? out : null;
+    }
+    function pressure(nb, ux, uy, w, natural, canResist) {
+      const c = cLight, K2 = 0.85 * tune2.wallK * c;
+      let sw = 0, sx = 0, sy = 0, resist = 0;
+      for (let j = 0; j < NS; j++) {
+        const th = TAU * j / NS, ex = Math.cos(th), ey = Math.sin(th), d = nb[j];
+        const sc = natural ? c : ux * ex + uy * ey + w;
+        let s = sc;
+        if (d !== null) {
+          const v = K2 * d / (Math.abs(d) + 0.25);
+          if (natural) s = v;
+          else if (v >= 0) s = sc;
+          else if (canResist) {
+            s = sc + v;
+            resist -= d * Math.max(0, Math.min(sc, -v));
+          } else s = Math.min(sc, 0) + v;
+        }
+        sw += s;
+        sx += s * ex;
+        sy += s * ey;
+      }
+      let W2 = sw / NS, Ux = 2 * sx / NS, Uy = 2 * sy / NS;
+      const m = Math.hypot(Ux, Uy) + Math.abs(W2);
+      if (m > c) {
+        const f = c / m;
+        W2 *= f;
+        Ux *= f;
+        Uy *= f;
+      }
+      return { ux: Ux, uy: Uy, w: W2, resist };
     }
     function decide(b, t) {
       const C = b.ctl, c = cLight, cur = U.circleAt(b, t);
@@ -1787,7 +1806,8 @@ details[open] summary::after{content:" －"}
       let w, ux = 0, uy = 0;
       if (C.warp && (C.exhausted || h * cur.r >= c)) endWarp(b, t, C.exhausted ? "力竭" : "失控");
       let vx = 0, vy = 0;
-      if (C.exhausted || h * cur.r >= c) {
+      const natural = C.exhausted || h * cur.r >= c;
+      if (natural) {
         w = c;
         C.in.rT = Math.max(2 * p.R0, Math.min(0.95 * p.RH, cur.r));
       } else {
@@ -1809,7 +1829,36 @@ details[open] summary::after{content:" －"}
           }
         }
       }
+      C.resist = 0;
+      const nb = neighbors(b, t, cur);
+      C.pressed = !!nb && nb.some((d) => d !== null && d < 0);
+      if (nb && (natural || C.pressed)) {
+        const q = pressure(nb, ux, uy, w, natural, C.E > 0);
+        ux = q.ux;
+        uy = q.uy;
+        w = q.w;
+        if (q.resist > 0) {
+          const cost = q.resist * TAU * cur.r / NS * STEP / (p.RH * p.RH) / C.eta;
+          C.E -= cost;
+          C.loss += cost;
+          C.resist = cost / STEP;
+        }
+      }
       pushSeg(b, t, cur.cx, cur.cy, cur.r, ux, uy, w, reg, vx, vy);
+    }
+    function drift(b, t) {
+      const C = b.ctl, cur = U.circleAt(b, t), n = C.t.length - 1;
+      if (cur.r <= 0) {
+        b.texit = t + STEP / 2;
+        return;
+      }
+      const nb = neighbors(b, t, cur);
+      if (!nb) {
+        if (C.ux[n] || C.uy[n] || C.w[n] !== cLight) pushSeg(b, t, cur.cx, cur.cy, cur.r, 0, 0, cLight, C.reg[n]);
+        return;
+      }
+      const q = pressure(nb, 0, 0, cLight, true, false);
+      pushSeg(b, t, cur.cx, cur.cy, cur.r, q.ux, q.uy, q.w, C.reg[n]);
     }
     function ledger(b, t) {
       const t0 = t - STEP;
@@ -1897,6 +1946,7 @@ details[open] summary::after{content:" －"}
     }
     W.playerStep = (t) => {
       for (const b of U.live) if (b.ctl && b.texit > t) contacts(b, t);
+      for (const b of U.live) if (b.ctl && b.ctl.free && b.texit > t) drift(b, t);
       const P2 = U.player;
       if (!P2) return;
       const C = P2.ctl;
@@ -2623,55 +2673,64 @@ details[open] summary::after{content:" －"}
         const ok = sv.exh > 0 && sv.minGap >= 0.1 && !sv.badFree && !sv.badLost && !rx.exh && rx.minE < 0 && !rx.badLost;
         return { pass: ok, detail: `生存：力竭 ${(sv.exh * STEP).toFixed(1)} 秒、狀態切換 ${sv.flips} 次（最短間隔 ${sv.minGap.toFixed(2)} 秒）、力竭時仍受控制 ${sv.badFree} 步、失控時仍受控制 ${sv.badLost} 步；輕鬆：力竭 ${rx.exh} 步、最低能量 ${rx.minE.toFixed(2)}` };
       } },
-      { name: "玩家宇宙：吞食與被奪走", desc: "在玩家旁邊放一個泡泡：真空能比玩家高的被吞食，玩家得到能量；比玩家低的會逐步奪走玩家的地盤與能量（與沒有放泡泡時比較），持續靠近終將被吞沒", run() {
-        const run = (pVac, qVac, secs) => {
+      { name: "玩家宇宙：吞食與被奪走", desc: "在玩家旁邊放一個泡泡：真空能比玩家高的被吞食，玩家得到能量；比玩家低的以壓力把玩家的泡壁推回，玩家頂住要花能量（與沒有放泡泡時比較）。有能量時持續靠近也能頂住；能量 ≤ 0 時頂不住，終將被吞沒", run() {
+        const run = (pVac, qVac, secs, E) => {
           const U = createUniverse({ ...baseP, seed: 5 }, { ...baseT(), gamma: 0 });
           U.presim(1);
           spawnPlayer(U, pVac, 30, 0.8, 0, 0);
           const P2 = U.player, c = U.circleAt(P2, U.tSim);
+          if (E !== void 0) P2.ctl.E = E;
           if (qVac !== null) U.act({ type: "nucleate", x: c.cx + c.r + 20, y: c.cy, vac: qVac });
           U.act({ type: "steer", dx: 0.6, dy: 0, rT: 30 });
           U.presim(secs);
           return P2;
         };
         const V = createUniverse(baseP, baseT()).VAC.filter((v) => v.eps < 1).sort((a, b) => a.eps - b.eps);
-        const lo = V[0].i, hi = V[V.length - 1].i;
+        const lo = V.find((v) => v.eps > 0).i, hi = V[V.length - 1].i;
         const eatBase = run(lo, null, 3).ctl.E, eat = run(lo, hi, 3).ctl.E, hurtBase = run(hi, null, 2).ctl.E, hurt = run(hi, lo, 2).ctl.E;
-        const end = run(hi, lo, 12), eaten = end.ctl.fate === "eaten";
+        const tough = run(hi, lo, 12), weak = run(hi, lo, 12, 0), held = !tough.ctl.fate, eaten = weak.ctl.fate === "eaten";
         return {
-          pass: eat > eatBase + 0.02 && hurt < hurtBase - 0.02 && eaten,
-          detail: `低能量玩家吞食高能量泡泡：能量 ${eat.toFixed(2)}（沒有泡泡時 ${eatBase.toFixed(2)}）；高能量玩家碰上低能量泡泡：${hurt.toFixed(2)}（沒有泡泡時 ${hurtBase.toFixed(2)}），持續靠近${eaten ? "最終被吞沒" : "沒有被吞沒"}`
+          pass: eat > eatBase + 0.02 && hurt < hurtBase - 0.02 && held && eaten,
+          detail: `低能量玩家吞食高能量泡泡：能量 ${eat.toFixed(2)}（沒有泡泡時 ${eatBase.toFixed(2)}）；高能量玩家碰上低能量泡泡：${hurt.toFixed(2)}（沒有泡泡時 ${hurtBase.toFixed(2)}）；持續靠近 12 秒：有能量時${held ? "頂住了" : "沒頂住"}（剩 ${tough.ctl.E.toFixed(2)}），能量為 0 時${eaten ? "被吞沒" : "沒有被吞沒"}`
         };
       } },
-      { name: "玩家宇宙：被吞食是連續的", desc: "玩家的泡壁比光速慢，較低真空的泡泡光錐很快就會整個包住玩家；玩家仍只能被疇壁逐步吃掉（每一步失去的地盤不超過 8%），不能瞬間消失", run() {
+      { name: "玩家宇宙：被吞食是連續的", desc: "玩家的泡壁比光速慢，較低真空的泡泡光錐很快就會整個包住玩家；沒有能量頂住時，玩家的泡壁（就是疇壁）被壓力逐步推回：始終保有自己的整個圓，半徑每一步的變化不超過光速（相對當地空間），不能瞬間消失，最終被吞沒", run() {
         const U = createUniverse({ ...baseP, seed: 5 }, { ...baseT(), gamma: 0 });
         U.presim(1);
         const V = U.VAC.filter((v) => v.eps < 1).sort((a, b) => a.eps - b.eps);
         spawnPlayer(U, V[V.length - 1].i, 40, 0.8);
         const P2 = U.player, c = U.circleAt(P2, U.tSim);
+        P2.ctl.E = 0;
         U.act({ type: "nucleate", x: c.cx + c.r + 15, y: c.cy, vac: V[0].i });
         const frac = () => {
           const t = U.tSim, c2 = U.circleAt(P2, t);
           let n = 0, k = 0;
           for (let i = -12; i <= 12; i++) for (let j = -12; j <= 12; j++) {
             const x = c2.cx + i * c2.r / 12, y = c2.cy + j * c2.r / 12;
-            if ((x - c2.cx) ** 2 + (y - c2.cy) ** 2 > c2.r * c2.r) continue;
+            if ((x - c2.cx) ** 2 + (y - c2.cy) ** 2 > c2.r * c2.r * 0.98) continue;
             k++;
             const o = U.ownerAt(x, y, t);
             if (o && o.b === P2) n++;
           }
-          return n / k;
+          return k ? n / k : 1;
         };
-        let prev = frac(), maxDrop = 0, contained = false;
+        const H = U.p.H, cl = U.p.H * U.p.RH;
+        let minFrac = 1, maxJump = 0, contained = false, shrank = false, prev = U.circleAt(P2, U.tSim).r;
         for (let i = 0; i < 30 * 10 && U.player; i++) {
           U.advance(STEP);
-          const f = frac();
-          maxDrop = Math.max(maxDrop, prev - f);
-          prev = f;
-          const q = U.hist.find((b) => b.act && !b.ctl), cq = q && U.circleAt(q, U.tSim), cp = U.circleAt(P2, U.tSim);
+          const cp = U.circleAt(P2, U.tSim);
+          if (cp.r > 2) minFrac = Math.min(minFrac, frac());
+          maxJump = Math.max(maxJump, Math.abs(cp.r - prev * Math.exp(H * STEP)) / (cl * STEP));
+          prev = cp.r;
+          if (cp.r < 20) shrank = true;
+          const q = U.hist.find((b) => b.act && !b.ctl), cq = q && U.circleAt(q, U.tSim);
           if (cq && Math.hypot(cq.cx - cp.cx, cq.cy - cp.cy) + cp.r <= cq.r) contained = true;
         }
-        return { pass: contained && maxDrop < 0.08 && P2.ctl.fate === "eaten", detail: `光錐${contained ? "已" : "未"}包住玩家；每步最多失去 ${(maxDrop * 100).toFixed(1)}% 的地盤；${P2.ctl.fate === "eaten" ? "最終被吞沒" : "沒有被吞沒"}` };
+        const eaten = P2.ctl.fate === "eaten";
+        return {
+          pass: contained && shrank && minFrac > 0.99 && maxJump < 1.05 && eaten,
+          detail: `光錐${contained ? "已" : "未"}包住玩家；被推回時保有自己圓內的 ${(minFrac * 100).toFixed(1)}% 以上；半徑每步變化最多 ${maxJump.toFixed(2)}·c·Δt；${eaten ? "最終被吞沒" : "沒有被吞沒"}`
+        };
       } },
       { name: "玩家宇宙：在同種真空的泡泡內", desc: "玩家走進自己用技能放下的同種真空泡泡：無縫融合、玩家保有自己的地盤，泡泡的其餘地盤要完整畫出（不能在玩家背後漏畫一片）", run() {
         const U = createUniverse(baseP, baseT());
@@ -2700,7 +2759,8 @@ details[open] summary::after{content:" －"}
           n++;
           if (o && o.b === P2) mine++;
         }
-        return { pass: inside && own > 500 && miss / own < 5e-3 && mine === n, detail: `玩家${inside ? "在" : "不在"}泡泡內；泡泡的地盤中漏畫 ${(miss / Math.max(1, own) * 100).toFixed(1)}%；玩家圓內 ${n} 點中屬於玩家 ${mine} 點` };
+        const R = pc && (pc.rules || []).find((R2) => R2.W === Q || R2.L === Q), seam = !!R && !!Territory.domainWall(R, cs);
+        return { pass: inside && own > 500 && miss / own < 5e-3 && mine === n && !seam, detail: `玩家${inside ? "在" : "不在"}泡泡內；泡泡的地盤中漏畫 ${(miss / Math.max(1, own) * 100).toFixed(1)}%；玩家圓內 ${n} 點中屬於玩家 ${mine} 點；${seam ? "兩者之間畫了疇壁" : "沒有疇壁"}` };
       } },
       { name: "玩家宇宙：可重現與不在內部成核", desc: "含玩家誕生、操控與技能的動作紀錄重播後完全相同（泡泡、能量、軌跡）；其他泡泡不會在玩家宇宙內誕生（即使它內部的穿隧率很高）", run() {
         const A = playerUniverse(4242, 30, { innerMul: 3 }), T = A.tSim;
@@ -2977,6 +3037,69 @@ details[open] summary::after{content:" －"}
           if (!(worst < 1e-6)) fails.push(`${tag}：保留範圍內的圓與不修剪的宇宙差 ${worst.toExponential(2)}`);
         }
         return { pass: !fails.length, detail: fails.length ? fails.join("；") : `兩種模型各修剪掉 ${(cuts / 2).toFixed(0)} 段、保留 ${(segs / 2).toFixed(0)} 段：欄位長度一致，保留範圍內的軌跡與不修剪時完全相同` };
+      } },
+      { name: "玩家宇宙：接觸處的疇壁與壓力", desc: "玩家的泡壁碰到較低的真空時就是疇壁，被壓力 v = 0.85c·|Δε|/(|Δε|+0.25) 推回（原本的模型與方案 B 各一次）：被整個包住、維持目標半徑 rT 時，穩定在 rT − v/k，頂住的花費符合 |Δε|·(v − h·r)·2πr ÷ η、加上讓出的膨脹 |Δε|·h·r·2πr（h 為當地的膨脹率）；沒有能量時被推離單側接觸的泡泡；放手之後只受壓力，縮成一點後消失", run() {
+        const fails = [];
+        const notes = [];
+        for (const extraP of [{}, { localH: true }]) {
+          const tag = extraP.localH ? "方案 B" : "原本的模型";
+          const mk = (E) => {
+            const U2 = createUniverse({ ...baseP, ...extraP }, { ...baseT(), gamma: 0 });
+            U2.presim(1);
+            const ds = U2.VAC.filter((v3) => v3.eps > 0 && v3.eps < 1 && v3.kind === "ds").sort((a, b) => a.eps - b.eps);
+            const pv2 = ds[ds.length - 1], xv2 = ds.find((v3) => v3.eps > 0.3 && v3.eps < pv2.eps - 0.2);
+            spawnPlayer(U2, pv2.i, 40, 1);
+            const P3 = U2.player;
+            if (E !== void 0) P3.ctl.E = E;
+            U2.act({ type: "steer", dx: 0, dy: 0, rT: 40 });
+            return { U: U2, P: P3, pv: pv2, xv: xv2 };
+          };
+          const { U, P: P2, pv, xv } = mk(), c0 = U.circleAt(P2, U.tSim);
+          const xa = U.act({ type: "nucleate", x: c0.cx + c0.r + 25, y: c0.cy, vac: xv.i, r: 8 });
+          U.advance(STEP);
+          const X = U.hist.find((b) => b.id === xa.result.id);
+          U.presim(8);
+          const pc = U.circleAt(P2, U.tSim), xc = U.circleAt(X, U.tSim), inside = Math.hypot(xc.cx - pc.cx, xc.cy - pc.cy) + pc.r < xc.r;
+          const D = pv.eps - xv.eps, cl = U.p.H * U.p.RH, v = 0.85 * D / (D + 0.25) * U.tune.wallK * cl, h2 = extraP.localH ? U.hIn(X) : U.p.H;
+          const rStar = 40 - v / PLAYER.k, E1 = P2.ctl.E;
+          U.presim(3);
+          const r = U.circleAt(P2, U.tSim).r;
+          const A = TAU * r / (U.p.RH * U.p.RH), theory = D * A * ((v - h2 * r) / P2.ctl.eta + h2 * r) * 3, loss = E1 - P2.ctl.E;
+          if (!inside) fails.push(`${tag}：X 沒有包住玩家`);
+          if (Math.abs(r - rStar) > 0.03 * rStar) fails.push(`${tag}：穩定半徑 ${r.toFixed(1)}（理論 ${rStar.toFixed(1)}）`);
+          if (Math.abs(loss - theory) > 0.06 * theory) fails.push(`${tag}：3 秒花費 ${loss.toFixed(3)}（理論 ${theory.toFixed(3)}）`);
+          notes.push(`${tag}：半徑 ${r.toFixed(1)}（理論 ${rStar.toFixed(1)}），花費 ${loss.toFixed(3)}（理論 ${theory.toFixed(3)}）`);
+          {
+            const T = mk(), cT = T.U.circleAt(T.P, T.U.tSim), av = T.U.VAC.find((v3) => v3.eps < 0);
+            T.U.act({ type: "nucleate", x: cT.cx + cT.r + 25, y: cT.cy, vac: av.i, r: 8 });
+            T.U.advance(STEP);
+            let k = 0;
+            while (T.U.player && k++ < 30 * 20) T.U.advance(STEP);
+            if (T.P.ctl.fate !== "trapped") fails.push(`${tag}：沒有因為困住而放手（${T.P.ctl.fate || "仍在控制中"}）`);
+            else {
+              let steps = 0, shrink = true, gone = false;
+              for (let i = 0; i < 30 * 6 && !gone; i++) {
+                const ra = T.U.circleAt(T.P, T.U.tSim).r;
+                T.U.advance(STEP);
+                if (T.P.texit <= T.U.tSim) gone = true;
+                else {
+                  steps++;
+                  if (T.U.circleAt(T.P, T.U.tSim).r > ra + 1e-9) shrink = false;
+                }
+              }
+              if (!shrink || !gone || steps < 10) fails.push(`${tag}：放手後${shrink ? "" : "沒有一直縮小、"}${gone ? `${steps} 步後消失` : "沒有消失"}`);
+              else notes.push(`${tag}：放手後縮小 ${steps} 步消失`);
+            }
+          }
+          const base = mk(0), side = mk(0), cs = side.U.circleAt(side.P, side.U.tSim);
+          side.U.act({ type: "nucleate", x: cs.cx + cs.r + 25, y: cs.cy, vac: side.xv.i, r: 8 });
+          base.U.presim(2.2);
+          side.U.presim(2.2);
+          const dx = side.U.circleAt(side.P, side.U.tSim).cx - base.U.circleAt(base.P, base.U.tSim).cx;
+          if (!(dx < -3)) fails.push(`${tag}：沒有被推開（位移 ${dx.toFixed(1)}）`);
+          notes.push(`${tag}：沒有能量時被推開 ${(-dx).toFixed(1)} 像素`);
+        }
+        return { pass: !fails.length, detail: fails.length ? fails.join("；") : notes.join("；") };
       } }
     ];
   };
@@ -3185,46 +3308,6 @@ details[open] summary::after{content:" －"}
         const h2 = U.hIn(Q), r = U.circleAt(P2, U.tSim).r, theory = 2 * Math.PI * h2 * (hi.eps - lo.eps) * (r / U.p.RH) ** 2 * 6, loss = E0 - P2.ctl.E;
         const fv = 2 * Math.PI * U.p.H * (1 - lo.eps) * (r / U.p.RH) ** 2 * 6;
         return { pass: inPocket && Math.abs(loss - theory) < 0.08 * theory + 5e-3, detail: `玩家${inPocket ? "在" : "不在"}口袋內；6 秒維持費 ${loss.toFixed(3)}（理論 ${theory.toFixed(3)}，在假真空中會是 ${fv.toFixed(3)}）` };
-      } },
-      { name: "方案 B：口袋內的推進前緣", desc: "玩家在 Λ > 0 的口袋宇宙內被較低真空的子泡泡 X 吞食：吞食的推進前緣與 X 的圓同心、在同一個空間（口袋內部）流動，每一步 ρ + v/h 都以 e^{h·Δt} 增長（h 是口袋的膨脹率 H·√ε，而不是外面假真空的 H），且永遠不超出 X 的光錐（曾誤用 H，前緣比光錐跑得還快）", run() {
-        const U = createUniverse(baseP, { ...baseT(), gamma: 0 });
-        U.presim(1);
-        const ds = U.VAC.filter((v3) => v3.eps > 0 && v3.eps < 1 && v3.kind === "ds").sort((a, b) => a.eps - b.eps);
-        const pv = ds[0], qv = ds[1], xv = U.VAC.find((v3) => v3.eps < 0);
-        spawnPlayer(U, pv.i, 30, 1);
-        const P2 = U.player;
-        let c = U.circleAt(P2, U.tSim);
-        const qa = U.act({ type: "nucleate", x: c.cx + 45, y: c.cy, vac: qv.i });
-        U.advance(STEP);
-        U.act({ type: "steer", dx: 1, dy: 0, rT: 30 });
-        U.presim(3);
-        U.act({ type: "steer", dx: 0, dy: 0, rT: 30 });
-        U.presim(2);
-        const Q = U.hist.find((b) => b.id === qa.result.id), inPocket = P2.ctl.reg[P2.ctl.reg.length - 1] === Q;
-        c = U.circleAt(P2, U.tSim);
-        const xa = U.act({ type: "nucleate", x: c.cx + c.r + 25, y: c.cy, vac: xv.i, r: 6 });
-        U.advance(STEP);
-        const X = xa.result.ok ? U.hist.find((b) => b.id === xa.result.id) : null;
-        if (!X || X.parent !== Q || !inPocket) return { pass: false, detail: `情境沒有成立（玩家${inPocket ? "在" : "不在"}口袋內，X ${X ? X.parent === Q ? "在口袋內" : "不在口袋內" : "沒有誕生"}）` };
-        const h2 = U.hIn(Q), D = pv.eps - xv.eps, v = 0.85 * D / (Math.abs(D) + 0.25) * U.tune.wallK * U.p.H * U.p.RH;
-        let n = 0, worst = 0, outside = 0, prev = null;
-        for (let i = 0; i < 6 * 30 && U.player; i++) {
-          U.advance(STEP);
-          const t = U.tSim, arr = P2.ctl.contacts.get(X.id);
-          if (!arr || arr[arr.length - 1][1] !== Infinity || t - arr[arr.length - 1][0] < STEP * 1.5) {
-            prev = null;
-            continue;
-          }
-          const rho = U.ringR(X, P2, t);
-          if (rho > U.circleAt(X, t).r * (1 + 1e-9)) outside++;
-          if (prev) {
-            const want = (prev.rho + v / h2) * Math.exp(h2 * (t - prev.t)) - v / h2;
-            worst = Math.max(worst, Math.abs(rho - want) / want);
-            n++;
-          }
-          prev = { t, rho };
-        }
-        return { pass: n >= 20 && worst < 1e-6 && !outside, detail: `${n} 步（口袋的 h = ${(h2 / U.p.H).toFixed(3)}·H）：前緣與 e^{h·Δt} 增長的最大相對誤差 ${worst.toExponential(1)}；超出 X 光錐 ${outside} 次` };
       } }
     ];
   };
@@ -5164,6 +5247,60 @@ details[open] summary::after{content:" －"}
         bad += m.bad;
       }
       return { pass: n > 300 && !bad, detail: `${scene}；${n} 個點中 ${bad} 個畫面與歸屬不一致` };
+    }) },
+    { name: "玩家接觸處的疇壁", desc: "玩家碰到較低真空的泡泡 X 時，接觸處就是玩家自己的泡壁（被壓力推動）：畫面上要畫出這道疇壁，而且它必須落在玩家的圓上、X 的圓內（部分接觸時是一段弧，被包住時是整圈）；玩家附近每一點最後畫到的宇宙等於 ownerAt", run: () => inScene(() => {
+      const T = testUniverse({ seed: 4242 });
+      T.presim(1);
+      const ds = T.VAC.filter((v) => v.eps > 0 && v.eps < 1 && v.kind === "ds").sort((a, b) => a.eps - b.eps);
+      let act = null;
+      for (let k = 0; k < 400 && !(act && act.result.ok); k++) {
+        const a = k * 2.399, rr = 20 + k * 6, x = Math.cos(a) * rr, y = Math.sin(a) * rr;
+        if (T.ownerAt(x, y, T.tSim)) continue;
+        act = T.act({ type: "spawn", x, y, vac: ds[ds.length - 1].i, r: 40 });
+        T.advance(1 / 30);
+      }
+      const Pl = T.player;
+      if (!Pl) throw new Error("玩家誕生失敗");
+      T.act({ type: "steer", dx: 0, dy: 0, rT: 40 });
+      const c0 = T.circleAt(Pl, T.tSim);
+      T.act({ type: "nucleate", x: c0.cx + c0.r + 25, y: c0.cy, vac: ds[2].i, r: 8 });
+      T.advance(1 / 30);
+      const X = T.hist.find((b) => b.act && !b.ctl && b.vac === ds[2].i);
+      show(T);
+      const out = [];
+      let n = 0, bad = 0, fails = [];
+      for (const [secs, full] of [[1.4, false], [4.6, true]]) {
+        T.presim(secs);
+        S.tView = T.tSim;
+        const c = T.circleAt(Pl, S.tView);
+        S.Z = defaultZoom() * (full ? 1 : 1.5);
+        P.x = c.cx;
+        P.y = c.cy;
+        render(S.tView);
+        const vP = S.vis.find((v) => v.b === Pl), vX = S.vis.find((v) => v.b === X);
+        const R = walls.find((R2) => R2.ring && (R2.W === vP && R2.L === vX || R2.W === vX && R2.L === vP));
+        const pl = R && wallPolylines(R);
+        if (!vP || !vX || !pl) {
+          fails.push(`${full ? "被包住" : "部分接觸"}時沒有畫出疇壁`);
+          continue;
+        }
+        let len = 0, off = 0, outX = 0, pts2 = 0;
+        for (const a of pl) for (let k = 0; k < a.length; k += 2) {
+          pts2++;
+          off = Math.max(off, Math.abs(Math.hypot(a[k] - vP.cx, a[k + 1] - vP.cy) - vP.r));
+          if (Math.hypot(a[k] - vX.cx, a[k + 1] - vX.cy) > vX.r + 1) outX++;
+          if (k) len += Math.hypot(a[k] - a[k - 2], a[k + 1] - a[k - 1]);
+        }
+        const frac = len / (2 * Math.PI * vP.r);
+        if (off > 1 || outX) fails.push(`${full ? "被包住" : "部分接觸"}時疇壁偏離玩家的圓 ${off.toFixed(2)} 像素、${outX} 點在 X 外`);
+        if (full ? frac < 0.97 : !(frac > 0.05 && frac < 0.7)) fails.push(`${full ? "被包住" : "部分接觸"}時疇壁長度是玩家圓周的 ${(frac * 100).toFixed(0)}%`);
+        out.push(`${full ? "被包住" : "部分接觸"}：疇壁長度為圓周的 ${(frac * 100).toFixed(0)}%、偏離 ${off.toFixed(2)} 像素`);
+        const m = compareAround(T, Pl, [0.4, 0.8, 1.2, 1.6, 2.5]);
+        n += m.n;
+        bad += m.bad;
+      }
+      if (bad > n * 0.01) fails.push(`${n} 個點中 ${bad} 個畫面與歸屬不一致`);
+      return { pass: !fails.length && n > 150, detail: fails.length ? fails.join("；") : `${out.join("；")}；${n} 個點中 ${bad} 個畫面與歸屬不一致` };
     }) },
     { name: "再循環區域的繪製", desc: "玩家在 Λ > 0 的口袋宇宙中以自己為中心再循環（區域與玩家同心）：繪製不得出錯（同心的兩圓沒有交點，之前相撞閃光讀到不存在的交點而中斷繪製），玩家附近每一點最後畫到的宇宙等於 ownerAt", run: () => inScene(() => {
       let n = 0, bad = 0;

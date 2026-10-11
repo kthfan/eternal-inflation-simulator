@@ -61,44 +61,54 @@ export default h => {
       const ok = sv.exh > 0 && sv.minGap >= .1 && !sv.badFree && !sv.badLost && !rx.exh && rx.minE < 0 && !rx.badLost;
       return { pass: ok, detail: `生存：力竭 ${(sv.exh*STEP).toFixed(1)} 秒、狀態切換 ${sv.flips} 次（最短間隔 ${sv.minGap.toFixed(2)} 秒）、力竭時仍受控制 ${sv.badFree} 步、失控時仍受控制 ${sv.badLost} 步；輕鬆：力竭 ${rx.exh} 步、最低能量 ${rx.minE.toFixed(2)}` };
     }},
-    { name: '玩家宇宙：吞食與被奪走', desc: '在玩家旁邊放一個泡泡：真空能比玩家高的被吞食，玩家得到能量；比玩家低的會逐步奪走玩家的地盤與能量（與沒有放泡泡時比較），持續靠近終將被吞沒', run(){
-      const run = (pVac, qVac, secs) => {
+    { name: '玩家宇宙：吞食與被奪走', desc: '在玩家旁邊放一個泡泡：真空能比玩家高的被吞食，玩家得到能量；比玩家低的以壓力把玩家的泡壁推回，玩家頂住要花能量（與沒有放泡泡時比較）。有能量時持續靠近也能頂住；能量 ≤ 0 時頂不住，終將被吞沒', run(){
+      const run = (pVac, qVac, secs, E) => {
         const U = createUniverse({ ...baseP, seed: 5 }, { ...baseT(), gamma: 0 });
         U.presim(1); spawnPlayer(U, pVac, 30, .8, 0, 0);
         const P = U.player, c = U.circleAt(P, U.tSim);
+        if(E !== undefined) P.ctl.E = E;
         if(qVac !== null) U.act({ type: 'nucleate', x: c.cx + c.r + 20, y: c.cy, vac: qVac });
         U.act({ type: 'steer', dx: .6, dy: 0, rT: 30 });
         U.presim(secs);
         return P;
       };
       const V = createUniverse(baseP, baseT()).VAC.filter(v => v.eps < 1).sort((a, b) => a.eps - b.eps);
-      const lo = V[0].i, hi = V[V.length - 1].i;
+      const lo = V.find(v => v.eps > 0).i, hi = V[V.length - 1].i;   // Λ > 0：不會因為「困住」而結束（D13）
       const eatBase = run(lo, null, 3).ctl.E, eat = run(lo, hi, 3).ctl.E, hurtBase = run(hi, null, 2).ctl.E, hurt = run(hi, lo, 2).ctl.E;
-      const end = run(hi, lo, 12), eaten = end.ctl.fate === 'eaten';
-      return { pass: eat > eatBase + .02 && hurt < hurtBase - .02 && eaten,
-        detail: `低能量玩家吞食高能量泡泡：能量 ${eat.toFixed(2)}（沒有泡泡時 ${eatBase.toFixed(2)}）；高能量玩家碰上低能量泡泡：${hurt.toFixed(2)}（沒有泡泡時 ${hurtBase.toFixed(2)}），持續靠近${eaten ? '最終被吞沒' : '沒有被吞沒'}` };
+      const tough = run(hi, lo, 12), weak = run(hi, lo, 12, 0), held = !tough.ctl.fate, eaten = weak.ctl.fate === 'eaten';
+      return { pass: eat > eatBase + .02 && hurt < hurtBase - .02 && held && eaten,
+        detail: `低能量玩家吞食高能量泡泡：能量 ${eat.toFixed(2)}（沒有泡泡時 ${eatBase.toFixed(2)}）；高能量玩家碰上低能量泡泡：${hurt.toFixed(2)}（沒有泡泡時 ${hurtBase.toFixed(2)}）；`+
+          `持續靠近 12 秒：有能量時${held ? '頂住了' : '沒頂住'}（剩 ${tough.ctl.E.toFixed(2)}），能量為 0 時${eaten ? '被吞沒' : '沒有被吞沒'}` };
     }},
-    { name: '玩家宇宙：被吞食是連續的', desc: '玩家的泡壁比光速慢，較低真空的泡泡光錐很快就會整個包住玩家；玩家仍只能被疇壁逐步吃掉（每一步失去的地盤不超過 8%），不能瞬間消失', run(){
+    { name: '玩家宇宙：被吞食是連續的', desc: '玩家的泡壁比光速慢，較低真空的泡泡光錐很快就會整個包住玩家；沒有能量頂住時，玩家的泡壁（就是疇壁）被壓力逐步推回：始終保有自己的整個圓，半徑每一步的變化不超過光速（相對當地空間），不能瞬間消失，最終被吞沒', run(){
       const U = createUniverse({ ...baseP, seed: 5 }, { ...baseT(), gamma: 0 }); U.presim(1);
       const V = U.VAC.filter(v => v.eps < 1).sort((a, b) => a.eps - b.eps);
       spawnPlayer(U, V[V.length - 1].i, 40, .8);
       const P = U.player, c = U.circleAt(P, U.tSim);
+      P.ctl.E = 0;                                    // 沒有能量：頂不住
       U.act({ type: 'nucleate', x: c.cx + c.r + 15, y: c.cy, vac: V[0].i });
       const frac = () => {
         const t = U.tSim, c = U.circleAt(P, t); let n = 0, k = 0;
         for(let i=-12;i<=12;i++) for(let j=-12;j<=12;j++){
-          const x = c.cx + i*c.r/12, y = c.cy + j*c.r/12; if((x - c.cx)**2 + (y - c.cy)**2 > c.r*c.r) continue;
+          const x = c.cx + i*c.r/12, y = c.cy + j*c.r/12; if((x - c.cx)**2 + (y - c.cy)**2 > c.r*c.r*.98) continue;
           k++; const o = U.ownerAt(x, y, t); if(o && o.b === P) n++;
         }
-        return n/k;
+        return k ? n/k : 1;
       };
-      let prev = frac(), maxDrop = 0, contained = false;
+      const H = U.p.H, cl = U.p.H*U.p.RH;
+      let minFrac = 1, maxJump = 0, contained = false, shrank = false, prev = U.circleAt(P, U.tSim).r;
       for(let i=0;i<30*10 && U.player;i++){
-        U.advance(STEP); const f = frac(); maxDrop = Math.max(maxDrop, prev - f); prev = f;
-        const q = U.hist.find(b => b.act && !b.ctl), cq = q && U.circleAt(q, U.tSim), cp = U.circleAt(P, U.tSim);
+        U.advance(STEP);
+        const cp = U.circleAt(P, U.tSim);
+        if(cp.r > 2) minFrac = Math.min(minFrac, frac());
+        maxJump = Math.max(maxJump, Math.abs(cp.r - prev*Math.exp(H*STEP))/(cl*STEP)); prev = cp.r;
+        if(cp.r < 20) shrank = true;
+        const q = U.hist.find(b => b.act && !b.ctl), cq = q && U.circleAt(q, U.tSim);
         if(cq && Math.hypot(cq.cx - cp.cx, cq.cy - cp.cy) + cp.r <= cq.r) contained = true;
       }
-      return { pass: contained && maxDrop < .08 && P.ctl.fate === 'eaten', detail: `光錐${contained ? '已' : '未'}包住玩家；每步最多失去 ${(maxDrop*100).toFixed(1)}% 的地盤；${P.ctl.fate === 'eaten' ? '最終被吞沒' : '沒有被吞沒'}` };
+      const eaten = P.ctl.fate === 'eaten';
+      return { pass: contained && shrank && minFrac > .99 && maxJump < 1.05 && eaten,
+        detail: `光錐${contained ? '已' : '未'}包住玩家；被推回時保有自己圓內的 ${(minFrac*100).toFixed(1)}% 以上；半徑每步變化最多 ${maxJump.toFixed(2)}·c·Δt；${eaten ? '最終被吞沒' : '沒有被吞沒'}` };
     }},
     { name: '玩家宇宙：在同種真空的泡泡內', desc: '玩家走進自己用技能放下的同種真空泡泡：無縫融合、玩家保有自己的地盤，泡泡的其餘地盤要完整畫出（不能在玩家背後漏畫一片）', run(){
       const U = createUniverse(baseP, baseT()); U.presim(20);
@@ -115,7 +125,9 @@ export default h => {
         if(rr > Territory.cellRay(Q, Math.cos(th), Math.sin(th), Q.r) + .5) miss++;     // 屬於泡泡卻不在畫出的多邊形內
       }
       for(let i=0;i<500;i++){ const th = r()*TAU, rr = pc.r*.95*Math.sqrt(r()), o = U.ownerAt(pc.cx + Math.cos(th)*rr, pc.cy + Math.sin(th)*rr, t); n++; if(o && o.b === P) mine++; }
-      return { pass: inside && own > 500 && miss/own < .005 && mine === n, detail: `玩家${inside ? '在' : '不在'}泡泡內；泡泡的地盤中漏畫 ${(miss/Math.max(1, own)*100).toFixed(1)}%；玩家圓內 ${n} 點中屬於玩家 ${mine} 點` };
+      // 無縫融合：玩家與泡泡之間不畫疇壁（接觸處的疇壁只在不同真空之間）
+      const R = pc && (pc.rules || []).find(R => R.W === Q || R.L === Q), seam = !!R && !!Territory.domainWall(R, cs);
+      return { pass: inside && own > 500 && miss/own < .005 && mine === n && !seam, detail: `玩家${inside ? '在' : '不在'}泡泡內；泡泡的地盤中漏畫 ${(miss/Math.max(1, own)*100).toFixed(1)}%；玩家圓內 ${n} 點中屬於玩家 ${mine} 點；${seam ? '兩者之間畫了疇壁' : '沒有疇壁'}` };
     }},
     { name: '玩家宇宙：可重現與不在內部成核', desc: '含玩家誕生、操控與技能的動作紀錄重播後完全相同（泡泡、能量、軌跡）；其他泡泡不會在玩家宇宙內誕生（即使它內部的穿隧率很高）', run(){
       const A = playerUniverse(4242, 30, { innerMul: 3 }), T = A.tSim;
@@ -334,6 +346,59 @@ export default h => {
         if(!(worst < 1e-6)) fails.push(`${tag}：保留範圍內的圓與不修剪的宇宙差 ${worst.toExponential(2)}`);
       }
       return { pass: !fails.length, detail: fails.length ? fails.join('；') : `兩種模型各修剪掉 ${(cuts/2).toFixed(0)} 段、保留 ${(segs/2).toFixed(0)} 段：欄位長度一致，保留範圍內的軌跡與不修剪時完全相同` };
+    }},
+    { name: '玩家宇宙：接觸處的疇壁與壓力', desc: '玩家的泡壁碰到較低的真空時就是疇壁，被壓力 v = 0.85c·|Δε|/(|Δε|+0.25) 推回（原本的模型與方案 B 各一次）：'+
+      '被整個包住、維持目標半徑 rT 時，穩定在 rT − v/k，頂住的花費符合 |Δε|·(v − h·r)·2πr ÷ η、加上讓出的膨脹 |Δε|·h·r·2πr（h 為當地的膨脹率）；'+
+      '沒有能量時被推離單側接觸的泡泡；放手之後只受壓力，縮成一點後消失', run(){
+      const fails = []; const notes = [];
+      for(const extraP of [{}, { localH: true }]){
+        const tag = extraP.localH ? '方案 B' : '原本的模型';
+        const mk = E => {
+          const U = createUniverse({ ...baseP, ...extraP }, { ...baseT(), gamma: 0 }); U.presim(1);
+          const ds = U.VAC.filter(v => v.eps > 0 && v.eps < 1 && v.kind === 'ds').sort((a, b) => a.eps - b.eps);
+          const pv = ds[ds.length - 1], xv = ds.find(v => v.eps > .3 && v.eps < pv.eps - .2);
+          spawnPlayer(U, pv.i, 40, 1); const P = U.player; if(E !== undefined) P.ctl.E = E;
+          U.act({ type: 'steer', dx: 0, dy: 0, rT: 40 });
+          return { U, P, pv, xv };
+        };
+        // 1. 被整個包住時的穩定半徑與花費
+        const { U, P, pv, xv } = mk(), c0 = U.circleAt(P, U.tSim);
+        const xa = U.act({ type: 'nucleate', x: c0.cx + c0.r + 25, y: c0.cy, vac: xv.i, r: 8 }); U.advance(STEP);
+        const X = U.hist.find(b => b.id === xa.result.id);
+        U.presim(8);
+        const pc = U.circleAt(P, U.tSim), xc = U.circleAt(X, U.tSim), inside = Math.hypot(xc.cx - pc.cx, xc.cy - pc.cy) + pc.r < xc.r;
+        const D = pv.eps - xv.eps, cl = U.p.H*U.p.RH, v = .85*D/(D + .25)*U.tune.wallK*cl, h = extraP.localH ? U.hIn(X) : U.p.H;
+        const rStar = 40 - v/PLAYER.k, E1 = P.ctl.E; U.presim(3); const r = U.circleAt(P, U.tSim).r;
+        const A = TAU*r/(U.p.RH*U.p.RH), theory = D*A*((v - h*r)/P.ctl.eta + h*r)*3, loss = E1 - P.ctl.E;
+        if(!inside) fails.push(`${tag}：X 沒有包住玩家`);
+        if(Math.abs(r - rStar) > .03*rStar) fails.push(`${tag}：穩定半徑 ${r.toFixed(1)}（理論 ${rStar.toFixed(1)}）`);
+        if(Math.abs(loss - theory) > .06*theory) fails.push(`${tag}：3 秒花費 ${loss.toFixed(3)}（理論 ${theory.toFixed(3)}）`);
+        notes.push(`${tag}：半徑 ${r.toFixed(1)}（理論 ${rStar.toFixed(1)}），花費 ${loss.toFixed(3)}（理論 ${theory.toFixed(3)}）`);
+        // 2. 放手之後只受壓力：被 Λ < 0 的泡泡包住、困住 trapT 秒後放手（D13），之後縮成一點消失
+        {
+          const T = mk(), cT = T.U.circleAt(T.P, T.U.tSim), av = T.U.VAC.find(v => v.eps < 0);
+          T.U.act({ type: 'nucleate', x: cT.cx + cT.r + 25, y: cT.cy, vac: av.i, r: 8 }); T.U.advance(STEP);
+          let k = 0; while(T.U.player && k++ < 30*20) T.U.advance(STEP);
+          if(T.P.ctl.fate !== 'trapped') fails.push(`${tag}：沒有因為困住而放手（${T.P.ctl.fate || '仍在控制中'}）`);
+          else {
+            let steps = 0, shrink = true, gone = false;
+            for(let i=0;i<30*6 && !gone;i++){
+              const ra = T.U.circleAt(T.P, T.U.tSim).r; T.U.advance(STEP);
+              if(T.P.texit <= T.U.tSim) gone = true; else { steps++; if(T.U.circleAt(T.P, T.U.tSim).r > ra + 1e-9) shrink = false; }
+            }
+            if(!shrink || !gone || steps < 10) fails.push(`${tag}：放手後${shrink ? '' : '沒有一直縮小、'}${gone ? `${steps} 步後消失` : '沒有消失'}`);
+            else notes.push(`${tag}：放手後縮小 ${steps} 步消失`);
+          }
+        }
+        // 3. 沒有能量時被推離單側接觸的泡泡（與沒有泡泡時比較）
+        const base = mk(0), side = mk(0), cs = side.U.circleAt(side.P, side.U.tSim);
+        side.U.act({ type: 'nucleate', x: cs.cx + cs.r + 25, y: cs.cy, vac: side.xv.i, r: 8 });
+        base.U.presim(2.2); side.U.presim(2.2);
+        const dx = side.U.circleAt(side.P, side.U.tSim).cx - base.U.circleAt(base.P, base.U.tSim).cx;
+        if(!(dx < -3)) fails.push(`${tag}：沒有被推開（位移 ${dx.toFixed(1)}）`);
+        notes.push(`${tag}：沒有能量時被推開 ${(-dx).toFixed(1)} 像素`);
+      }
+      return { pass: !fails.length, detail: fails.length ? fails.join('；') : notes.join('；') };
     }},
   ];
 };

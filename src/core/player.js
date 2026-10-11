@@ -1,6 +1,6 @@
 /* 核心｜玩家宇宙（可控制的泡泡，docs/ROADMAP.md D 節）：誕生、操控、軌跡段、能量帳、接觸、曲速（D12）、再循環與遊戲結束（D13）。
    軌跡以「每步一段」的解析式保存（ctl 上的 SEG 欄位，每個欄位一個陣列），幾何由所在空間計算（space.js 的 seg）；
-   每一步（playerStep）：更新接觸區間、累計曲速借貸、困住的倒數、結算能量帳、償還量子利息、由控制器決定下一段。 */
+   每一步（playerStep）：更新接觸區間、放手的泡泡隨壓力移動、累計曲速借貸、困住的倒數、結算能量帳、償還量子利息、由控制器決定下一段。 */
 import { TAU, hash } from './math.js';
 import { Territory } from './territory.js';
 import { STEP, LONG, FALSE_EPS } from './constants.js';
@@ -22,7 +22,7 @@ export const PLAYER = { E0: 5, eta: .8, k: 1.5, minE: .5, cell: 3.5, latticeMax:
 export const SEG = ['t', 'x', 'y', 'r', 'ux', 'uy', 'vx', 'vy', 'w', 'reg', 'h'];
 
 export function installPlayer(W){
-  const { U, p, VAC } = W, LH = W.LH, cLight = W.cLight;
+  const { U, p, VAC, tune } = W, LH = W.LH, cLight = W.cLight;
   U.player = null;
 
   /* ---------- 軌跡段 ---------- */
@@ -160,19 +160,73 @@ export function installPlayer(W){
   }, true);
   U.recycleCheck = () => U.player ? recycleAt(U.player, U.tSim) : null;     // 介面用：此刻能否再循環（不改變狀態）
 
-  /* 放手：玩家宇宙變回一般的泡泡（泡壁以光速擴張、不再移動），之後依一般規則流出模擬範圍 */
+  /* 放手：玩家宇宙不再受控制，泡壁回到自然狀態（以光速吞入假真空、接觸處隨壓力移動，見 drift），之後依一般規則流出模擬範圍 */
   function release(b, t){
     b.player = false; if(U.player === b) U.player = null;
     const c = U.circleAt(b, t), C = b.ctl;
     C.warp = null; C.repay = null;
     pushSeg(b, t, c.cx, c.cy, c.r, 0, 0, cLight, C.reg[W.segIndex(C, t)]);
     C.free = true; C.releasedAt = t;
+    drift(b, t);                                      // 接觸處從這一步起就只受壓力
     if(W.regionSpace(C.reg[C.reg.length - 1]).region){ b.texit = Infinity; b.dyn = true; }   // 在區域空間內：由掃描判斷流出
     else b.texit = W.exitTime(1, Math.hypot(c.cx, c.cy), c.r, t);
   }
 
-  /* 決定下一步 [t, t+STEP] 的控制：以 w 把半徑拉向目標（維持大小需 w = −h·r，h 為所在空間的膨脹率），剩下的光速額度給前進：|u| ≤ c − |w|。
-     力竭時泡壁回到自然狀態：以光速擴張（w = c、u = 0），吞入假真空會補回能量。半徑 ≥ 當地的哈伯半徑時連維持大小都做不到（D4） */
+  /* ---------- 接觸處的疇壁與壓力 ----------
+     玩家的泡壁碰到其他宇宙時，接觸的那一段就是兩者之間的疇壁（玩家保有自己圓內的地盤，見 territory.js 的 contactGeom）。
+     疇壁被兩側的真空能差 Δε = ε_鄰居 − ε_玩家 推動，速度與一般泡泡之間的疇壁相同：v = 0.85c·Δε/(|Δε|+0.25)（見 U.shift）。
+     · 鄰居較高（Δε > 0）：與假真空相同（假真空就是最高的鄰居）—— 受控制時由玩家決定（不吞食的代價就是能量帳裡讓出的地盤），
+       自然狀態（力竭、失控、放手）時泡壁被推向鄰居（自動吞食，得到潛熱）
+     · 鄰居較低（Δε < 0）：泡壁被推回。能量為正、未力竭時可以頂住：頂住的部分要付 |Δε| × 面積 ÷ η
+       （等於把被推進來的部分向上穿隧回來，與技能 2 同價）；能量 ≤ 0、力竭、失控或放手之後就頂不住
+     · 假真空、同種真空、自己的子孫：沒有疇壁（自然狀態以光速擴張）
+     沿圓周取樣各方向的鄰居（歸屬一律由 Territory 判斷），把各方向的泡壁速度擬合回圓的平移 u 與半徑變化 w（圓周上的前兩個傅立葉分量）；
+     沒有接觸時完全不經過這裡，與原本相同。 */
+  const NS = 36;
+  /* 圓周上 NS 個方向的鄰居真空能差（null：沒有疇壁）；完全沒有接觸時回傳 null */
+  function neighbors(b, t, c){
+    const R = c.r, dl = Math.max(.5, R*.01), cs = [];
+    for(const o of U.live){
+      if(o === b || o.tn > t || o.texit <= t) continue;
+      const oc = U.circleAt(o, t); if(Math.hypot(oc.cx - c.cx, oc.cy - c.cy) < oc.r + R + dl + 1) cs.push(oc);
+    }
+    if(!cs.length) return null;
+    const own = Territory.locator(U.frame(t), cs), eP = VAC[b.vac].eps, out = [];
+    let any = false;
+    for(let j=0;j<NS;j++){
+      const th = TAU*j/NS, o = own(c.cx + Math.cos(th)*(R + dl), c.cy + Math.sin(th)*(R + dl));
+      const d = o && o.b.vac !== b.vac && !Territory.isAncestor(b, o.b) ? VAC[o.b.vac].eps - eP : null;
+      if(d !== null) any = true;
+      out.push(d);
+    }
+    return any ? out : null;
+  }
+  /* 指令 (ux, uy, w) 加上壓力，擬合回圓。natural：自然狀態（沒有指令：假真空處以光速擴張、接觸處只受壓力）。
+     回傳新的 (ux, uy, w) 與頂住的量 resist = Σ |Δε|·頂住的速度（乘上每個取樣的弧長就是每秒的面積 × 真空能差） */
+  function pressure(nb, ux, uy, w, natural, canResist){
+    const c = cLight, K = .85*tune.wallK*c;
+    let sw = 0, sx = 0, sy = 0, resist = 0;
+    for(let j=0;j<NS;j++){
+      const th = TAU*j/NS, ex = Math.cos(th), ey = Math.sin(th), d = nb[j];
+      const sc = natural ? c : ux*ex + uy*ey + w;
+      let s = sc;
+      if(d !== null){
+        const v = K*d/(Math.abs(d) + .25);
+        if(natural) s = v;
+        else if(v >= 0) s = sc;
+        else if(canResist){ s = sc + v; resist -= d*Math.max(0, Math.min(sc, -v)); }
+        else s = Math.min(sc, 0) + v;
+      }
+      sw += s; sx += s*ex; sy += s*ey;
+    }
+    let W = sw/NS, Ux = 2*sx/NS, Uy = 2*sy/NS;
+    const m = Math.hypot(Ux, Uy) + Math.abs(W); if(m > c){ const f = c/m; W *= f; Ux *= f; Uy *= f; }   // 泡壁各點相對當地空間不超光速
+    return { ux: Ux, uy: Uy, w: W, resist };
+  }
+
+  /* 決定下一步 [t, t+STEP] 的控制：以 w 把半徑拉向目標（維持大小需 w = −h·r，h 為所在空間的膨脹率），剩下的光速額度給前進：|u| ≤ c − |w|；
+     再加上接觸處的壓力（見上）。力竭時泡壁回到自然狀態：以光速擴張（w = c、u = 0），吞入假真空會補回能量；接觸處只受壓力。
+     半徑 ≥ 當地的哈伯半徑時連維持大小都做不到（D4） */
   function decide(b, t){
     const C = b.ctl, c = cLight, cur = U.circleAt(b, t);
     const reg = LH ? regionOf(b, t, cur) : null, h = W.regionSpace(reg).h;
@@ -181,7 +235,8 @@ export function installPlayer(W){
     // 大於（當地的）哈伯半徑時連大小都維持不住（需要 w < −c）：失控，泡壁回到自然狀態
     if(C.warp && (C.exhausted || h*cur.r >= c)) endWarp(b, t, C.exhausted ? '力竭' : '失控');
     let vx = 0, vy = 0;
-    if(C.exhausted || h*cur.r >= c){ w = c; C.in.rT = Math.max(2*p.R0, Math.min(.95*p.RH, cur.r)); }
+    const natural = C.exhausted || h*cur.r >= c;
+    if(natural){ w = c; C.in.rT = Math.max(2*p.R0, Math.min(.95*p.RH, cur.r)); }
     else {
       w = Math.max(-c, Math.min(c, -h*cur.r + PLAYER.k*(C.in.rT - cur.r)));
       if(C.warp){
@@ -194,7 +249,27 @@ export function installPlayer(W){
         if(m > 0){ const f = Math.min(1, m)*um/m; ux = C.in.dx*f; uy = C.in.dy*f; }
       }
     }
+    C.resist = 0;
+    const nb = neighbors(b, t, cur);
+    C.pressed = !!nb && nb.some(d => d !== null && d < 0);   // 正被較低的真空推擠（介面用）
+    if(nb && (natural || C.pressed)){                // 受控制時只有較低的鄰居有作用：其餘情況不經過擬合，與原本逐位元相同
+      const q = pressure(nb, ux, uy, w, natural, C.E > 0);
+      ux = q.ux; uy = q.uy; w = q.w;
+      if(q.resist > 0){
+        const cost = q.resist*TAU*cur.r/NS*STEP/(p.RH*p.RH)/C.eta;
+        C.E -= cost; C.loss += cost; C.resist = cost/STEP;
+      }
+    }
     pushSeg(b, t, cur.cx, cur.cy, cur.r, ux, uy, w, reg, vx, vy);
+  }
+  /* 放手後的泡泡：不再受控制，接觸處只受壓力（自然狀態）。沒有接觸時沿用上一段（以光速擴張），不必每一步新增軌跡段；縮成一點就消失 */
+  function drift(b, t){
+    const C = b.ctl, cur = U.circleAt(b, t), n = C.t.length - 1;
+    if(cur.r <= 0){ b.texit = t + STEP/2; return; }
+    const nb = neighbors(b, t, cur);
+    if(!nb){ if(C.ux[n] || C.uy[n] || C.w[n] !== cLight) pushSeg(b, t, cur.cx, cur.cy, cur.r, 0, 0, cLight, C.reg[n]); return; }
+    const q = pressure(nb, 0, 0, cLight, true, false);
+    pushSeg(b, t, cur.cx, cur.cy, cur.r, q.ux, q.uy, q.w, C.reg[n]);
   }
 
   /* 能量帳（D3）：在 [t−STEP, t] 期間，玩家宇宙與其他宇宙（或假真空）之間轉手的地盤 × 真空能差。
@@ -239,7 +314,7 @@ export function installPlayer(W){
     if(C.gone >= .5){ C.fate = 'eaten'; release(b, t); b.texit = t + STEP/2; }   // 已經沒有地盤：從下一步起移除（不會再「復活」）
   }
 
-  /* 接觸紀錄：可控制的泡泡與其他泡泡的接觸區間 [開始, 結束]（疇壁位移從每段接觸的開始算起） */
+  /* 接觸紀錄：可控制的泡泡與其他泡泡的接觸區間 [開始, 結束]（畫面的相撞閃光從每段接觸的開始算起） */
   function contacts(b, t){
     const C = b.ctl, cb = U.circleAt(b, t), t0 = t - STEP;
     for(const o of U.live){
@@ -261,9 +336,10 @@ export function installPlayer(W){
     }
   }
 
-  /* 每一步：更新所有可控制泡泡的接觸；玩家宇宙結算能量帳、曲速的借貸與量子利息、困住的倒數，並決定下一步的控制 */
+  /* 每一步：更新所有可控制泡泡的接觸、放手的泡泡隨壓力移動；玩家宇宙結算能量帳、曲速的借貸與量子利息、困住的倒數，並決定下一步的控制 */
   W.playerStep = t => {
     for(const b of U.live) if(b.ctl && b.texit > t) contacts(b, t);
+    for(const b of U.live) if(b.ctl && b.ctl.free && b.texit > t) drift(b, t);
     const P = U.player;
     if(!P) return;
     const C = P.ctl;

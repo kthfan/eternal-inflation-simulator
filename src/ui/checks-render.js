@@ -6,7 +6,7 @@ import { createUniverse } from '../core/universe.js';
 import { Territory } from '../core/territory.js';
 import { MAXZ, P, buildPalettes, clampCam, defaultZoom, onRebase } from '../render/camera.js';
 import { TEX_VMAX, render } from '../render/scene.js';
-import { paintedAt } from '../render/layout.js';
+import { paintedAt, walls, wallPolylines } from '../render/layout.js';
 import { $ } from './dom.js';
 
 const STD = { H: .25, RH: 140, R0: 3, RGEN: 3000, typical: false, vacN: 12, crunchP: .25, oddDimP: .15 };
@@ -112,6 +112,40 @@ export const renderChecks = [
       const m = compareAround(T, Pl, [.3, .7, 1.15, 1.6, 2.5, 4, 7]); n += m.n; bad += m.bad;
     }
     return { pass: n > 300 && !bad, detail: `${scene}；${n} 個點中 ${bad} 個畫面與歸屬不一致` };
+  }) },
+  { name: '玩家接觸處的疇壁', desc: '玩家碰到較低真空的泡泡 X 時，接觸處就是玩家自己的泡壁（被壓力推動）：畫面上要畫出這道疇壁，而且它必須落在玩家的圓上、X 的圓內（部分接觸時是一段弧，被包住時是整圈）；玩家附近每一點最後畫到的宇宙等於 ownerAt', run: () => inScene(() => {
+    const T = testUniverse({ seed: 4242 }); T.presim(1);
+    const ds = T.VAC.filter(v => v.eps > 0 && v.eps < 1 && v.kind === 'ds').sort((a, b) => a.eps - b.eps);
+    let act = null;
+    for(let k=0;k<400 && !(act && act.result.ok);k++){ const a = k*2.399, rr = 20 + k*6, x = Math.cos(a)*rr, y = Math.sin(a)*rr; if(T.ownerAt(x, y, T.tSim)) continue; act = T.act({ type: 'spawn', x, y, vac: ds[ds.length - 1].i, r: 40 }); T.advance(1/30); }
+    const Pl = T.player; if(!Pl) throw new Error('玩家誕生失敗');
+    T.act({ type: 'steer', dx: 0, dy: 0, rT: 40 });
+    const c0 = T.circleAt(Pl, T.tSim); T.act({ type: 'nucleate', x: c0.cx + c0.r + 25, y: c0.cy, vac: ds[2].i, r: 8 }); T.advance(1/30);
+    const X = T.hist.find(b => b.act && !b.ctl && b.vac === ds[2].i);
+    show(T);
+    const out = []; let n = 0, bad = 0, fails = [];
+    for(const [secs, full] of [[1.4, false], [4.6, true]]){
+      T.presim(secs); S.tView = T.tSim;
+      const c = T.circleAt(Pl, S.tView); S.Z = defaultZoom()*(full ? 1 : 1.5); P.x = c.cx; P.y = c.cy;
+      render(S.tView);
+      const vP = S.vis.find(v => v.b === Pl), vX = S.vis.find(v => v.b === X);
+      const R = walls.find(R => R.ring && ((R.W === vP && R.L === vX) || (R.W === vX && R.L === vP)));
+      const pl = R && wallPolylines(R);
+      if(!vP || !vX || !pl){ fails.push(`${full ? '被包住' : '部分接觸'}時沒有畫出疇壁`); continue; }
+      let len = 0, off = 0, outX = 0, pts = 0;
+      for(const a of pl) for(let k=0;k<a.length;k+=2){
+        pts++; off = Math.max(off, Math.abs(Math.hypot(a[k] - vP.cx, a[k+1] - vP.cy) - vP.r));
+        if(Math.hypot(a[k] - vX.cx, a[k+1] - vX.cy) > vX.r + 1) outX++;
+        if(k) len += Math.hypot(a[k] - a[k-2], a[k+1] - a[k-1]);
+      }
+      const frac = len/(2*Math.PI*vP.r);
+      if(off > 1 || outX) fails.push(`${full ? '被包住' : '部分接觸'}時疇壁偏離玩家的圓 ${off.toFixed(2)} 像素、${outX} 點在 X 外`);
+      if(full ? frac < .97 : !(frac > .05 && frac < .7)) fails.push(`${full ? '被包住' : '部分接觸'}時疇壁長度是玩家圓周的 ${(frac*100).toFixed(0)}%`);
+      out.push(`${full ? '被包住' : '部分接觸'}：疇壁長度為圓周的 ${(frac*100).toFixed(0)}%、偏離 ${off.toFixed(2)} 像素`);
+      const m = compareAround(T, Pl, [.4, .8, 1.2, 1.6, 2.5]); n += m.n; bad += m.bad;
+    }
+    if(bad > n*.01) fails.push(`${n} 個點中 ${bad} 個畫面與歸屬不一致`);
+    return { pass: !fails.length && n > 150, detail: fails.length ? fails.join('；') : `${out.join('；')}；${n} 個點中 ${bad} 個畫面與歸屬不一致` };
   }) },
   { name: '再循環區域的繪製', desc: '玩家在 Λ > 0 的口袋宇宙中以自己為中心再循環（區域與玩家同心）：繪製不得出錯（同心的兩圓沒有交點，之前相撞閃光讀到不存在的交點而中斷繪製），玩家附近每一點最後畫到的宇宙等於 ownerAt', run: () => inScene(() => {
     let n = 0, bad = 0;
