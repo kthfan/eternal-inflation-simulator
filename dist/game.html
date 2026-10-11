@@ -1027,7 +1027,7 @@ details[open] summary::after{content:" －"}
     return { isAncestor, related, insideOf, arrival, wallGeom, beats, rule, otherOf, ownerIn, takes, buildRules, ownerAt, locator, drawOrder, drawContains, cellRay, isHole, holeSpan, wallTaken, displayOwner, shellVisible, boxWedge, domainWall, mergeCurve };
   })();
 
-  // src/core/universe.js
+  // src/core/constants.js
   var STEP = 1 / 30;
   var EMAX = 1e13;
   var LONG = 90;
@@ -1035,24 +1035,8 @@ details[open] summary::after{content:" －"}
   var MAXB = 16e4;
   var FALSE_EPS = 1;
   var UP_EPS = 1.6;
-  var PLAYER = {
-    E0: 5,
-    eta: 0.8,
-    k: 1.5,
-    minE: 0.5,
-    cell: 3.5,
-    latticeMax: 16,
-    downCost: 0.15,
-    range: 1,
-    recenter: 0.75,
-    /* 曲速（D12）：k 預設倍率（×c）、kMax 上限（保證 A2 的丟棄仍精確：(1 + kMax)·RH 要小於 RGEN）；
-       借貸速率 kappa·k²·(r/RH)²（Alcubierre：負能量 ∝ v²R²）；量子不等式：借貸速率 × 持續時間² ≤ Q；
-       量子利息：結束後在 repayT 秒內償還 借貸 × (1 + 持續時間/TI) */
-    warp: { k: 5, kMax: 15, kappa: 0.25, Q: 4, TI: 4, repayT: 1.5 },
-    /* 再循環（D13）：在 Λ > 0 的口袋宇宙中，以自己為中心向上穿隧出半徑 margin × 當地哈伯半徑的假真空區域（大於哈伯半徑 → 永遠縮不掉、重新永恆暴脹）；
-       所在處 Λ ≤ 0（無法再循環）持續 trapT 秒就遊戲結束 */
-    recycle: { margin: 1.05, trapT: 8 }
-  };
+
+  // src/core/landscape.js
   var VNAMES = "子丑寅卯辰巳午未申酉戌亥甲乙丙丁";
   function makeLandscape(r, p) {
     const n = p.vacN, VAC = [];
@@ -1150,50 +1134,19 @@ details[open] summary::after{content:" －"}
     }
     return VAC;
   }
-  function createUniverse(p, tune2, opts = {}) {
-    const rng = mulberry32(p.seed);
-    const VAC = makeLandscape(rng, p);
-    const maxInner = Math.max(0, ...VAC.map((v) => v.grel));
-    const U = {
-      p,
-      tune: tune2,
-      VAC,
-      tSim: 0,
-      acc: 0,
-      tStart: 0,
-      trimmed: 0,
-      hist: [],
-      longs: [],
-      live: [],
-      buckets: [],
-      bucketBase: 0,
-      vacCount: VAC.map(() => 0),
-      window: 1200,
-      nextId: 1,
-      stepN: 0
-    };
-    Object.defineProperty(U, "tLive", { get: () => U.tSim + U.acc });
-    const listeners = { born: [], retire: [], act: [], rebase: [] };
-    U.on = (name, fn) => {
-      listeners[name].push(fn);
-      return () => {
-        const a = listeners[name], i = a.indexOf(fn);
-        if (i >= 0) a.splice(i, 1);
-      };
-    };
-    const notify = (name, b) => {
-      for (const fn of listeners[name]) fn(b);
-    };
+
+  // src/core/space.js
+  function installSpace(W) {
+    const { U, p, VAC } = W, LH = W.LH, cLight = W.cLight;
     const E = (b, t) => Math.min(EMAX, Math.exp(p.H * (t - b.tn)));
-    U.E = E;
-    const LH = !!p.localH, cLight = p.H * p.RH;
-    const BMAX = 1e250, ex = (h, d) => Math.min(BMAX, Math.exp(h * d));
+    U.E = W.E = E;
     const hIn = (b) => {
       if (!b) return p.H;
       const e = VAC[b.vac].eps;
       return e > 0 ? p.H * Math.sqrt(e / FALSE_EPS) : 0;
     };
-    U.hIn = hIn;
+    U.hIn = W.hIn = hIn;
+    const BMAX = 1e250, ex = (h, d) => Math.min(BMAX, Math.exp(h * d));
     const grow = (r0, s, h, d) => {
       if (h > 1e-9) {
         const e = ex(h, d), k = cLight / h;
@@ -1201,7 +1154,38 @@ details[open] summary::after{content:" －"}
       }
       return s < 0 ? Math.max(0, r0 - cLight * d) : r0 + cLight * d;
     };
+    const segIndex = (C, t) => {
+      const T = C.t;
+      let lo = 0, hi = T.length - 1;
+      while (lo < hi) {
+        const m = lo + hi + 1 >> 1;
+        if (T[m] <= t) lo = m;
+        else hi = m - 1;
+      }
+      return lo;
+    };
+    W.segIndex = segIndex;
+    const root = {
+      region: false,
+      R: null,
+      h: p.H,
+      hubble: p.RH,
+      circle(b, t) {
+        const e = E(b, t);
+        return { b, cx: b.x * e, cy: b.y * e, r: b.s < 0 ? Math.max(0, b.r0 * e - p.RH * (e - 1)) : p.R0 * e + p.RH * (e - 1) };
+      },
+      seg(C, i, t, b) {
+        const H = p.H, e = Math.min(EMAX, Math.exp(H * (t - C.t[i]))), ux = (C.ux[i] + C.vx[i]) / H, uy = (C.uy[i] + C.vy[i]) / H, w = C.w[i] / H;
+        return { b, cx: (C.x[i] + ux) * e - ux, cy: (C.y[i] + uy) * e - uy, r: Math.max(0, (C.r[i] + w) * e - w) };
+      },
+      toLocal: (x, y) => [x, y],
+      advector: (t0, t, e, Vx, Vy) => (x, y) => [x * e + Vx, y * e + Vy]
+    };
+    W.root = root;
     let cacheEpoch = 0;
+    W.invalidate = () => {
+      cacheEpoch++;
+    };
     const centerAt = (b, t) => {
       if (b._ct === t && b._ce === cacheEpoch) return b._cc;
       const c = U.circleAt(b, t);
@@ -1220,6 +1204,65 @@ details[open] summary::after{content:" －"}
       R._ac = a;
       return a;
     };
+    W.anchorAt = anchorAt;
+    function makeRegion(R) {
+      const h = hIn(R);
+      return {
+        region: true,
+        R,
+        h,
+        hubble: h > 1e-9 ? cLight / h : Infinity,
+        anchor: (t) => anchorAt(R, t),
+        circle(b, t) {
+          const pc = anchorAt(R, t), d = t - b.tn, e = b.h > 0 ? ex(b.h, d) : 1;
+          return { b, cx: pc.cx + b.ox * e, cy: pc.cy + b.oy * e, r: grow(b.r0, b.s, b.h, d) };
+        },
+        seg(C, i, t, b) {
+          const hh = C.h[i], d = t - C.t[i], base = anchorAt(R, t);
+          let x, y, r;
+          const vx = C.ux[i] + C.vx[i], vy = C.uy[i] + C.vy[i];
+          if (hh > 1e-9) {
+            const e = ex(hh, d), ux = vx / hh, uy = vy / hh, w = C.w[i] / hh;
+            x = (C.x[i] + ux) * e - ux;
+            y = (C.y[i] + uy) * e - uy;
+            r = (C.r[i] + w) * e - w;
+          } else {
+            x = C.x[i] + vx * d;
+            y = C.y[i] + vy * d;
+            r = C.r[i] + C.w[i] * d;
+          }
+          return { b, cx: base.cx + x, cy: base.cy + y, r: Math.max(0, r) };
+        },
+        toLocal(x, y, t) {
+          const rc = anchorAt(R, t);
+          return [x - rc.cx, y - rc.cy];
+        },
+        advector(t0, t, e, Vx, Vy) {
+          const r0c = anchorAt(R, t0), r1c = anchorAt(R, t);
+          return (x, y) => [r1c.cx + (x - r0c.cx) * e + Vx, r1c.cy + (y - r0c.cy) * e + Vy];
+        },
+        /* 在這個空間誕生的子泡泡：偏移相對錨點；流出時刻沒有簡單的解析式，改由掃描判斷（sweep）；收縮泡泡則是縮成一點的時刻 */
+        place(b, x, y, t) {
+          const pc = anchorAt(R, t), k = h > 1e-9 ? cLight / h : Infinity;
+          b.dyn = true;
+          b.ox = x - pc.cx;
+          b.oy = y - pc.cy;
+          b.h = h;
+          return b.s > 0 ? Infinity : h > 1e-9 ? b.r0 < k ? t + Math.log(k / (k - b.r0)) / h : Infinity : t + b.r0 / cLight;
+        }
+      };
+    }
+    const regionSpace = (R) => LH && R ? R._space || (R._space = makeRegion(R)) : root;
+    W.regionSpace = regionSpace;
+    W.spaceOf = (b) => regionSpace(b.parent);
+    U.circleAt = (b, t) => {
+      if (b.ctl) {
+        const C = b.ctl, i = segIndex(C, t);
+        return regionSpace(C.reg[i]).seg(C, i, t, b);
+      }
+      return (LH && b.parent ? regionSpace(b.parent) : root).circle(b, t);
+    };
+    if (!LH) return;
     function reanchor(R, ax, ay, t) {
       const A = anchorAt(R, t), dx = ax - A.cx, dy = ay - A.cy, h = hIn(R), seen = /* @__PURE__ */ new Set();
       const fix = (b) => {
@@ -1246,47 +1289,27 @@ details[open] summary::after{content:" －"}
       R.anc = { tk: t, dx: ax - c.cx, dy: ay - c.cy };
       cacheEpoch++;
     }
-    U.circleAt = (b, t) => {
-      if (b.ctl) return ctlCircle(b, t);
-      if (LH && b.parent) {
-        const pc = anchorAt(b.parent, t), d = t - b.tn, e2 = b.h > 0 ? ex(b.h, d) : 1;
-        return { b, cx: pc.cx + b.ox * e2, cy: pc.cy + b.oy * e2, r: grow(b.r0, b.s, b.h, d) };
+    W.keepAnchors = (t) => {
+      const o = U.ownerAt(0, 0, t);
+      for (let R = o ? o.b : null; R; R = R.parent) {
+        if (R.ctl && R.player) continue;
+        const A = anchorAt(R, t);
+        if (!R.anc || t - R.anc.tk > 5 || Math.hypot(A.cx, A.cy) > p.RH) reanchor(R, 0, 0, t);
       }
-      const e = E(b, t);
-      return { b, cx: b.x * e, cy: b.y * e, r: b.s < 0 ? Math.max(0, b.r0 * e - p.RH * (e - 1)) : p.R0 * e + p.RH * (e - 1) };
     };
-    const segIndex = (C, t) => {
-      const T = C.t;
-      let lo = 0, hi = T.length - 1;
-      while (lo < hi) {
-        const m = lo + hi + 1 >> 1;
-        if (T[m] <= t) lo = m;
-        else hi = m - 1;
+    W.sweep = (t) => {
+      for (const b of U.live) {
+        if (!b.dyn || !(b.texit > t) || b.retired || b.player) continue;
+        const c = U.circleAt(b, t);
+        if (Math.hypot(c.cx, c.cy) - c.r > p.RGEN + 60 || b.s < 0 && c.r <= 0) b.texit = t + STEP / 2;
       }
-      return lo;
     };
-    function ctlCircle(b, t) {
-      const C = b.ctl;
-      if (LH) {
-        const i2 = segIndex(C, t), h = C.h[i2], d = t - C.t[i2], reg = C.reg[i2], base = reg ? anchorAt(reg, t) : null;
-        let x, y, r;
-        const vx = C.ux[i2] + C.vx[i2], vy = C.uy[i2] + C.vy[i2];
-        if (h > 1e-9) {
-          const e2 = ex(h, d), ux2 = vx / h, uy2 = vy / h, w2 = C.w[i2] / h;
-          x = (C.x[i2] + ux2) * e2 - ux2;
-          y = (C.y[i2] + uy2) * e2 - uy2;
-          r = (C.r[i2] + w2) * e2 - w2;
-        } else {
-          x = C.x[i2] + vx * d;
-          y = C.y[i2] + vy * d;
-          r = C.r[i2] + C.w[i2] * d;
-        }
-        return { b, cx: (base ? base.cx : 0) + x, cy: (base ? base.cy : 0) + y, r: Math.max(0, r) };
-      }
-      const i = segIndex(C, t), H = p.H, e = Math.min(EMAX, Math.exp(H * (t - C.t[i]))), ux = (C.ux[i] + C.vx[i]) / H, uy = (C.uy[i] + C.vy[i]) / H, w = C.w[i] / H;
-      return { b, cx: (C.x[i] + ux) * e - ux, cy: (C.y[i] + uy) * e - uy, r: Math.max(0, (C.r[i] + w) * e - w) };
-    }
-    U.eps = (b) => VAC[b.vac].eps;
+  }
+
+  // src/core/walls.js
+  function installWalls(W) {
+    const { U, p, tune: tune2 } = W, cLight = W.cLight;
+    U.eps = (b) => W.VAC[b.vac].eps;
     const tcCache = /* @__PURE__ */ new Map();
     U.collideTime = (a, b) => {
       const key = a.id < b.id ? a.id * 1e7 + b.id : b.id * 1e7 + a.id;
@@ -1328,12 +1351,13 @@ details[open] summary::after{content:" －"}
       tcCache.set(key, tc);
       return tc;
     };
-    U.shift = (W, L, t) => {
-      if (W.vac === L.vac) return 0;
-      const D = U.eps(L) - U.eps(W), tc = U.contactStart(W, L, t);
+    U.shift = (Wb, L, t) => {
+      if (Wb.vac === L.vac) return 0;
+      const D = U.eps(L) - U.eps(Wb), tc = U.contactStart(Wb, L, t);
       if (t <= tc) return 0;
-      if (LH && W.parent && W.parent === L.parent) {
-        const v = 0.85 * D / (Math.abs(D) + 0.25) * tune2.wallK * cLight, h = W.h, d = t - tc;
+      const sp = W.spaceOf(Wb);
+      if (sp.region && sp === W.spaceOf(L)) {
+        const v = 0.85 * D / (Math.abs(D) + 0.25) * tune2.wallK * cLight, h = sp.h, d = t - tc;
         return h > 1e-9 ? v * (Math.min(EMAX, Math.exp(h * d)) - 1) / h : v * d;
       }
       return 0.85 * D / (Math.abs(D) + 0.25) * tune2.wallK * p.RH * (Math.min(EMAX, Math.exp(p.H * (t - tc))) - 1);
@@ -1346,8 +1370,8 @@ details[open] summary::after{content:" －"}
       for (let i = arr.length - 1; i >= 0; i--) if (arr[i][0] <= t + 1e-9) return t <= arr[i][1] + 1e-9 ? arr[i][0] : Infinity;
       return Infinity;
     };
-    U.ringR = (W, L, t) => {
-      const P2 = W.ctl ? W : L, arr = P2.ctl.contacts.get((P2 === W ? L : W).id);
+    U.ringR = (Wb, L, t) => {
+      const P2 = Wb.ctl ? Wb : L, arr = P2.ctl.contacts.get((P2 === Wb ? L : Wb).id);
       let iv = null;
       if (arr) {
         for (let i = arr.length - 1; i >= 0; i--) if (arr[i][0] <= t + 1e-9) {
@@ -1356,17 +1380,23 @@ details[open] summary::after{content:" －"}
         }
       }
       if (!iv) {
-        const a = U.circleAt(W, t), b = U.circleAt(L, t);
+        const a = U.circleAt(Wb, t), b = U.circleAt(L, t);
         return Math.hypot(a.cx - b.cx, a.cy - b.cy) - b.r;
       }
       if (iv[2] === void 0) {
-        const a = U.circleAt(W, iv[0]), b = U.circleAt(L, iv[0]);
+        const a = U.circleAt(Wb, iv[0]), b = U.circleAt(L, iv[0]);
         iv[2] = Math.hypot(a.cx - b.cx, a.cy - b.cy) - b.r;
       }
-      const D = U.eps(L) - U.eps(W), vH = 0.85 * D / (Math.abs(D) + 0.25) * tune2.wallK * p.RH;
+      const D = U.eps(L) - U.eps(Wb), vH = 0.85 * D / (Math.abs(D) + 0.25) * tune2.wallK * p.RH;
       return (iv[2] + vH) * Math.min(EMAX, Math.exp(p.H * (t - iv[0]))) - vH;
     };
-    U.frame = (t, scale = 1, circ) => ({ t, eps: U.eps, shift: (W, L) => U.shift(W, L, t) * scale, ring: (W, L) => U.ringR(W, L, t) * scale, circ: circ || ((b) => U.circleAt(b, t)) });
+    U.frame = (t, scale = 1, circ) => ({ t, eps: U.eps, shift: (Wb, L) => U.shift(Wb, L, t) * scale, ring: (Wb, L) => U.ringR(Wb, L, t) * scale, circ: circ || ((b) => U.circleAt(b, t)) });
+  }
+
+  // src/core/world.js
+  function installWorld(W) {
+    const { U, p, tune: tune2, VAC, rng } = W;
+    const maxInner = Math.max(0, ...VAC.map((v) => v.grel));
     U.bornBy = (t) => {
       const h = U.hist;
       let lo = 0, hi = h.length;
@@ -1389,6 +1419,11 @@ details[open] summary::after{content:" －"}
       return out;
     };
     U.ownerAt = (x, y, t) => Territory.ownerAt(U.frame(t), U.aliveAt(t).map((b) => U.circleAt(b, t)), x, y);
+    W.liveCircles = (t, skip = null) => {
+      const out = [];
+      for (const b of U.live) if (b.texit > t && b !== skip) out.push(U.circleAt(b, t));
+      return out;
+    };
     U.crunchedAt = (b, x, y, t) => {
       if (!b.crunch) return false;
       const c = U.circleAt(b, t), xx = Math.min(1, Math.hypot(x - c.cx, y - c.cy) / c.r);
@@ -1414,6 +1449,7 @@ details[open] summary::after{content:" －"}
       const tc = r0 < p.RH ? t0 + Math.log(p.RH / (p.RH - r0)) / p.H : Infinity, den = d - r0 + p.RH;
       return Math.min(tc, den > 0 ? t0 + Math.log((p.RGEN + 60 + p.RH) / den) / p.H : Infinity);
     }
+    W.exitTime = exitTime;
     function addBubble(x, y, d, t, parent, forced) {
       let vac = 0, seed;
       if (forced) {
@@ -1437,18 +1473,6 @@ details[open] summary::after{content:" －"}
         seed = rng();
       }
       const V = VAC[vac], s = forced ? forced.s : 1, r0 = forced ? forced.r0 : p.R0;
-      let texit = exitTime(s, d, r0, t);
-      let dyn = false, ox, oy, h;
-      if (LH && parent) {
-        const pc = anchorAt(parent, t);
-        ox = x - pc.cx;
-        oy = y - pc.cy;
-        h = hIn(parent);
-        dyn = true;
-        const k2 = h > 1e-9 ? cLight / h : Infinity;
-        texit = s > 0 ? Infinity : h > 1e-9 ? r0 < k2 ? t + Math.log(k2 / (k2 - r0)) / h : Infinity : t + r0 / cLight;
-      }
-      if (forced && forced.ctl) texit = Infinity;
       const b = {
         id: U.nextId++,
         tn: t,
@@ -1464,62 +1488,32 @@ details[open] summary::after{content:" －"}
         crunch: V.kind === "ads",
         crunchT: V.crunchT,
         heatT: V.hdT,
-        texit
+        texit: 0
       };
-      if (dyn) {
-        b.dyn = true;
-        b.ox = ox;
-        b.oy = oy;
-        b.h = h;
-      }
+      const sp = W.regionSpace(parent);
+      b.texit = sp.region ? sp.place(b, x, y, t) : exitTime(s, d, r0, t);
       if (forced) b.act = true;
       if (forced && forced.ctl) {
-        b.crunch = false;
-        b.heatT = Infinity;
-        b.ctl = {
-          t: [],
-          x: [],
-          y: [],
-          r: [],
-          ux: [],
-          uy: [],
-          vx: [],
-          vy: [],
-          w: [],
-          reg: [],
-          h: [],
-          contacts: /* @__PURE__ */ new Map(),
-          in: { dx: 0, dy: 0, rT: r0 },
-          eta: forced.eta,
-          mode: forced.mode,
-          E: PLAYER.E0,
-          exhausted: false,
-          gain: 0,
-          loss: 0,
-          warp: null,
-          repay: null,
-          lastWarp: null
-        };
-        pushSeg(b, t, x, y, r0, 0, 0, 0);
-        U.anyCtl = true;
+        b.texit = Infinity;
+        W.initCtl(b, forced, t);
       }
       b.long = b.dyn || !(b.texit - t <= LONG);
       U.hist.push(b);
       U.live.push(b);
       if (b.long) U.longs.push(b);
       U.vacCount[vac]++;
-      notify("born", b);
+      W.notify("born", b);
       const k = Math.floor(t / BUCKET) - U.bucketBase;
       while (U.buckets.length <= k) U.buckets.push(0);
       U.buckets[k]++;
       return b;
     }
-    function nucleate() {
+    W.addBubble = addBubble;
+    W.nucleate = () => {
       const t = U.tSim, gmax = Math.max(1, maxInner * tune2.innerMul);
       const n = poisson(rng, tune2.gamma * gmax * Math.PI * p.RGEN * p.RGEN * STEP);
       if (!n) return;
-      const F = U.frame(t), circles = [];
-      for (const b of U.live) if (b.texit > t) circles.push(U.circleAt(b, t));
+      const F = U.frame(t), circles = W.liveCircles(t);
       const pc = U.player ? U.circleAt(U.player, t) : null;
       for (let i = 0; i < n; i++) {
         const rr = p.RGEN * Math.sqrt(rng()), ang = rng() * TAU, u = rng();
@@ -1537,65 +1531,145 @@ details[open] summary::after{content:" －"}
         const b = addBubble(x, y, rr, t, own ? own.b : null);
         if (b) circles.push(U.circleAt(b, t));
       }
-    }
-    U.actions = [];
-    let pendingAct = 0, actSeq = 0;
-    const queueAct = (a) => {
-      a.seq = actSeq++;
-      let i = U.actions.length;
-      while (i > pendingAct && U.actions[i - 1].step > a.step) i--;
-      U.actions.splice(i, 0, a);
-      return a;
     };
-    U.act = (a) => queueAct({ ...a, step: U.stepN + 1, t: void 0, result: void 0 });
-    U.actionLog = () => U.actions.map(({ t, result, seq, ...rest }) => rest);
-    for (const a of (opts.actions || []).slice().sort((p1, p2) => p1.step - p2.step)) queueAct({ ...a, t: void 0, result: void 0 });
-    function actNucleate(a, t, k) {
-      const V = VAC[a.vac];
-      if (!V || !isFinite(a.x) || !isFinite(a.y)) return { ok: false, reason: "參數錯誤" };
-      const F = U.frame(t), circles = [];
-      for (const b2 of U.live) if (b2.texit > t) circles.push(U.circleAt(b2, t));
-      const own = Territory.ownerAt(F, circles, a.x, a.y), pe = own ? VAC[own.b.vac].eps : FALSE_EPS;
-      if (own && own.b.player) return { ok: false, reason: "不能放在玩家宇宙裡" };
-      if (own && U.crunchedAt(own.b, a.x, a.y, t)) return { ok: false, reason: "這裡已走到大擠壓，時空已經結束" };
-      const P2 = a.by === "player" ? U.player : null;
-      if (a.by === "player") {
-        if (!P2) return { ok: false, reason: "沒有玩家宇宙" };
-        if (P2.ctl.exhausted) return { ok: false, reason: "力竭中，無法施放" };
-        const pc = U.circleAt(P2, t);
-        if (Math.hypot(a.x - pc.cx, a.y - pc.cy) - pc.r > PLAYER.range * p.RH) return { ok: false, reason: "超出影響範圍（泡壁外一個哈伯半徑）" };
-      }
-      if (V.eps === pe) return { ok: false, reason: "這裡已經是這種真空" };
-      const up = V.eps > pe;
-      let r0 = p.R0;
-      if (up) {
-        r0 = a.r === void 0 ? 0.4 * p.RH : +a.r;
-        if (!(r0 >= 2 * p.R0 && r0 <= 3 * p.RH)) return { ok: false, reason: "向上穿隧區域的大小不合理" };
-      }
-      if (own && Territory.arrival(own, a.x, a.y) > -(up ? r0 + 2 : p.R0 * 2)) return { ok: false, reason: "太靠近泡壁" };
-      if (up) {
-        for (let j = 0; j < 24; j++) {
-          const th = TAU * j / 24, o = Territory.ownerAt(F, circles, a.x + Math.cos(th) * (r0 + 2), a.y + Math.sin(th) * (r0 + 2));
-          if ((o ? o.b : null) !== (own ? own.b : null)) return { ok: false, reason: "範圍跨越了其他宇宙的地盤" };
+    W.retire = () => {
+      const t = U.tSim, Rg = p.RGEN + 200;
+      const live = U.live.filter((b) => b.texit > t && b.tn < t);
+      if (live.length < 2) return;
+      const C = new Map(live.map((b) => [b, U.circleAt(b, t)]));
+      const covers = (c) => Math.hypot(c.cx, c.cy) + Rg < c.r;
+      const ring = [];
+      for (let k = 0; k < 48; k++) ring.push([Math.cos(TAU * k / 48) * Rg, Math.sin(TAU * k / 48) * Rg]);
+      ring.push([0, 0]);
+      const F = U.frame(t);
+      for (const b of live) {
+        if (isFinite(b.texit) || b.player) continue;
+        const cb = C.get(b);
+        for (const o of live) {
+          if (o === b) continue;
+          const co = C.get(o);
+          if (!covers(co)) continue;
+          let gone = false;
+          if (Territory.isAncestor(b, o)) gone = true;
+          else if (!Territory.related(b, o)) {
+            const R = Territory.rule(F, co, cb);
+            if (!R) gone = false;
+            else if (R.kind === "merge") gone = covers(cb) && (o.tn < b.tn || o.tn === b.tn && o.id < b.id);
+            else if (R.kind === "wall") gone = R.W === co && ring.every(([x, y]) => Territory.arrival(cb, x, y) >= 0 || !R.g.lSide(x, y));
+            else if (R.kind === "inherit") {
+              if (R.X === cb) gone = !R.free && (!R.g || ring.every(([x, y]) => !R.g.lSide(x, y)));
+              else gone = !!R.free;
+            }
+          }
+          if (gone) {
+            b.texit = t + STEP / 2;
+            b.retired = true;
+            W.notify("retire", b);
+            break;
+          }
         }
       }
-      const cost = P2 ? up ? (V.eps - pe) * Math.PI * r0 * r0 / (p.RH * p.RH) : PLAYER.downCost : 0;
-      if (P2 && P2.ctl.E < cost) return { ok: false, reason: `能量不足（需要 ${cost.toFixed(2)}）` };
-      const b = addBubble(a.x, a.y, Math.hypot(a.x, a.y), t, own ? own.b : null, { vac: a.vac, s: up ? -1 : 1, r0, seed: hash(p.seed, a.step, k) });
-      if (P2) {
-        P2.ctl.E -= cost;
-        P2.ctl.loss += cost;
+    };
+    U.trim = () => {
+      const tl = U.tLive;
+      let cut = tl - U.window;
+      if (U.hist.length > MAXB) cut = Math.max(cut, U.hist[U.hist.length - Math.floor(MAXB * 0.9)].tn + LONG + 1);
+      cut = Math.min(cut, tl - 5);
+      if (cut <= U.tStart + 0.5) return;
+      U.tStart = cut;
+      const idx = U.bornBy(cut - LONG - 1);
+      if (idx > 0) {
+        U.hist.splice(0, idx);
+        U.trimmed += idx;
       }
-      return { ok: true, id: b.id, up, cost };
+      if (U.longs.some((b) => b.texit <= cut)) U.longs = U.longs.filter((b) => b.texit > cut);
+      for (const b of U.longs) if (b.ctl) W.trimCtl(b, cut);
+      const kb = Math.floor(cut / BUCKET) - U.bucketBase;
+      if (kb > 0) {
+        U.buckets.splice(0, kb);
+        U.bucketBase += kb;
+      }
+    };
+  }
+
+  // src/core/player.js
+  var PLAYER = {
+    E0: 5,
+    eta: 0.8,
+    k: 1.5,
+    minE: 0.5,
+    cell: 3.5,
+    latticeMax: 16,
+    downCost: 0.15,
+    range: 1,
+    recenter: 0.75,
+    /* 曲速（D12）：k 預設倍率（×c）、kMax 上限（保證 A2 的丟棄仍精確：(1 + kMax)·RH 要小於 RGEN）；
+       借貸速率 kappa·k²·(r/RH)²（Alcubierre：負能量 ∝ v²R²）；量子不等式：借貸速率 × 持續時間² ≤ Q；
+       量子利息：結束後在 repayT 秒內償還 借貸 × (1 + 持續時間/TI) */
+    warp: { k: 5, kMax: 15, kappa: 0.25, Q: 4, TI: 4, repayT: 1.5 },
+    /* 再循環（D13）：在 Λ > 0 的口袋宇宙中，以自己為中心向上穿隧出半徑 margin × 當地哈伯半徑的假真空區域（大於哈伯半徑 → 永遠縮不掉、重新永恆暴脹）；
+       所在處 Λ ≤ 0（無法再循環）持續 trapT 秒就遊戲結束 */
+    recycle: { margin: 1.05, trapT: 8 }
+  };
+  var SEG = ["t", "x", "y", "r", "ux", "uy", "vx", "vy", "w", "reg", "h"];
+  function installPlayer(W) {
+    const { U, p, VAC } = W, LH = W.LH, cLight = W.cLight;
+    U.player = null;
+    function pushSeg(b, t, x, y, r, ux, uy, w, reg = null, vx = 0, vy = 0) {
+      const C = b.ctl, n = C.t.length, sp = W.regionSpace(reg), h = sp.h;
+      if (sp.region) [x, y] = sp.toLocal(x, y, t);
+      const rec = { t, x, y, r, ux, uy, vx, vy, w, reg, h };
+      if (n && C.t[n - 1] === t) {
+        for (const k of SEG) C[k][n - 1] = rec[k];
+        return;
+      }
+      for (const k of SEG) C[k].push(rec[k]);
     }
-    function actSpawn(a, t, k) {
+    W.initCtl = (b, forced, t) => {
+      b.crunch = false;
+      b.heatT = Infinity;
+      b.ctl = {
+        contacts: /* @__PURE__ */ new Map(),
+        in: { dx: 0, dy: 0, rT: b.r0 },
+        eta: forced.eta,
+        mode: forced.mode,
+        E: PLAYER.E0,
+        exhausted: false,
+        gain: 0,
+        loss: 0,
+        warp: null,
+        repay: null,
+        lastWarp: null
+      };
+      for (const k of SEG) b.ctl[k] = [];
+      pushSeg(b, t, b.x, b.y, b.r0, 0, 0, 0);
+      U.anyCtl = true;
+    };
+    W.trimCtl = (b, cut) => {
+      const C = b.ctl;
+      let k = 0;
+      while (k + 1 < C.t.length && C.t[k + 1] <= cut - 1) k++;
+      if (k) for (const key of SEG) C[key].splice(0, k);
+      for (const [id, arr] of C.contacts) {
+        const kept = arr.filter((iv) => iv[1] >= cut - LONG);
+        if (kept.length) C.contacts.set(id, kept);
+        else C.contacts.delete(id);
+      }
+    };
+    function regionOf(b, t, c) {
+      const cs = [];
+      for (const o of U.live) if (o !== b && o.tn <= t && o.texit > t) cs.push(U.circleAt(o, t));
+      const own = Territory.ownerAt(U.frame(t), cs, c.cx, c.cy);
+      return own ? own.b : null;
+    }
+    const localSpace = (b, t, c) => LH ? W.regionSpace(regionOf(b, t, c)) : W.root;
+    W.onAction("spawn", (a, t, k) => {
       const V = VAC[a.vac];
       if (!V || !(V.eps < FALSE_EPS)) return { ok: false, reason: "玩家宇宙必須是比假真空低的真空" };
       if (!isFinite(a.x) || !isFinite(a.y)) return { ok: false, reason: "參數錯誤" };
       const r0 = a.r === void 0 ? 0.3 * p.RH : +a.r;
       if (!(r0 >= 2 * p.R0 && r0 <= 0.8 * p.RH)) return { ok: false, reason: "玩家宇宙的大小不合理" };
-      const F = U.frame(t), circles = [];
-      for (const b2 of U.live) if (b2.texit > t) circles.push(U.circleAt(b2, t));
+      const F = U.frame(t), circles = W.liveCircles(t);
       if (Territory.ownerAt(F, circles, a.x, a.y)) return { ok: false, reason: "玩家宇宙要誕生在假真空中" };
       for (let j = 0; j < 24; j++) {
         const th = TAU * j / 24;
@@ -1604,13 +1678,13 @@ details[open] summary::after{content:" －"}
       if (U.player) release(U.player, t);
       const eta = a.eta === void 0 ? PLAYER.eta : Math.max(0.05, Math.min(1, +a.eta));
       const mode = a.mode === "survival" ? "survival" : "relaxed";
-      const b = addBubble(a.x, a.y, Math.hypot(a.x, a.y), t, null, { vac: a.vac, s: 1, r0, seed: hash(p.seed, a.step, k), ctl: true, eta, mode });
+      const b = W.addBubble(a.x, a.y, Math.hypot(a.x, a.y), t, null, { vac: a.vac, s: 1, r0, seed: hash(p.seed, a.step, k), ctl: true, eta, mode });
       b.player = true;
       U.player = b;
       decide(b, t);
       return { ok: true, id: b.id };
-    }
-    function actSteer(a) {
+    }, true);
+    W.onAction("steer", (a) => {
       const P2 = U.player;
       if (!P2) return { ok: false, reason: "沒有玩家宇宙" };
       let dx = +a.dx || 0, dy = +a.dy || 0;
@@ -1622,23 +1696,23 @@ details[open] summary::after{content:" －"}
       const rT = a.rT === void 0 ? P2.ctl.in.rT : Math.max(2 * p.R0, Math.min(0.95 * p.RH, +a.rT));
       P2.ctl.in = { dx, dy, rT };
       return { ok: true };
-    }
+    });
     const warpRate = (k, r) => PLAYER.warp.kappa * k * k * (r / p.RH) ** 2;
     function accrue(C, t, r) {
-      const W = C.warp;
-      W.B += warpRate(W.k, r) * Math.max(0, t - W.tAcc);
-      W.tAcc = t;
+      const Wp = C.warp;
+      Wp.B += warpRate(Wp.k, r) * Math.max(0, t - Wp.tAcc);
+      Wp.tAcc = t;
     }
     function endWarp(b, t, why) {
-      const C = b.ctl, W = C.warp;
-      if (!W) return;
+      const C = b.ctl, Wp = C.warp;
+      if (!Wp) return;
       accrue(C, t, U.circleAt(b, t).r);
-      const tau = t - W.t0, due = W.B * (1 + tau / PLAYER.warp.TI);
+      const tau = t - Wp.t0, due = Wp.B * (1 + tau / PLAYER.warp.TI);
       C.warp = null;
       C.repay = due > 0 ? { left: due, rate: due / PLAYER.warp.repayT } : null;
-      C.lastWarp = { t0: W.t0, t1: t, tau, k: W.k, borrowed: W.B, due, why };
+      C.lastWarp = { t0: Wp.t0, t1: t, tau, k: Wp.k, borrowed: Wp.B, due, why };
     }
-    function actWarp(a, t) {
+    W.onAction("warp", (a, t) => {
       const P2 = U.player;
       if (!P2) return { ok: false, reason: "沒有玩家宇宙" };
       const C = P2.ctl;
@@ -1651,7 +1725,7 @@ details[open] summary::after{content:" －"}
       if (C.repay) return { ok: false, reason: "正在償還量子利息" };
       if (C.exhausted) return { ok: false, reason: "力竭中，無法啟動" };
       if (!(C.E > 0)) return { ok: false, reason: "能量透支中，無法再借貸負能量" };
-      const c = U.circleAt(P2, t), h = LH ? hIn(regionOf(P2, t, c)) : p.H;
+      const c = U.circleAt(P2, t), h = localSpace(P2, t, c).h;
       if (h * c.r >= cLight) return { ok: false, reason: "失控中，無法啟動" };
       let dx = +a.dx || 0, dy = +a.dy || 0;
       const m = Math.hypot(dx, dy);
@@ -1659,7 +1733,7 @@ details[open] summary::after{content:" －"}
       const k = Math.max(1, Math.min(PLAYER.warp.kMax, a.k === void 0 ? PLAYER.warp.k : +a.k || PLAYER.warp.k));
       C.warp = { k, dx: dx / m, dy: dy / m, t0: t, tAcc: t, B: 0 };
       return { ok: true, k };
-    }
+    });
     const rfVac = VAC.findIndex((v) => v.kind === "rf");
     function recycleAt(P2, t) {
       const c = U.circleAt(P2, t), Q = regionOf(P2, t, c);
@@ -1669,16 +1743,15 @@ details[open] summary::after{content:" －"}
       if (V.kind === "up") return { reason: "激發態區域比假真空還高，不需要再循環" };
       if (!(V.eps > 0) || U.crunchedAt(Q, c.cx, c.cy, t)) return { reason: "所在的宇宙 Λ ≤ 0：反德西特會塌縮、閔考斯基無法向上穿隧，無法再循環", trapped: true };
       if (V.eps < VAC[P2.vac].eps) return { reason: "所在的宇宙真空能比你低（正在吞沒你），無法在這裡再循環" };
-      const r0 = PLAYER.recycle.margin * (LH ? cLight / hIn(Q) : p.RH);
+      const r0 = PLAYER.recycle.margin * W.regionSpace(Q).hubble;
       return { Q, c, r0, cost: (FALSE_EPS - V.eps) * Math.PI * r0 * r0 / (p.RH * p.RH) };
     }
-    function actRecycle(a, t, k) {
+    W.onAction("recycle", (a, t, k) => {
       const P2 = U.player;
       if (!P2) return { ok: false, reason: "沒有玩家宇宙" };
       const R = recycleAt(P2, t);
       if (R.reason) return { ok: false, reason: R.reason };
-      const { Q, c, r0, cost } = R, F = U.frame(t), circles = [];
-      for (const b2 of U.live) if (b2.texit > t && b2 !== P2) circles.push(U.circleAt(b2, t));
+      const { Q, c, r0, cost } = R, F = U.frame(t), circles = W.liveCircles(t, P2);
       const qc = circles.find((o) => o.b === Q);
       if (Territory.arrival(qc, c.cx, c.cy) > -(r0 + 2)) return { ok: false, reason: `口袋宇宙不夠大（需要半徑 ${(r0 / p.RH).toFixed(2)} RH 的空間）` };
       for (let j = 0; j < 24; j++) {
@@ -1686,11 +1759,11 @@ details[open] summary::after{content:" －"}
         if (!o || o.b !== Q) return { ok: false, reason: "範圍跨越了其他宇宙的地盤" };
       }
       if (P2.ctl.E < cost) return { ok: false, reason: `能量不足（需要 ${cost.toFixed(2)}）` };
-      const b = addBubble(c.cx, c.cy, Math.hypot(c.cx, c.cy), t, Q, { vac: rfVac, s: -1, r0, seed: hash(p.seed, a.step, k) });
+      const b = W.addBubble(c.cx, c.cy, Math.hypot(c.cx, c.cy), t, Q, { vac: rfVac, s: -1, r0, seed: hash(p.seed, a.step, k) });
       P2.ctl.E -= cost;
       P2.ctl.loss += cost;
       return { ok: true, id: b.id, cost, r0 };
-    }
+    }, true);
     U.recycleCheck = () => U.player ? recycleAt(U.player, U.tSim) : null;
     function release(b, t) {
       b.player = false;
@@ -1698,55 +1771,17 @@ details[open] summary::after{content:" －"}
       const c = U.circleAt(b, t), C = b.ctl;
       C.warp = null;
       C.repay = null;
-      pushSeg(b, t, c.cx, c.cy, c.r, 0, 0, cLight, LH ? C.reg[segIndex(C, t)] : null);
+      pushSeg(b, t, c.cx, c.cy, c.r, 0, 0, cLight, C.reg[W.segIndex(C, t)]);
       C.free = true;
       C.releasedAt = t;
-      if (LH && C.reg[C.reg.length - 1]) {
+      if (W.regionSpace(C.reg[C.reg.length - 1]).region) {
         b.texit = Infinity;
         b.dyn = true;
-      } else b.texit = exitTime(1, Math.hypot(c.cx, c.cy), c.r, t);
-    }
-    function pushSeg(b, t, x, y, r, ux, uy, w, reg = null, vx = 0, vy = 0) {
-      const C = b.ctl, n = C.t.length, h = LH ? hIn(reg) : p.H;
-      if (LH && reg) {
-        const rc = anchorAt(reg, t);
-        x -= rc.cx;
-        y -= rc.cy;
-      }
-      if (n && C.t[n - 1] === t) {
-        C.x[n - 1] = x;
-        C.y[n - 1] = y;
-        C.r[n - 1] = r;
-        C.ux[n - 1] = ux;
-        C.uy[n - 1] = uy;
-        C.vx[n - 1] = vx;
-        C.vy[n - 1] = vy;
-        C.w[n - 1] = w;
-        C.reg[n - 1] = reg;
-        C.h[n - 1] = h;
-        return;
-      }
-      C.t.push(t);
-      C.x.push(x);
-      C.y.push(y);
-      C.r.push(r);
-      C.ux.push(ux);
-      C.uy.push(uy);
-      C.vx.push(vx);
-      C.vy.push(vy);
-      C.w.push(w);
-      C.reg.push(reg);
-      C.h.push(h);
-    }
-    function regionOf(b, t, c) {
-      const cs = [];
-      for (const o of U.live) if (o !== b && o.tn <= t && o.texit > t) cs.push(U.circleAt(o, t));
-      const own = Territory.ownerAt(U.frame(t), cs, c.cx, c.cy);
-      return own ? own.b : null;
+      } else b.texit = W.exitTime(1, Math.hypot(c.cx, c.cy), c.r, t);
     }
     function decide(b, t) {
       const C = b.ctl, c = cLight, cur = U.circleAt(b, t);
-      const reg = LH ? regionOf(b, t, cur) : null, h = LH ? hIn(reg) : p.H;
+      const reg = LH ? regionOf(b, t, cur) : null, h = W.regionSpace(reg).h;
       let w, ux = 0, uy = 0;
       if (C.warp && (C.exhausted || h * cur.r >= c)) endWarp(b, t, C.exhausted ? "力竭" : "失控");
       let vx = 0, vy = 0;
@@ -1778,10 +1813,9 @@ details[open] summary::after{content:" －"}
       const t0 = t - STEP;
       if (b.tn > t0 + 1e-9) return;
       const C = b.ctl, c0 = U.circleAt(b, t0), c1 = U.circleAt(b, t);
-      const si = segIndex(C, t0 + STEP / 2), reg = LH ? C.reg[si] : null, hr = LH ? C.h[si] : p.H, e = Math.exp(hr * STEP);
+      const si = W.segIndex(C, t0 + STEP / 2), hr = C.h[si], e = Math.exp(hr * STEP);
       const g = hr > 1e-9 ? (e - 1) / hr : STEP, Vx = C.vx[si] * g, Vy = C.vy[si] * g;
-      const r0c = reg ? anchorAt(reg, t0) : null, r1c = reg ? anchorAt(reg, t) : null;
-      const adv = (x, y) => reg ? [r1c.cx + (x - r0c.cx) * e + Vx, r1c.cy + (y - r0c.cy) * e + Vy] : [x * e + Vx, y * e + Vy];
+      const adv = W.regionSpace(C.reg[si]).advector(t0, t, e, Vx, Vy);
       const Rs = Math.max(c0.r, c1.r) + 6, n = Math.max(4, Math.min(PLAYER.latticeMax, Math.ceil(Rs / PLAYER.cell))), sp = Rs / n;
       const near = (tt, cx, cy, R) => {
         const out = [];
@@ -1859,7 +1893,7 @@ details[open] summary::after{content:" －"}
         }
       }
     }
-    function playerStep(t) {
+    W.playerStep = (t) => {
       for (const b of U.live) if (b.ctl && b.texit > t) contacts(b, t);
       const P2 = U.player;
       if (!P2) return;
@@ -1886,17 +1920,88 @@ details[open] summary::after{content:" －"}
         if (C.mode === "survival" && C.E <= 0) C.exhausted = true;
       }
       if (U.player === P2) decide(P2, t);
-    }
-    U.player = null;
+    };
+  }
+
+  // src/core/actions.js
+  function installActions(W, replay) {
+    const { U, p, VAC } = W;
+    const handlers2 = /* @__PURE__ */ new Map();
+    W.onAction = (type, fn, seeded = false) => handlers2.set(type, { fn, seeded });
+    U.actions = [];
+    let pendingAct = 0, actSeq = 0;
+    const queueAct = (a) => {
+      a.seq = actSeq++;
+      let i = U.actions.length;
+      while (i > pendingAct && U.actions[i - 1].step > a.step) i--;
+      U.actions.splice(i, 0, a);
+      return a;
+    };
+    U.act = (a) => queueAct({ ...a, step: U.stepN + 1, t: void 0, result: void 0 });
+    U.actionLog = () => U.actions.map(({ t, result, seq, ...rest }) => rest);
+    for (const a of (replay || []).slice().sort((p1, p2) => p1.step - p2.step)) queueAct({ ...a, t: void 0, result: void 0 });
+    U.pendingActions = () => U.actions.slice(pendingAct);
+    W.hasPending = () => pendingAct < U.actions.length;
+    W.applyActions = (step) => {
+      let k = 0;
+      while (pendingAct < U.actions.length && U.actions[pendingAct].step <= step) {
+        const a = U.actions[pendingAct++], h = handlers2.get(a.type);
+        a.t = U.tSim;
+        a.result = !h ? { ok: false, reason: "未知的動作" } : h.seeded ? h.fn(a, U.tSim, k++) : h.fn(a, U.tSim);
+        W.notify("act", a);
+      }
+    };
+    W.onAction("nucleate", (a, t, k) => {
+      const V = VAC[a.vac];
+      if (!V || !isFinite(a.x) || !isFinite(a.y)) return { ok: false, reason: "參數錯誤" };
+      const F = U.frame(t), circles = W.liveCircles(t);
+      const own = Territory.ownerAt(F, circles, a.x, a.y), pe = own ? VAC[own.b.vac].eps : FALSE_EPS;
+      if (own && own.b.player) return { ok: false, reason: "不能放在玩家宇宙裡" };
+      if (own && U.crunchedAt(own.b, a.x, a.y, t)) return { ok: false, reason: "這裡已走到大擠壓，時空已經結束" };
+      const P2 = a.by === "player" ? U.player : null;
+      if (a.by === "player") {
+        if (!P2) return { ok: false, reason: "沒有玩家宇宙" };
+        if (P2.ctl.exhausted) return { ok: false, reason: "力竭中，無法施放" };
+        const pc = U.circleAt(P2, t);
+        if (Math.hypot(a.x - pc.cx, a.y - pc.cy) - pc.r > PLAYER.range * p.RH) return { ok: false, reason: "超出影響範圍（泡壁外一個哈伯半徑）" };
+      }
+      if (V.eps === pe) return { ok: false, reason: "這裡已經是這種真空" };
+      const up = V.eps > pe;
+      let r0 = p.R0;
+      if (up) {
+        r0 = a.r === void 0 ? 0.4 * p.RH : +a.r;
+        if (!(r0 >= 2 * p.R0 && r0 <= 3 * p.RH)) return { ok: false, reason: "向上穿隧區域的大小不合理" };
+      }
+      if (own && Territory.arrival(own, a.x, a.y) > -(up ? r0 + 2 : p.R0 * 2)) return { ok: false, reason: "太靠近泡壁" };
+      if (up) {
+        for (let j = 0; j < 24; j++) {
+          const th = TAU * j / 24, o = Territory.ownerAt(F, circles, a.x + Math.cos(th) * (r0 + 2), a.y + Math.sin(th) * (r0 + 2));
+          if ((o ? o.b : null) !== (own ? own.b : null)) return { ok: false, reason: "範圍跨越了其他宇宙的地盤" };
+        }
+      }
+      const cost = P2 ? up ? (V.eps - pe) * Math.PI * r0 * r0 / (p.RH * p.RH) : PLAYER.downCost : 0;
+      if (P2 && P2.ctl.E < cost) return { ok: false, reason: `能量不足（需要 ${cost.toFixed(2)}）` };
+      const b = W.addBubble(a.x, a.y, Math.hypot(a.x, a.y), t, own ? own.b : null, { vac: a.vac, s: up ? -1 : 1, r0, seed: hash(p.seed, a.step, k) });
+      if (P2) {
+        P2.ctl.E -= cost;
+        P2.ctl.loss += cost;
+      }
+      return { ok: true, id: b.id, up, cost };
+    }, true);
+  }
+
+  // src/core/focus.js
+  function installFocus(W) {
+    const { U, p } = W;
     U.recenters = 0;
     U.comoving = { x: 0, y: 0 };
     function rebase(ax, ay, t, smooth = false) {
       const H = p.H, seen = /* @__PURE__ */ new Set();
-      cacheEpoch++;
+      W.invalidate();
       const move = (b) => {
         if (seen.has(b)) return;
         seen.add(b);
-        const e = b.ctl ? Math.exp(H * (b.tn - t)) : 1 / E(b, t);
+        const e = b.ctl ? Math.exp(H * (b.tn - t)) : 1 / W.E(b, t);
         b.x -= ax * e;
         b.y -= ay * e;
         b.d = Math.hypot(b.x, b.y);
@@ -1917,8 +2022,8 @@ details[open] summary::after{content:" －"}
         if (!(b.texit > t) || b.retired || b.player || b.dyn) continue;
         if (b.ctl) {
           const c = U.circleAt(b, t);
-          b.texit = exitTime(1, Math.hypot(c.cx, c.cy), c.r, t);
-        } else b.texit = exitTime(b.s, b.d, b.r0, b.tn);
+          b.texit = W.exitTime(1, Math.hypot(c.cx, c.cy), c.r, t);
+        } else b.texit = W.exitTime(b.s, b.d, b.r0, b.tn);
         if (b.texit <= t) b.texit = t + STEP / 2;
         if (!b.long && !(b.texit - b.tn <= LONG)) {
           b.long = true;
@@ -1929,142 +2034,93 @@ details[open] summary::after{content:" －"}
       U.comoving.x += ax * e0;
       U.comoving.y += ay * e0;
       U.recenters++;
-      for (const fn of listeners.rebase) fn({ x: ax, y: ay, t, smooth });
+      W.notify("rebase", { x: ax, y: ay, t, smooth });
     }
     U.rebase = (ax, ay) => rebase(ax, ay, U.tSim);
-    function follow(t) {
+    W.follow = (t) => {
       const P2 = U.player;
       if (!P2) return;
       const c = U.circleAt(P2, t);
       if (Math.hypot(c.cx, c.cy) > PLAYER.recenter * p.RH) rebase(c.cx, c.cy, t);
-    }
+    };
     U.obsRegion = null;
-    function comove(t) {
-      const P2 = U.obsRegion;
-      if (P2) {
-        const c0 = anchorAt(P2, t - STEP), c1 = anchorAt(P2, t), e = Math.exp(hIn(P2) * STEP);
+    W.comove = (t) => {
+      const R = U.obsRegion;
+      if (R) {
+        const c0 = W.anchorAt(R, t - STEP), c1 = W.anchorAt(R, t), e = Math.exp(W.hIn(R) * STEP);
         const qx = c1.cx - c0.cx * e, qy = c1.cy - c0.cy * e;
         if (qx * qx + qy * qy > 1e-12) rebase(qx, qy, t, true);
       }
       const o = U.ownerAt(0, 0, t);
       U.obsRegion = o ? o.b : null;
-    }
-    function keepAnchors(t) {
-      const o = U.ownerAt(0, 0, t);
-      for (let R = o ? o.b : null; R; R = R.parent) {
-        if (R.ctl && R.player) continue;
-        const A = anchorAt(R, t);
-        if (!R.anc || t - R.anc.tk > 5 || Math.hypot(A.cx, A.cy) > p.RH) reanchor(R, 0, 0, t);
-      }
-    }
-    function sweep(t) {
-      for (const b of U.live) {
-        if (!b.dyn || !(b.texit > t) || b.retired || b.player) continue;
-        const c = U.circleAt(b, t);
-        if (Math.hypot(c.cx, c.cy) - c.r > p.RGEN + 60 || b.s < 0 && c.r <= 0) b.texit = t + STEP / 2;
-      }
-    }
-    function applyActions(step) {
-      let k = 0;
-      while (pendingAct < U.actions.length && U.actions[pendingAct].step <= step) {
-        const a = U.actions[pendingAct++];
-        a.t = U.tSim;
-        a.result = a.type === "nucleate" ? actNucleate(a, U.tSim, k++) : a.type === "spawn" ? actSpawn(a, U.tSim, k++) : a.type === "steer" ? actSteer(a) : a.type === "warp" ? actWarp(a, U.tSim) : a.type === "recycle" ? actRecycle(a, U.tSim, k++) : { ok: false, reason: "未知的動作" };
-        for (const fn of listeners.act) fn(a);
-      }
-    }
-    U.pendingActions = () => U.actions.slice(pendingAct);
-    function retire() {
-      const t = U.tSim, Rg = p.RGEN + 200;
-      const live = U.live.filter((b) => b.texit > t && b.tn < t);
-      if (live.length < 2) return;
-      const C = new Map(live.map((b) => [b, U.circleAt(b, t)]));
-      const covers = (c) => Math.hypot(c.cx, c.cy) + Rg < c.r;
-      const ring = [];
-      for (let k = 0; k < 48; k++) ring.push([Math.cos(TAU * k / 48) * Rg, Math.sin(TAU * k / 48) * Rg]);
-      ring.push([0, 0]);
-      const F = U.frame(t);
-      for (const b of live) {
-        if (isFinite(b.texit) || b.player) continue;
-        const cb = C.get(b);
-        for (const o of live) {
-          if (o === b) continue;
-          const co = C.get(o);
-          if (!covers(co)) continue;
-          let gone = false;
-          if (Territory.isAncestor(b, o)) gone = true;
-          else if (!Territory.related(b, o)) {
-            const R = Territory.rule(F, co, cb);
-            if (!R) gone = false;
-            else if (R.kind === "merge") gone = covers(cb) && (o.tn < b.tn || o.tn === b.tn && o.id < b.id);
-            else if (R.kind === "wall") gone = R.W === co && ring.every(([x, y]) => Territory.arrival(cb, x, y) >= 0 || !R.g.lSide(x, y));
-            else if (R.kind === "inherit") {
-              if (R.X === cb) gone = !R.free && (!R.g || ring.every(([x, y]) => !R.g.lSide(x, y)));
-              else gone = !!R.free;
-            }
-          }
-          if (gone) {
-            b.texit = t + STEP / 2;
-            b.retired = true;
-            notify("retire", b);
-            break;
-          }
-        }
-      }
-    }
+    };
+  }
+
+  // src/core/universe.js
+  function createUniverse(p, tune2, opts = {}) {
+    const rng = mulberry32(p.seed);
+    const VAC = makeLandscape(rng, p);
+    const U = {
+      p,
+      tune: tune2,
+      VAC,
+      tSim: 0,
+      acc: 0,
+      tStart: 0,
+      trimmed: 0,
+      hist: [],
+      longs: [],
+      live: [],
+      buckets: [],
+      bucketBase: 0,
+      vacCount: VAC.map(() => 0),
+      window: 1200,
+      nextId: 1,
+      stepN: 0
+    };
+    Object.defineProperty(U, "tLive", { get: () => U.tSim + U.acc });
+    const listeners = { born: [], retire: [], act: [], rebase: [] };
+    U.on = (name, fn) => {
+      listeners[name].push(fn);
+      return () => {
+        const a = listeners[name], i = a.indexOf(fn);
+        if (i >= 0) a.splice(i, 1);
+      };
+    };
+    const notify = (name, x) => {
+      for (const fn of listeners[name]) fn(x);
+    };
+    const W = { U, p, tune: tune2, VAC, rng, notify, LH: !!p.localH, cLight: p.H * p.RH };
+    installSpace(W);
+    installWalls(W);
+    installWorld(W);
+    installActions(W, opts.actions);
+    installPlayer(W);
+    installFocus(W);
+    const LH = W.LH;
     U.advance = (dt) => {
       U.acc += dt;
       let n = 0;
       while (U.acc >= STEP && n < 2e4) {
         U.acc -= STEP;
         U.tSim += STEP;
-        if (pendingAct < U.actions.length) applyActions(U.stepN + 1);
-        if (U.player) follow(U.tSim);
-        else if (LH) comove(U.tSim);
-        if (LH) keepAnchors(U.tSim);
-        nucleate();
-        if (U.player || U.anyCtl) playerStep(U.tSim);
+        if (W.hasPending()) W.applyActions(U.stepN + 1);
+        if (U.player) W.follow(U.tSim);
+        else if (LH) W.comove(U.tSim);
+        if (LH) W.keepAnchors(U.tSim);
+        W.nucleate();
+        if (U.player || U.anyCtl) W.playerStep(U.tSim);
         if (LH) {
-          if (U.stepN % 15 === 0) sweep(U.tSim);
-          cacheEpoch++;
+          if (U.stepN % 15 === 0) W.sweep(U.tSim);
+          W.invalidate();
         }
-        if (++U.stepN % 30 === 0) retire();
+        if (++U.stepN % 30 === 0) W.retire();
         n++;
       }
       if (U.live.some((b) => b.texit <= U.tSim)) U.live = U.live.filter((b) => b.texit > U.tSim);
       const k = Math.floor(U.tLive / BUCKET) - U.bucketBase;
       while (U.buckets.length <= k) U.buckets.push(0);
       U.trim();
-    };
-    U.trim = () => {
-      const tl = U.tLive;
-      let cut = tl - U.window;
-      if (U.hist.length > MAXB) cut = Math.max(cut, U.hist[U.hist.length - Math.floor(MAXB * 0.9)].tn + LONG + 1);
-      cut = Math.min(cut, tl - 5);
-      if (cut <= U.tStart + 0.5) return;
-      U.tStart = cut;
-      const idx = U.bornBy(cut - LONG - 1);
-      if (idx > 0) {
-        U.hist.splice(0, idx);
-        U.trimmed += idx;
-      }
-      if (U.longs.some((b) => b.texit <= cut)) U.longs = U.longs.filter((b) => b.texit > cut);
-      for (const b of U.longs) if (b.ctl) {
-        const C = b.ctl;
-        let k = 0;
-        while (k + 1 < C.t.length && C.t[k + 1] <= cut - 1) k++;
-        if (k) for (const key of ["t", "x", "y", "r", "ux", "uy", "w"]) C[key].splice(0, k);
-        for (const [id, arr] of C.contacts) {
-          const kept = arr.filter((iv) => iv[1] >= cut - LONG);
-          if (kept.length) C.contacts.set(id, kept);
-          else C.contacts.delete(id);
-        }
-      }
-      const kb = Math.floor(cut / BUCKET) - U.bucketBase;
-      if (kb > 0) {
-        U.buckets.splice(0, kb);
-        U.bucketBase += kb;
-      }
     };
     U.presim = (sec) => {
       for (let i = 0; i < Math.round(sec / STEP); i++) U.advance(STEP);
@@ -2073,9 +2129,8 @@ details[open] summary::after{content:" －"}
     return U;
   }
 
-  // src/core/selfcheck.js
-  var PLAYER_RECENTER = PLAYER.recenter;
-  function buildSelfCheck(extraP = {}) {
+  // src/core/checks/helpers.js
+  function makeHelpers(extraP = {}) {
     const baseP = { seed: 4242, H: 0.25, RH: 140, R0: 3, RGEN: 3e3, typical: false, vacN: 12, crunchP: 0.25, oddDimP: 0.15, ...extraP };
     const baseT = () => ({ gamma: 25e-7, innerMul: 1, wallK: 1 });
     function buildRules(U, t) {
@@ -2191,7 +2246,13 @@ details[open] summary::after{content:" －"}
         U.presim(1);
       }
     }
-    const tests = [
+    return { baseP, baseT, buildRules, ownerMismatch, rayMismatch, actionUniverse, spawnPlayer, playerUniverse, autopilot };
+  }
+
+  // src/core/checks/world.js
+  var world_default = (h) => {
+    const { baseP, baseT, buildRules, ownerMismatch, rayMismatch } = h;
+    return [
       { name: "可重現性", desc: "同一個種子、以不同的時間切分推進，前 25 秒的每個泡泡必須完全相同", run() {
         const A = createUniverse(baseP, baseT()), B = createUniverse(baseP, baseT());
         for (let i = 0; i < 30 * 30; i++) A.advance(STEP);
@@ -2233,6 +2294,178 @@ details[open] summary::after{content:" －"}
         const { bad, n } = rayMismatch(buildRules(U, 60).cs, mulberry32(7));
         return { pass: bad / n < 0.01, detail: `${n} 條射線中 ${bad} 條不吻合（${(bad / Math.max(1, n) * 100).toFixed(2)}%）` };
       } },
+      { name: "穿隧率正確", desc: "實際成核次數必須符合各區域真空的穿隧率（以隨機取樣估計預期值）", run() {
+        const U = createUniverse(baseP, baseT());
+        U.presim(90);
+        const r = mulberry32(11), G = U.tune.gamma, RG = U.p.RGEN, T0 = 20, T1 = U.tSim;
+        let accFV = 0, accIn = 0, S2 = 5e3;
+        for (let i = 0; i < S2; i++) {
+          const t = T0 + r() * (T1 - T0), rr = RG * Math.sqrt(r()), a = r() * TAU, x = Math.cos(a) * rr, y = Math.sin(a) * rr;
+          if (rr < U.p.RH + U.p.R0 + 3) continue;
+          const own = U.ownerAt(x, y, t);
+          if (!own) accFV++;
+          else if (Territory.arrival(own, x, y) <= -U.p.R0 * 2) accIn += U.VAC[own.b.vac].grel * U.tune.innerMul;
+        }
+        const vol = Math.PI * RG * RG * (T1 - T0), eTop = G * vol * accFV / S2, eIn = G * vol * accIn / S2;
+        let top = 0, inn = 0;
+        for (const b of U.hist) {
+          if (b.tn < T0) continue;
+          if (b.parent) inn++;
+          else top++;
+        }
+        const ok = Math.abs(top - eTop) < 0.12 * eTop + 30 && Math.abs(inn - eIn) < 0.15 * eIn + 30;
+        return { pass: ok, detail: `假真空：預期約 ${Math.round(eTop)}、實際 ${top}；口袋宇宙內部：預期約 ${Math.round(eIn)}、實際 ${inn}` };
+      } },
+      { name: "觀測者歸屬不跳回", desc: "典型觀測者模式下連續演化 400 秒：觀測者所在的宇宙一旦換掉就不會再換回來，永遠存在的巨大泡泡也不會累積", run() {
+        let returns = 0, maxEternal = 0, n = 0;
+        for (const seed of [1, 4, 7, 23, 4242]) {
+          const U = createUniverse({ ...baseP, seed, typical: true }, baseT());
+          const seen = /* @__PURE__ */ new Set();
+          let prev = null;
+          for (let t = 0; t < 400; t += 0.5) {
+            U.advance(0.5);
+            n++;
+            const o = U.observer(U.tSim), id = o.b ? o.b.id : 0;
+            if (id !== prev) {
+              if (seen.has(id)) returns++;
+              seen.add(id);
+              prev = id;
+            }
+          }
+          maxEternal = Math.max(maxEternal, U.live.filter((b) => !isFinite(b.texit) && !b.dyn).length);
+        }
+        return { pass: !returns && maxEternal <= 3, detail: `5 個宇宙、${n} 個時間點：跳回 ${returns} 次；最後同時存在的永久泡泡最多 ${maxEternal} 個` };
+      } },
+      { name: "交界線連續", desc: "沿多條掃描線找出畫面上所有「兩種不同真空（或真空與假真空）相鄰」的地方，每一處都必須有泡壁或疇壁線經過，特別是三個泡泡的交會處", run() {
+        let total = 0, miss = 0;
+        for (const seed of [99, 7]) {
+          const U = createUniverse({ ...baseP, seed }, baseT());
+          U.presim(60);
+          const t = U.tSim, { cs, F, byB } = buildRules(U, t);
+          cs.slice().sort((a, b) => Territory.drawOrder(F, a, b)).forEach((c, n) => c.ord = n);
+          const candsOf = (v) => {
+            const set = /* @__PURE__ */ new Set([v]);
+            for (const R of v.rules) set.add(Territory.otherOf(R, v));
+            for (const k of v.kids || []) set.add(k);
+            for (let q = v.b.parent; q; q = q.parent) {
+              const c = byB.get(q);
+              if (c) set.add(c);
+            }
+            return [...set];
+          };
+          const B = { x0: -1300, y0: -1300, x1: 1300, y1: 1300 };
+          const grid = /* @__PURE__ */ new Map(), put = (x, y) => {
+            const k = Math.floor(x / 4) + "," + Math.floor(y / 4);
+            grid.set(k, (grid.get(k) || []).concat([[x, y]]));
+          };
+          const seen = /* @__PURE__ */ new Set();
+          for (const c of cs) for (const R of c.rules) {
+            if (R.kind === "inherit" || seen.has(R)) continue;
+            seen.add(R);
+            const dw = R.kind === "wall" ? Territory.domainWall(R, candsOf(R.W).concat(candsOf(R.L)), B) : Territory.mergeCurve(R, candsOf(R.A).concat(candsOf(R.B)), B);
+            if (!dw) continue;
+            for (const [a, b2] of dw.segs) {
+              const [x0, y0] = dw.P(a), [x1, y1] = dw.P(b2);
+              const n = Math.min(4e3, Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 1.5) + 8);
+              for (let i = 0; i <= n; i++) {
+                const [x, y] = dw.P(a + (b2 - a) * i / n);
+                put(x, y);
+              }
+            }
+          }
+          for (const c of cs) {
+            if (c.cx + c.r < B.x0 || c.cx - c.r > B.x1 || c.cy + c.r < B.y0 || c.cy - c.r > B.y1) continue;
+            const cd = candsOf(c), n = Math.min(4e4, Math.ceil(c.r * TAU));
+            for (let i = 0; i < n; i++) {
+              const a = TAU * i / n, x = c.cx + Math.cos(a) * c.r, y = c.cy + Math.sin(a) * c.r;
+              if (x < B.x0 || x > B.x1 || y < B.y0 || y > B.y1) continue;
+              if (Territory.shellVisible(c, cd, x, y, Math.cos(a), Math.sin(a), 1.5)) put(x, y);
+            }
+          }
+          const near = (x, y) => {
+            const gx = Math.floor(x / 4), gy = Math.floor(y / 4);
+            for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (const [px, py] of grid.get(gx + i + "," + (gy + j)) || []) if (Math.hypot(px - x, py - y) < 3) return true;
+            return false;
+          };
+          for (let y = B.y0 + 17; y < B.y1; y += 40) {
+            let prev = Territory.displayOwner(cs, B.x0, y);
+            for (let x = B.x0 + 1; x <= B.x1; x += 1) {
+              const cur = Territory.displayOwner(cs, x, y);
+              if (cur !== prev && (!cur || !prev || cur.b.vac !== prev.b.vac)) {
+                total++;
+                if (!near(x - 0.5, y)) miss++;
+              }
+              prev = cur;
+            }
+          }
+        }
+        return { pass: total > 0 && miss / total < 5e-3, detail: `${total} 處交界中，沒有線經過的有 ${miss} 處（${(miss / Math.max(1, total) * 100).toFixed(2)}%）` };
+      } },
+      { name: "長時間數值穩定", desc: "典型觀測者模式、高膨脹率下連續演化 40 分鐘，所有幾何量都必須是有限數值", run() {
+        const U = createUniverse({ ...baseP, seed: 23, typical: true, H: 0.6, RH: 140 }, baseT());
+        const t0 = performance.now();
+        U.presim(40 * 60);
+        const ms = performance.now() - t0;
+        const t = U.tSim, cs = U.aliveAt(t).map((b) => U.circleAt(b, t));
+        const finite = cs.every((c) => isFinite(c.cx) && isFinite(c.cy) && isFinite(c.r));
+        const obs = U.observer(t);
+        return { pass: finite && !!obs, detail: `${cs.length} 個存活泡泡，數值${finite ? "全部有限" : "出現無限大"}；40 分鐘的演化耗時 ${(ms / 1e3).toFixed(1)} 秒` };
+      } },
+      { name: "疇壁穩定", desc: "以每秒 60 格的間隔連續計算 2 秒，疇壁不應忽隱忽現（出現又在 10 格內消失，或反之）", run() {
+        const U = createUniverse(baseP, baseT());
+        U.presim(60);
+        const hist = /* @__PURE__ */ new Map();
+        let obs = 0;
+        for (let i = 0; i < 120; i++) {
+          const t = 58 + i / 60, { cs, F, byB } = buildRules(U, t), seen = /* @__PURE__ */ new Set();
+          cs.slice().sort((a, b) => Territory.drawOrder(F, a, b)).forEach((c, n) => c.ord = n);
+          const candsOf = (v) => {
+            const set = /* @__PURE__ */ new Set([v]);
+            for (const R of v.rules) set.add(Territory.otherOf(R, v));
+            for (const k of v.kids || []) set.add(k);
+            for (let q = v.b.parent; q; q = q.parent) {
+              const c = byB.get(q);
+              if (c) set.add(c);
+            }
+            return [...set];
+          };
+          for (const c of cs) for (const R of c.rules) {
+            if (R.kind !== "wall" || seen.has(R)) continue;
+            seen.add(R);
+            const k = R.W.b.id + ":" + R.L.b.id, dw = Territory.domainWall(R, candsOf(R.W).concat(candsOf(R.L)));
+            let len = 0;
+            if (dw) for (const [a2, b2] of dw.segs) {
+              let p0 = dw.P(a2);
+              for (let j = 1; j <= 12; j++) {
+                const q = dw.P(a2 + (b2 - a2) * j / 12);
+                len += Math.hypot(q[0] - p0[0], q[1] - p0[1]);
+                p0 = q;
+              }
+            }
+            if (!hist.has(k)) hist.set(k, []);
+            hist.get(k)[i] = len > 2;
+            obs++;
+          }
+        }
+        let flick = 0;
+        for (const arr of hist.values()) {
+          for (let i = 1; i < arr.length; i++) {
+            if (arr[i] === void 0 || arr[i - 1] === void 0 || arr[i] === arr[i - 1]) continue;
+            for (let j = i + 1; j < Math.min(arr.length, i + 10); j++) if (arr[j] === arr[i - 1]) {
+              flick++;
+              break;
+            }
+          }
+        }
+        return { pass: flick === 0, detail: `${obs} 次觀測中忽隱忽現 ${flick} 次` };
+      } }
+    ];
+  };
+
+  // src/core/checks/actions.js
+  var actions_default = (h) => {
+    const { baseP, baseT, buildRules, ownerMismatch, rayMismatch, actionUniverse } = h;
+    return [
       { name: "動作紀錄可重現", desc: "同一個種子加上同一份動作紀錄（以不同的時間切分重播）必須得到完全相同的歷史與動作結果；動作之前的歷史與沒有動作時完全相同（動作不消耗主亂數）", run() {
         const A = actionUniverse(4242), T = A.tSim;
         const B = createUniverse(baseP, baseT(), { actions: A.actionLog() });
@@ -2311,7 +2544,14 @@ details[open] summary::after{content:" －"}
           pass: lyN > 0 && rays > 100 && sides > 50 && mis / n < 2e-3 && bad / rays < 0.01 && !sideBad,
           detail: `輸家後畫的情況 ${lyN} 次（疇壁兩側取樣 ${sides} 點，歸屬錯誤 ${sideBad}）；${n} 個取樣點中 ${mis} 個不一致；${rays} 條射線中 ${bad} 條不吻合（${(bad / Math.max(1, rays) * 100).toFixed(2)}%）`
         };
-      } },
+      } }
+    ];
+  };
+
+  // src/core/checks/player.js
+  var player_default = (h) => {
+    const { baseP, baseT, buildRules, ownerMismatch, rayMismatch, spawnPlayer, playerUniverse } = h;
+    return [
       { name: "玩家宇宙：泡壁不超光速", desc: "隨機操控玩家宇宙 40 秒：每一步泡壁各點相對當地空間的速度 |u| + |w| 不超過光速，軌跡在各段交界處連續", run() {
         let over = 0, jump = 0, n = 0, worst = 0;
         for (const seed of [4242, 99]) {
@@ -2651,6 +2891,59 @@ details[open] summary::after{content:" －"}
         if (R2.fingerprint(T0.W.tSim) !== T0.W.fingerprint(T0.W.tSim) || R2.player) fails.push("重播不一致");
         return { pass: !fails.length, detail: fails.length ? fails.join("；") : `${detail1}；困在 Λ ≤ 0 ${RC.trapT} 秒後遊戲結束、曲速逃出則存活；重播一致` };
       } },
+      { name: "玩家宇宙：在較低真空的泡泡內（領域中的洞）", desc: "較低真空的泡泡 X 的光錐包住玩家、推進前緣還沒到時，X 的領域中間有一個洞（玩家）。畫面把它拆成「射線多邊形（不理會洞）」扣掉「洞（從玩家中心沿射線求出）」：在 X 的圓內取點，拆解的結果必須與 drawContains 相同（射線法若被洞擋住，玩家背後整片會漏畫）", run() {
+        const U = createUniverse(baseP, { ...baseT(), gamma: 0 });
+        U.presim(1);
+        const V = U.VAC.filter((v) => v.eps < 1 && v.kind !== "up").sort((a, b) => a.eps - b.eps);
+        const pv = V[Math.floor(V.length * 0.6)], xv = V.filter((v) => v.eps < pv.eps).pop();
+        spawnPlayer(U, pv.i, 25, 1, 0, 0, "relaxed");
+        const P2 = U.player;
+        if (!P2) return { pass: false, detail: "玩家誕生失敗" };
+        const c = U.circleAt(P2, U.tSim), xa = U.act({ type: "nucleate", x: c.cx + 70, y: c.cy, vac: xv.i });
+        U.advance(STEP);
+        const r = mulberry32(17);
+        let frames = 0, n = 0, bad = 0;
+        for (let i = 0; i < 60 && U.player; i++) {
+          U.advance(0.1);
+          const { cs } = buildRules(U, U.tSim), X = cs.find((q) => q.b.id === xa.result.id);
+          if (!X) continue;
+          const holes = X.rules.filter((R) => Territory.isHole(R, X));
+          if (!holes.length) continue;
+          frames++;
+          const L = holes[0].L;
+          for (let k = 0; k < 300; k++) {
+            const near = k < 150, rr = near ? L.r * 4 * Math.sqrt(r()) : X.r * Math.sqrt(r()), a = r() * TAU;
+            const ox = near ? L.cx : X.cx, oy = near ? L.cy : X.cy, x = ox + Math.cos(a) * rr, y = oy + Math.sin(a) * rr;
+            const dx = x - X.cx, dy = y - X.cy, d = Math.hypot(dx, dy);
+            if (d < 1e-6 || d >= X.r) continue;
+            const rho = Territory.cellRay(X, dx / d, dy / d, X.r);
+            if (Math.abs(d - rho) < 1e-6 * X.r) continue;
+            let inHole = false;
+            for (const R of holes) {
+              const hx = x - R.L.cx, hy = y - R.L.cy, s = Math.hypot(hx, hy);
+              if (s >= R.L.r) continue;
+              const [h0, h1] = s > 0 ? Territory.holeSpan(R, hx / s, hy / s) : Territory.holeSpan(R, 1, 0);
+              if (Math.abs(s - h0) < 1e-6 * R.L.r || Math.abs(s - h1) < 1e-6 * R.L.r) {
+                inHole = null;
+                break;
+              }
+              if (s >= h0 && s < h1) inHole = true;
+            }
+            if (inHole === null) continue;
+            n++;
+            if ((d < rho && !inHole) !== Territory.drawContains(X, x, y)) bad++;
+          }
+        }
+        return { pass: frames >= 5 && n > 1e3 && !bad, detail: `有洞的時刻 ${frames} 個；${n} 個點中 ${bad} 個與 drawContains 不一致` };
+      } }
+    ];
+  };
+
+  // src/core/checks/focus.js
+  var PLAYER_RECENTER = PLAYER.recenter;
+  var focus_default = (h) => {
+    const { baseP, baseT, spawnPlayer, autopilot } = h;
+    return [
       { name: "焦點跟隨：平移不變", desc: "把原點換到另一個共動點：所有圓只差一個平移、半徑不變，每一點的歸屬與換之前相同；仍在模擬範圍內的泡泡不會被丟棄", run() {
         const U = createUniverse(baseP, baseT());
         U.presim(40);
@@ -2787,219 +3080,14 @@ details[open] summary::after{content:" －"}
           pass: isFinite(texit0) && U.tSim > texit0 + 5 && inside > 20 && !lost && U.recenters > 3,
           detail: `泡泡原本的流出時刻 ${texit0.toFixed(1)} 秒（現在 ${U.tSim.toFixed(1)} 秒）；包住玩家的 ${inside} 次觀測中被丟棄 ${lost} 次；置中 ${U.recenters} 次`
         };
-      } },
-      { name: "穿隧率正確", desc: "實際成核次數必須符合各區域真空的穿隧率（以隨機取樣估計預期值）", run() {
-        const U = createUniverse(baseP, baseT());
-        U.presim(90);
-        const r = mulberry32(11), G = U.tune.gamma, RG = U.p.RGEN, T0 = 20, T1 = U.tSim;
-        let accFV = 0, accIn = 0, S2 = 5e3;
-        for (let i = 0; i < S2; i++) {
-          const t = T0 + r() * (T1 - T0), rr = RG * Math.sqrt(r()), a = r() * TAU, x = Math.cos(a) * rr, y = Math.sin(a) * rr;
-          if (rr < U.p.RH + U.p.R0 + 3) continue;
-          const own = U.ownerAt(x, y, t);
-          if (!own) accFV++;
-          else if (Territory.arrival(own, x, y) <= -U.p.R0 * 2) accIn += U.VAC[own.b.vac].grel * U.tune.innerMul;
-        }
-        const vol = Math.PI * RG * RG * (T1 - T0), eTop = G * vol * accFV / S2, eIn = G * vol * accIn / S2;
-        let top = 0, inn = 0;
-        for (const b of U.hist) {
-          if (b.tn < T0) continue;
-          if (b.parent) inn++;
-          else top++;
-        }
-        const ok = Math.abs(top - eTop) < 0.12 * eTop + 30 && Math.abs(inn - eIn) < 0.15 * eIn + 30;
-        return { pass: ok, detail: `假真空：預期約 ${Math.round(eTop)}、實際 ${top}；口袋宇宙內部：預期約 ${Math.round(eIn)}、實際 ${inn}` };
-      } },
-      { name: "觀測者歸屬不跳回", desc: "典型觀測者模式下連續演化 400 秒：觀測者所在的宇宙一旦換掉就不會再換回來，永遠存在的巨大泡泡也不會累積", run() {
-        let returns = 0, maxEternal = 0, n = 0;
-        for (const seed of [1, 4, 7, 23, 4242]) {
-          const U = createUniverse({ ...baseP, seed, typical: true }, baseT());
-          const seen = /* @__PURE__ */ new Set();
-          let prev = null;
-          for (let t = 0; t < 400; t += 0.5) {
-            U.advance(0.5);
-            n++;
-            const o = U.observer(U.tSim), id = o.b ? o.b.id : 0;
-            if (id !== prev) {
-              if (seen.has(id)) returns++;
-              seen.add(id);
-              prev = id;
-            }
-          }
-          maxEternal = Math.max(maxEternal, U.live.filter((b) => !isFinite(b.texit) && !b.dyn).length);
-        }
-        return { pass: !returns && maxEternal <= 3, detail: `5 個宇宙、${n} 個時間點：跳回 ${returns} 次；最後同時存在的永久泡泡最多 ${maxEternal} 個` };
-      } },
-      { name: "玩家宇宙：在較低真空的泡泡內（領域中的洞）", desc: "較低真空的泡泡 X 的光錐包住玩家、推進前緣還沒到時，X 的領域中間有一個洞（玩家）。畫面把它拆成「射線多邊形（不理會洞）」扣掉「洞（從玩家中心沿射線求出）」：在 X 的圓內取點，拆解的結果必須與 drawContains 相同（射線法若被洞擋住，玩家背後整片會漏畫）", run() {
-        const U = createUniverse(baseP, { ...baseT(), gamma: 0 });
-        U.presim(1);
-        const V = U.VAC.filter((v) => v.eps < 1 && v.kind !== "up").sort((a, b) => a.eps - b.eps);
-        const pv = V[Math.floor(V.length * 0.6)], xv = V.filter((v) => v.eps < pv.eps).pop();
-        spawnPlayer(U, pv.i, 25, 1, 0, 0, "relaxed");
-        const P2 = U.player;
-        if (!P2) return { pass: false, detail: "玩家誕生失敗" };
-        const c = U.circleAt(P2, U.tSim), xa = U.act({ type: "nucleate", x: c.cx + 70, y: c.cy, vac: xv.i });
-        U.advance(STEP);
-        const r = mulberry32(17);
-        let frames = 0, n = 0, bad = 0;
-        for (let i = 0; i < 60 && U.player; i++) {
-          U.advance(0.1);
-          const { cs } = buildRules(U, U.tSim), X = cs.find((q) => q.b.id === xa.result.id);
-          if (!X) continue;
-          const holes = X.rules.filter((R) => Territory.isHole(R, X));
-          if (!holes.length) continue;
-          frames++;
-          const L = holes[0].L;
-          for (let k = 0; k < 300; k++) {
-            const near = k < 150, rr = near ? L.r * 4 * Math.sqrt(r()) : X.r * Math.sqrt(r()), a = r() * TAU;
-            const ox = near ? L.cx : X.cx, oy = near ? L.cy : X.cy, x = ox + Math.cos(a) * rr, y = oy + Math.sin(a) * rr;
-            const dx = x - X.cx, dy = y - X.cy, d = Math.hypot(dx, dy);
-            if (d < 1e-6 || d >= X.r) continue;
-            const rho = Territory.cellRay(X, dx / d, dy / d, X.r);
-            if (Math.abs(d - rho) < 1e-6 * X.r) continue;
-            let inHole = false;
-            for (const R of holes) {
-              const hx = x - R.L.cx, hy = y - R.L.cy, s = Math.hypot(hx, hy);
-              if (s >= R.L.r) continue;
-              const [h0, h1] = s > 0 ? Territory.holeSpan(R, hx / s, hy / s) : Territory.holeSpan(R, 1, 0);
-              if (Math.abs(s - h0) < 1e-6 * R.L.r || Math.abs(s - h1) < 1e-6 * R.L.r) {
-                inHole = null;
-                break;
-              }
-              if (s >= h0 && s < h1) inHole = true;
-            }
-            if (inHole === null) continue;
-            n++;
-            if ((d < rho && !inHole) !== Territory.drawContains(X, x, y)) bad++;
-          }
-        }
-        return { pass: frames >= 5 && n > 1e3 && !bad, detail: `有洞的時刻 ${frames} 個；${n} 個點中 ${bad} 個與 drawContains 不一致` };
-      } },
-      { name: "交界線連續", desc: "沿多條掃描線找出畫面上所有「兩種不同真空（或真空與假真空）相鄰」的地方，每一處都必須有泡壁或疇壁線經過，特別是三個泡泡的交會處", run() {
-        let total = 0, miss = 0;
-        for (const seed of [99, 7]) {
-          const U = createUniverse({ ...baseP, seed }, baseT());
-          U.presim(60);
-          const t = U.tSim, { cs, F, byB } = buildRules(U, t);
-          cs.slice().sort((a, b) => Territory.drawOrder(F, a, b)).forEach((c, n) => c.ord = n);
-          const candsOf = (v) => {
-            const set = /* @__PURE__ */ new Set([v]);
-            for (const R of v.rules) set.add(Territory.otherOf(R, v));
-            for (const k of v.kids || []) set.add(k);
-            for (let q = v.b.parent; q; q = q.parent) {
-              const c = byB.get(q);
-              if (c) set.add(c);
-            }
-            return [...set];
-          };
-          const B = { x0: -1300, y0: -1300, x1: 1300, y1: 1300 };
-          const grid = /* @__PURE__ */ new Map(), put = (x, y) => {
-            const k = Math.floor(x / 4) + "," + Math.floor(y / 4);
-            grid.set(k, (grid.get(k) || []).concat([[x, y]]));
-          };
-          const seen = /* @__PURE__ */ new Set();
-          for (const c of cs) for (const R of c.rules) {
-            if (R.kind === "inherit" || seen.has(R)) continue;
-            seen.add(R);
-            const dw = R.kind === "wall" ? Territory.domainWall(R, candsOf(R.W).concat(candsOf(R.L)), B) : Territory.mergeCurve(R, candsOf(R.A).concat(candsOf(R.B)), B);
-            if (!dw) continue;
-            for (const [a, b2] of dw.segs) {
-              const [x0, y0] = dw.P(a), [x1, y1] = dw.P(b2);
-              const n = Math.min(4e3, Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 1.5) + 8);
-              for (let i = 0; i <= n; i++) {
-                const [x, y] = dw.P(a + (b2 - a) * i / n);
-                put(x, y);
-              }
-            }
-          }
-          for (const c of cs) {
-            if (c.cx + c.r < B.x0 || c.cx - c.r > B.x1 || c.cy + c.r < B.y0 || c.cy - c.r > B.y1) continue;
-            const cd = candsOf(c), n = Math.min(4e4, Math.ceil(c.r * TAU));
-            for (let i = 0; i < n; i++) {
-              const a = TAU * i / n, x = c.cx + Math.cos(a) * c.r, y = c.cy + Math.sin(a) * c.r;
-              if (x < B.x0 || x > B.x1 || y < B.y0 || y > B.y1) continue;
-              if (Territory.shellVisible(c, cd, x, y, Math.cos(a), Math.sin(a), 1.5)) put(x, y);
-            }
-          }
-          const near = (x, y) => {
-            const gx = Math.floor(x / 4), gy = Math.floor(y / 4);
-            for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (const [px, py] of grid.get(gx + i + "," + (gy + j)) || []) if (Math.hypot(px - x, py - y) < 3) return true;
-            return false;
-          };
-          for (let y = B.y0 + 17; y < B.y1; y += 40) {
-            let prev = Territory.displayOwner(cs, B.x0, y);
-            for (let x = B.x0 + 1; x <= B.x1; x += 1) {
-              const cur = Territory.displayOwner(cs, x, y);
-              if (cur !== prev && (!cur || !prev || cur.b.vac !== prev.b.vac)) {
-                total++;
-                if (!near(x - 0.5, y)) miss++;
-              }
-              prev = cur;
-            }
-          }
-        }
-        return { pass: total > 0 && miss / total < 5e-3, detail: `${total} 處交界中，沒有線經過的有 ${miss} 處（${(miss / Math.max(1, total) * 100).toFixed(2)}%）` };
-      } },
-      { name: "長時間數值穩定", desc: "典型觀測者模式、高膨脹率下連續演化 40 分鐘，所有幾何量都必須是有限數值", run() {
-        const U = createUniverse({ ...baseP, seed: 23, typical: true, H: 0.6, RH: 140 }, baseT());
-        const t0 = performance.now();
-        U.presim(40 * 60);
-        const ms = performance.now() - t0;
-        const t = U.tSim, cs = U.aliveAt(t).map((b) => U.circleAt(b, t));
-        const finite = cs.every((c) => isFinite(c.cx) && isFinite(c.cy) && isFinite(c.r));
-        const obs = U.observer(t);
-        return { pass: finite && !!obs, detail: `${cs.length} 個存活泡泡，數值${finite ? "全部有限" : "出現無限大"}；40 分鐘的演化耗時 ${(ms / 1e3).toFixed(1)} 秒` };
-      } },
-      { name: "疇壁穩定", desc: "以每秒 60 格的間隔連續計算 2 秒，疇壁不應忽隱忽現（出現又在 10 格內消失，或反之）", run() {
-        const U = createUniverse(baseP, baseT());
-        U.presim(60);
-        const hist = /* @__PURE__ */ new Map();
-        let obs = 0;
-        for (let i = 0; i < 120; i++) {
-          const t = 58 + i / 60, { cs, F, byB } = buildRules(U, t), seen = /* @__PURE__ */ new Set();
-          cs.slice().sort((a, b) => Territory.drawOrder(F, a, b)).forEach((c, n) => c.ord = n);
-          const candsOf = (v) => {
-            const set = /* @__PURE__ */ new Set([v]);
-            for (const R of v.rules) set.add(Territory.otherOf(R, v));
-            for (const k of v.kids || []) set.add(k);
-            for (let q = v.b.parent; q; q = q.parent) {
-              const c = byB.get(q);
-              if (c) set.add(c);
-            }
-            return [...set];
-          };
-          for (const c of cs) for (const R of c.rules) {
-            if (R.kind !== "wall" || seen.has(R)) continue;
-            seen.add(R);
-            const k = R.W.b.id + ":" + R.L.b.id, dw = Territory.domainWall(R, candsOf(R.W).concat(candsOf(R.L)));
-            let len = 0;
-            if (dw) for (const [a2, b2] of dw.segs) {
-              let p0 = dw.P(a2);
-              for (let j = 1; j <= 12; j++) {
-                const q = dw.P(a2 + (b2 - a2) * j / 12);
-                len += Math.hypot(q[0] - p0[0], q[1] - p0[1]);
-                p0 = q;
-              }
-            }
-            if (!hist.has(k)) hist.set(k, []);
-            hist.get(k)[i] = len > 2;
-            obs++;
-          }
-        }
-        let flick = 0;
-        for (const arr of hist.values()) {
-          for (let i = 1; i < arr.length; i++) {
-            if (arr[i] === void 0 || arr[i - 1] === void 0 || arr[i] === arr[i - 1]) continue;
-            for (let j = i + 1; j < Math.min(arr.length, i + 10); j++) if (arr[j] === arr[i - 1]) {
-              flick++;
-              break;
-            }
-          }
-        }
-        return { pass: flick === 0, detail: `${obs} 次觀測中忽隱忽現 ${flick} 次` };
       } }
     ];
-    if (baseP.localH) tests.push(
+  };
+
+  // src/core/checks/regions.js
+  var regions_default = (h) => {
+    const { baseP, baseT, spawnPlayer } = h;
+    return [
       { name: "方案 B：子泡泡留在母泡泡內", desc: "子泡泡以母宇宙內部的膨脹率流動（比母宇宙所在區域慢），它的光錐必須一直留在母泡泡的光錐內", run() {
         let bad = 0, n = 0;
         for (const [seed, typical] of [[4242, false], [99, false], [23, true]]) {
@@ -3052,12 +3140,19 @@ details[open] summary::after{content:" －"}
         const Q = U.hist.find((b) => b.id === a.result.id), n = P2.ctl.t.length - 1, inPocket = P2.ctl.reg[n] === Q;
         const E0 = P2.ctl.E;
         U.presim(6);
-        const h = U.hIn(Q), r = U.circleAt(P2, U.tSim).r, theory = 2 * Math.PI * h * (hi.eps - lo.eps) * (r / U.p.RH) ** 2 * 6, loss = E0 - P2.ctl.E;
+        const h2 = U.hIn(Q), r = U.circleAt(P2, U.tSim).r, theory = 2 * Math.PI * h2 * (hi.eps - lo.eps) * (r / U.p.RH) ** 2 * 6, loss = E0 - P2.ctl.E;
         const fv = 2 * Math.PI * U.p.H * (1 - lo.eps) * (r / U.p.RH) ** 2 * 6;
         return { pass: inPocket && Math.abs(loss - theory) < 0.08 * theory + 5e-3, detail: `玩家${inPocket ? "在" : "不在"}口袋內；6 秒維持費 ${loss.toFixed(3)}（理論 ${theory.toFixed(3)}，在假真空中會是 ${fv.toFixed(3)}）` };
       } }
-    );
-    return { tests, buildRules };
+    ];
+  };
+
+  // src/core/selfcheck.js
+  function buildSelfCheck(extraP = {}) {
+    const h = makeHelpers(extraP);
+    const tests = [...world_default(h), ...actions_default(h), ...player_default(h), ...focus_default(h)];
+    if (h.baseP.localH) tests.push(...regions_default(h));
+    return { tests, buildRules: h.buildRules };
   }
   var SelfCheck = buildSelfCheck();
   var SelfCheckB = buildSelfCheck({ localH: true });
@@ -3442,7 +3537,7 @@ details[open] summary::after{content:" －"}
     starPat = ctx.createPattern(makeStars(), "repeat");
   }
 
-  // src/render/scene.js
+  // src/render/layout.js
   var visByB = /* @__PURE__ */ new Map();
   function candOf(v) {
     if (v.cand) return v.cand;
@@ -3456,32 +3551,7 @@ details[open] summary::after{content:" －"}
     return v.cand = [...set].filter((c) => c.ord !== void 0).sort((a, b) => b.ord - a.ord);
   }
   var mergeCands = (a, b) => [...new Set(candOf(a).concat(candOf(b)))].sort((p, q) => q.ord - p.ord);
-  var opt = { grid: true, warp: true, hz: true, q: true, neb: true, stars: true, col: true, flash: true, lbl: true, vig: true };
   var walls = [];
-  var AX = 0;
-  var AY = 0;
-  var RHS = 0;
-  var TQ = 0;
-  var WX = 0;
-  var WY = 0;
-  var T_R = 0;
-  var PH = 0;
-  var AW = 1;
-  var anchors = [];
-  function anchorList(t) {
-    const [ax, ay] = toS(0, 0), out = [{ sx: ax, sy: ay, w: 1 }], F = S.anchorFade;
-    if (!F) return out;
-    const f = (performance.now() - F.t0) / 600;
-    if (f >= 1 || f < 0) {
-      S.anchorFade = null;
-      return out;
-    }
-    const e = Math.exp(S.HUB * (t - F.t)), [ox, oy] = toS(F.x * e, F.y * e), s = f * f * (3 - 2 * f);
-    out[0].w = s;
-    out.push({ sx: ox, sy: oy, w: 1 - s });
-    return out;
-  }
-  var warpList = [];
   function screenCircle(b, t) {
     const c = S.U.circleAt(b, t);
     return { b, cx: S.vw / 2 + (c.cx - P.x) * S.Z, cy: S.vh / 2 + (c.cy - P.y) * S.Z, r: c.r * S.Z, px: c.cx, py: c.cy, pr: c.r };
@@ -3526,6 +3596,9 @@ details[open] summary::after{content:" －"}
   }
   var BIG = 2e4;
   var drawn = { order: [], first: 0 };
+  function setDrawn(order, first) {
+    drawn = { order, first };
+  }
   function paintedAt(sx, sy) {
     const { order, first } = drawn, X = sx * S.dpr, Y = sy * S.dpr;
     for (let i = order.length - 1; i >= first; i--) {
@@ -3551,34 +3624,6 @@ details[open] summary::after{content:" －"}
     return { x0: -40, y0: -40, x1: S.vw + 40, y1: S.vh + 40 };
   }
   var viewWedge = (cx, cy) => Territory.boxWedge(cx, cy, viewBox());
-  function radialGrad(cx, cy, r0, r1, stops) {
-    const css = (s) => `rgba(${s[1] | 0},${s[2] | 0},${s[3] | 0},${s[4]})`;
-    const D = Math.hypot(S.vw / 2 - cx, S.vh / 2 - cy), diag = Math.hypot(S.vw, S.vh) / 2 + 40;
-    if (r1 < BIG || D < 1) {
-      const g2 = ctx.createRadialGradient(cx, cy, r0, cx, cy, r1);
-      for (const s of stops) g2.addColorStop(s[0], css(s));
-      return g2;
-    }
-    const nx = (S.vw / 2 - cx) / D, ny = (S.vh / 2 - cy) / D, da = Math.max(r0, D - diag), db = Math.max(da + 1, D + diag);
-    const g = ctx.createLinearGradient(cx + nx * da, cy + ny * da, cx + nx * db, cy + ny * db);
-    const at = (rho) => {
-      const f = (rho - r0) / (r1 - r0);
-      if (f <= stops[0][0]) return stops[0];
-      for (let i = 1; i < stops.length; i++) if (f <= stops[i][0]) {
-        const a = stops[i - 1], b = stops[i], t = (f - a[0]) / (b[0] - a[0] || 1);
-        return [f, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t, a[4] + (b[4] - a[4]) * t];
-      }
-      return stops[stops.length - 1];
-    };
-    g.addColorStop(0, css(at(da)));
-    for (const s of stops) {
-      const u = (r0 + s[0] * (r1 - r0) - da) / (db - da);
-      if (u > 0 && u < 1) g.addColorStop(u, css(s));
-    }
-    g.addColorStop(1, css(at(db)));
-    return g;
-  }
-  var C4 = (c, a) => [c[0], c[1], c[2], a];
   function cellPath(v, cap) {
     ctx.beginPath();
     const lim = cap === void 0 ? Math.max(0.6, v.r) : Math.min(v.r, cap);
@@ -3768,6 +3813,79 @@ details[open] summary::after{content:" －"}
     const dw = R.kind === "wall" ? Territory.domainWall(R, mergeCands(R.W, R.L), viewBox()) : Territory.mergeCurve(R, mergeCands(R.A, R.B), viewBox());
     return dw && dw.segs.length ? polysOf(dw) : null;
   }
+  function polysOf(dw) {
+    const out = [];
+    for (const [t0, t1] of dw.segs) {
+      const p0 = dw.P(t0), pm = dw.P((t0 + t1) / 2), p1 = dw.P(t1);
+      const len = Math.hypot(pm[0] - p0[0], pm[1] - p0[1]) + Math.hypot(p1[0] - pm[0], p1[1] - pm[1]);
+      const K2 = Math.max(6, Math.min(160, Math.ceil(len / 6))), arr = new Float32Array((K2 + 1) * 2);
+      for (let i = 0; i <= K2; i++) {
+        const [x, y] = dw.P(t0 + (t1 - t0) * i / K2);
+        arr[2 * i] = x;
+        arr[2 * i + 1] = y;
+      }
+      out.push(arr);
+    }
+    return out;
+  }
+
+  // src/render/style.js
+  var opt = { grid: true, warp: true, hz: true, q: true, neb: true, stars: true, col: true, flash: true, lbl: true, vig: true };
+  var rgba = (c, a) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+  var mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+  var WHITE = [255, 255, 255];
+  var C4 = (c, a) => [c[0], c[1], c[2], a];
+  function radialGrad(cx, cy, r0, r1, stops) {
+    const css = (s) => `rgba(${s[1] | 0},${s[2] | 0},${s[3] | 0},${s[4]})`;
+    const D = Math.hypot(S.vw / 2 - cx, S.vh / 2 - cy), diag = Math.hypot(S.vw, S.vh) / 2 + 40;
+    if (r1 < BIG || D < 1) {
+      const g2 = ctx.createRadialGradient(cx, cy, r0, cx, cy, r1);
+      for (const s of stops) g2.addColorStop(s[0], css(s));
+      return g2;
+    }
+    const nx = (S.vw / 2 - cx) / D, ny = (S.vh / 2 - cy) / D, da = Math.max(r0, D - diag), db = Math.max(da + 1, D + diag);
+    const g = ctx.createLinearGradient(cx + nx * da, cy + ny * da, cx + nx * db, cy + ny * db);
+    const at = (rho) => {
+      const f = (rho - r0) / (r1 - r0);
+      if (f <= stops[0][0]) return stops[0];
+      for (let i = 1; i < stops.length; i++) if (f <= stops[i][0]) {
+        const a = stops[i - 1], b = stops[i], t = (f - a[0]) / (b[0] - a[0] || 1);
+        return [f, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t, a[4] + (b[4] - a[4]) * t];
+      }
+      return stops[stops.length - 1];
+    };
+    g.addColorStop(0, css(at(da)));
+    for (const s of stops) {
+      const u = (r0 + s[0] * (r1 - r0) - da) / (db - da);
+      if (u > 0 && u < 1) g.addColorStop(u, css(s));
+    }
+    g.addColorStop(1, css(at(db)));
+    return g;
+  }
+
+  // src/render/backdrop.js
+  var AX = 0;
+  var AY = 0;
+  var RHS = 0;
+  var TQ = 0;
+  var WX = 0;
+  var WY = 0;
+  var AW = 1;
+  var anchors = [];
+  function anchorList(t) {
+    const [ax, ay] = toS(0, 0), out = [{ sx: ax, sy: ay, w: 1 }], F = S.anchorFade;
+    if (!F) return out;
+    const f = (performance.now() - F.t0) / 600;
+    if (f >= 1 || f < 0) {
+      S.anchorFade = null;
+      return out;
+    }
+    const e = Math.exp(S.HUB * (t - F.t)), [ox, oy] = toS(F.x * e, F.y * e), s = f * f * (3 - 2 * f);
+    out[0].w = s;
+    out.push({ sx: ox, sy: oy, w: 1 - s });
+    return out;
+  }
+  var warpList = [];
   function warp(x, y) {
     let dx = 0, dy = 0;
     if (!opt.warp || K.warp <= 0) {
@@ -3903,41 +4021,77 @@ details[open] summary::after{content:" －"}
     }
     ctx.restore();
   }
-  var rgba = (c, a) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
-  var mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
-  function heatGeo(v) {
-    const T2 = v.b.heatT;
-    if (!isFinite(T2)) return null;
-    const A = v.age, T1 = T2 * 0.35;
-    if (A <= T1) return null;
-    return { x0: Math.sqrt(1 - (T1 / A) ** 2), x1: A > T2 ? Math.sqrt(1 - (T2 / A) ** 2) : 0, prog: Math.min(1, (A - T1) / (T2 - T1)) };
+  function beginBackdrop(t) {
+    [AX, AY] = toS(0, 0);
+    RHS = S.RH * S.Z;
+    TQ = t;
+    anchors = anchorList(t);
+    const u = S.HUB * t / Math.LN2 + Math.log2(S.Z);
+    return u - Math.floor(u);
   }
-  function crunchGeo(v) {
-    const b = v.b;
-    if (!b.crunch) return null;
-    const A = v.age, tc = b.crunchT, tt = tc * 0.55;
-    if (A <= tt) return null;
-    return { xt: Math.sqrt(1 - (tt / A) ** 2), xc: A > tc ? Math.sqrt(1 - (tc / A) ** 2) : 0, heat: Math.min(1, (A - tt) / (tc - tt)) };
+  function drawNebula(ph) {
+    ctx.globalCompositeOperation = "lighter";
+    if (opt.neb && K.neb > 0) for (const A of anchors) for (let k = 0; k < 3; k++) {
+      const x = ph + k, w = Math.pow(Math.sin(Math.PI * x / 3), 2), s = 1.7 * Math.pow(2, x - 1);
+      nebPat.setTransform(new DOMMatrix().translateSelf(A.sx, A.sy).rotateSelf(x * 8).scaleSelf(s));
+      ctx.globalAlpha = Math.min(1, w * 0.52 * K.neb) * A.w;
+      ctx.fillStyle = nebPat;
+      ctx.fillRect(0, 0, S.vw, S.vh);
+    }
+    ctx.globalAlpha = 1;
   }
-  var TEX_VMAX = 30;
-  var texPhase = /* @__PURE__ */ new Map();
-  var texStepped = /* @__PURE__ */ new Set();
+  function buildWarp() {
+    warpList.length = 0;
+    for (const v of S.vis) {
+      if (v.full || v.sr < 5) continue;
+      const ww = Math.max(8, Math.min(60, v.sr * 0.12));
+      warpList.push({
+        sx: v.sx,
+        sy: v.sy,
+        sr: v.sr,
+        ww,
+        amp: Math.min(14, 3 + v.sr * 0.06),
+        i2: Math.max(0, v.sr - 2.5 * ww) ** 2,
+        o2: (v.sr + 3 * ww) ** 2
+      });
+      if (warpList.length > QL[S.qLevel].warp) break;
+    }
+  }
+  function drawAnchored(t, ph) {
+    const keep = [AX, AY];
+    for (const A of anchors) {
+      AX = A.sx;
+      AY = A.sy;
+      AW = A.w;
+      if (opt.grid) drawGrid(ph);
+      if (opt.q) drawRipples(t);
+      if (opt.hz) drawHorizon();
+    }
+    [AX, AY] = keep;
+    AW = 1;
+  }
+  function drawFog() {
+    ctx.globalCompositeOperation = "source-over";
+    const fr = S.RGEN * S.Z;
+    const fog = ctx.createRadialGradient(AX, AY, fr * 0.8, AX, AY, fr * 0.93);
+    fog.addColorStop(0, "rgba(12,8,32,0)");
+    fog.addColorStop(1, "rgba(12,8,32,1)");
+    ctx.fillStyle = fog;
+    ctx.fillRect(0, 0, S.vw, S.vh);
+    if (opt.vig) {
+      const vg = ctx.createRadialGradient(S.vw / 2, S.vh / 2, Math.min(S.vw, S.vh) * 0.35, S.vw / 2, S.vh / 2, Math.hypot(S.vw, S.vh) * 0.6);
+      vg.addColorStop(0, "rgba(6,3,18,0)");
+      vg.addColorStop(1, "rgba(6,3,18,.55)");
+      ctx.fillStyle = vg;
+      ctx.fillRect(0, 0, S.vw, S.vh);
+    }
+  }
+
+  // src/render/walls.js
   var wallFade = /* @__PURE__ */ new Map();
   var wallFadeLast = performance.now();
-  function polysOf(dw) {
-    const out = [];
-    for (const [t0, t1] of dw.segs) {
-      const p0 = dw.P(t0), pm = dw.P((t0 + t1) / 2), p1 = dw.P(t1);
-      const len = Math.hypot(pm[0] - p0[0], pm[1] - p0[1]) + Math.hypot(p1[0] - pm[0], p1[1] - pm[1]);
-      const K2 = Math.max(6, Math.min(160, Math.ceil(len / 6))), arr = new Float32Array((K2 + 1) * 2);
-      for (let i = 0; i <= K2; i++) {
-        const [x, y] = dw.P(t0 + (t1 - t0) * i / K2);
-        arr[2 * i] = x;
-        arr[2 * i + 1] = y;
-      }
-      out.push(arr);
-    }
-    return out;
+  function resetWalls() {
+    wallFade.clear();
   }
   function normalsOf(p) {
     if (p._n) return p._n;
@@ -3960,7 +4114,6 @@ details[open] summary::after{content:" －"}
       }
     }
   }
-  var WHITE = [255, 255, 255];
   function drawWallStyled(f, ph) {
     const st = f.style, a = f.a;
     if (st.seam) {
@@ -4007,10 +4160,106 @@ details[open] summary::after{content:" －"}
     ctx.strokeStyle = rgba(mix(st.colM, WHITE, 0.4), al);
     ctx.stroke();
   }
+  function drawWalls(T_R2) {
+    if (opt.col) {
+      const now = performance.now(), dtr = Math.min(0.1, (now - wallFadeLast) / 1e3);
+      wallFadeLast = now;
+      const seen = /* @__PURE__ */ new Set();
+      for (const R of walls) {
+        const isWall = R.kind === "wall", A = isWall ? R.W : R.A, Bv = isWall ? R.L : R.B;
+        const age = T_R2 - S.U.contactStart(A.b, Bv.b, T_R2), flash = age >= 0 && age < 3 ? (1 - age / 3) ** 2 : 0;
+        if (!isWall && flash > 0.01) {
+          const sm = Territory.mergeCurve(R, mergeCands(A, Bv), viewBox(), 1.5, true);
+          if (sm && sm.segs.length) {
+            const k2 = "s" + A.b.id + ":" + Bv.b.id;
+            seen.add(k2);
+            wallFade.set(k2, { a: 1, pts: polysOf(sm), style: { seam: true, col: S.PAL[A.b.vac].wall, flash } });
+          }
+        }
+        const pl = wallPolylines(R);
+        if (!pl) continue;
+        const k = R.kind[0] + A.b.id + ":" + Bv.b.id;
+        seen.add(k);
+        let f = wallFade.get(k);
+        if (!f) {
+          f = { a: 0 };
+          wallFade.set(k, f);
+        }
+        const cd = mergeCands(A, Bv), p0 = pl[0], nr0 = normalsOf(p0), m = p0.length >> 2 << 1;
+        const mx = p0[m], my = p0[m + 1], nx = nr0[m], ny = nr0[m + 1];
+        const oP = Territory.displayOwner(cd, mx + nx * 2.5, my + ny * 2.5), oM = Territory.displayOwner(cd, mx - nx * 2.5, my - ny * 2.5);
+        const colP = S.PAL[(oP || A).b.vac].wall, colM = S.PAL[(oM || Bv).b.vac].wall;
+        const eP = oP ? epsOf(oP.b) : epsOf(A.b), eM = oM ? epsOf(oM.b) : epsOf(Bv.b);
+        const D = Math.abs(eP - eM), str = D / (D + 0.25);
+        f.a = Math.min(1, f.a + dtr / 0.25);
+        f.pts = pl;
+        f.style = { colP, colM, str, sign: eP > eM ? 1 : -1, ripple: D > 0.02, flash: isWall ? flash : 0 };
+      }
+      const ph = T_R2;
+      for (const [k, f] of wallFade) {
+        if (!seen.has(k)) {
+          f.a -= dtr / 0.45;
+          if (f.a <= 0) {
+            wallFade.delete(k);
+            continue;
+          }
+        }
+        drawWallStyled(f, ph);
+      }
+    } else wallFade.clear();
+    for (const R of walls) {
+      if (R.kind !== "wall" || !(R.g.h > 0)) continue;
+      const A = R.W, B = R.L, x1 = R.g.p1x, y1 = R.g.p1y, x2 = R.g.p2x, y2 = R.g.p2y;
+      const ck = A.b.id + ":" + B.b.id;
+      if (!colSeen.has(ck)) {
+        colSeen.add(ck);
+        if (colSeen.size > 6e3) colSeen.clear();
+        S.pendingCol.push((x1 + x2) / (2 * S.vw) * 2 - 1);
+      }
+      if (!opt.col) continue;
+      const cm = mix(S.PAL[A.b.vac].wall, S.PAL[B.b.vac].wall, 0.5);
+      const fs = 6 + Math.min(16, Math.min(A.sr, B.sr) * 0.08);
+      for (const [fx, fy] of [[x1, y1], [x2, y2]]) {
+        if (fx < -fs || fy < -fs || fx > S.vw + fs || fy > S.vh + fs) continue;
+        if (A.rules.some((R2) => {
+          const o = Territory.otherOf(R2, A);
+          return o !== B && Math.hypot(fx - o.cx, fy - o.cy) < o.r - 0.5;
+        })) continue;
+        const g = ctx.createRadialGradient(fx, fy, 0, fx, fy, fs);
+        g.addColorStop(0, "rgba(255,255,255,.95)");
+        g.addColorStop(0.3, rgba(cm, 0.5));
+        g.addColorStop(1, rgba(cm, 0));
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(fx, fy, fs, 0, TAU);
+        ctx.fill();
+      }
+    }
+  }
+
+  // src/render/scene.js
+  var T_R = 0;
+  function heatGeo(v) {
+    const T2 = v.b.heatT;
+    if (!isFinite(T2)) return null;
+    const A = v.age, T1 = T2 * 0.35;
+    if (A <= T1) return null;
+    return { x0: Math.sqrt(1 - (T1 / A) ** 2), x1: A > T2 ? Math.sqrt(1 - (T2 / A) ** 2) : 0, prog: Math.min(1, (A - T1) / (T2 - T1)) };
+  }
+  function crunchGeo(v) {
+    const b = v.b;
+    if (!b.crunch) return null;
+    const A = v.age, tc = b.crunchT, tt = tc * 0.55;
+    if (A <= tt) return null;
+    return { xt: Math.sqrt(1 - (tt / A) ** 2), xc: A > tc ? Math.sqrt(1 - (tc / A) ** 2) : 0, heat: Math.min(1, (A - tt) / (tc - tt)) };
+  }
+  var TEX_VMAX = 30;
+  var texPhase = /* @__PURE__ */ new Map();
+  var texStepped = /* @__PURE__ */ new Set();
   function resetTemporal() {
     texPhase.clear();
     S.texLastT = null;
-    wallFade.clear();
+    resetWalls();
   }
   function drawBubbles(F) {
     const nowR = performance.now(), fdt = Math.min(0.1, (nowR - (drawBubbles.last || nowR)) / 1e3);
@@ -4047,7 +4296,7 @@ details[open] summary::after{content:" －"}
         break;
       }
     }
-    drawn = { order, first };
+    setDrawn(order, first);
     const dtv = Math.max(-0.25, Math.min(0.25, T_R - (S.texLastT === null ? T_R : S.texLastT)));
     S.texLastT = T_R;
     const rhoMax = /* @__PURE__ */ new Map();
@@ -4193,80 +4442,7 @@ details[open] summary::after{content:" －"}
         ctx.fill();
       }
     }
-    if (opt.col) {
-      const now = performance.now(), dtr = Math.min(0.1, (now - wallFadeLast) / 1e3);
-      wallFadeLast = now;
-      const seen = /* @__PURE__ */ new Set();
-      for (const R of walls) {
-        const isWall = R.kind === "wall", A = isWall ? R.W : R.A, Bv = isWall ? R.L : R.B;
-        const age = T_R - S.U.contactStart(A.b, Bv.b, T_R), flash = age >= 0 && age < 3 ? (1 - age / 3) ** 2 : 0;
-        if (!isWall && flash > 0.01) {
-          const sm = Territory.mergeCurve(R, mergeCands(A, Bv), viewBox(), 1.5, true);
-          if (sm && sm.segs.length) {
-            const k2 = "s" + A.b.id + ":" + Bv.b.id;
-            seen.add(k2);
-            wallFade.set(k2, { a: 1, pts: polysOf(sm), style: { seam: true, col: S.PAL[A.b.vac].wall, flash } });
-          }
-        }
-        const pl = wallPolylines(R);
-        if (!pl) continue;
-        const k = R.kind[0] + A.b.id + ":" + Bv.b.id;
-        seen.add(k);
-        let f = wallFade.get(k);
-        if (!f) {
-          f = { a: 0 };
-          wallFade.set(k, f);
-        }
-        const cd = mergeCands(A, Bv), p0 = pl[0], nr0 = normalsOf(p0), m = p0.length >> 2 << 1;
-        const mx = p0[m], my = p0[m + 1], nx = nr0[m], ny = nr0[m + 1];
-        const oP = Territory.displayOwner(cd, mx + nx * 2.5, my + ny * 2.5), oM = Territory.displayOwner(cd, mx - nx * 2.5, my - ny * 2.5);
-        const colP = S.PAL[(oP || A).b.vac].wall, colM = S.PAL[(oM || Bv).b.vac].wall;
-        const eP = oP ? epsOf(oP.b) : epsOf(A.b), eM = oM ? epsOf(oM.b) : epsOf(Bv.b);
-        const D = Math.abs(eP - eM), str = D / (D + 0.25);
-        f.a = Math.min(1, f.a + dtr / 0.25);
-        f.pts = pl;
-        f.style = { colP, colM, str, sign: eP > eM ? 1 : -1, ripple: D > 0.02, flash: isWall ? flash : 0 };
-      }
-      const ph = T_R;
-      for (const [k, f] of wallFade) {
-        if (!seen.has(k)) {
-          f.a -= dtr / 0.45;
-          if (f.a <= 0) {
-            wallFade.delete(k);
-            continue;
-          }
-        }
-        drawWallStyled(f, ph);
-      }
-    } else wallFade.clear();
-    for (const R of walls) {
-      if (R.kind !== "wall" || !(R.g.h > 0)) continue;
-      const A = R.W, B = R.L, x1 = R.g.p1x, y1 = R.g.p1y, x2 = R.g.p2x, y2 = R.g.p2y;
-      const ck = A.b.id + ":" + B.b.id;
-      if (!colSeen.has(ck)) {
-        colSeen.add(ck);
-        if (colSeen.size > 6e3) colSeen.clear();
-        S.pendingCol.push((x1 + x2) / (2 * S.vw) * 2 - 1);
-      }
-      if (!opt.col) continue;
-      const cm = mix(S.PAL[A.b.vac].wall, S.PAL[B.b.vac].wall, 0.5);
-      const fs = 6 + Math.min(16, Math.min(A.sr, B.sr) * 0.08);
-      for (const [fx, fy] of [[x1, y1], [x2, y2]]) {
-        if (fx < -fs || fy < -fs || fx > S.vw + fs || fy > S.vh + fs) continue;
-        if (A.rules.some((R2) => {
-          const o = Territory.otherOf(R2, A);
-          return o !== B && Math.hypot(fx - o.cx, fy - o.cy) < o.r - 0.5;
-        })) continue;
-        const g = ctx.createRadialGradient(fx, fy, 0, fx, fy, fs);
-        g.addColorStop(0, "rgba(255,255,255,.95)");
-        g.addColorStop(0.3, rgba(cm, 0.5));
-        g.addColorStop(1, rgba(cm, 0));
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.arc(fx, fy, fs, 0, TAU);
-        ctx.fill();
-      }
-    }
+    drawWalls(T_R);
     ctx.globalCompositeOperation = "source-over";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -4299,65 +4475,15 @@ details[open] summary::after{content:" －"}
     ctx.globalAlpha = 1;
     ctx.fillStyle = "#0c0820";
     ctx.fillRect(0, 0, S.vw, S.vh);
-    [AX, AY] = toS(0, 0);
-    RHS = S.RH * S.Z;
-    TQ = t;
     T_R = t;
-    anchors = anchorList(t);
-    const u = S.HUB * t / Math.LN2 + Math.log2(S.Z), ph = u - Math.floor(u);
-    PH = ph;
-    ctx.globalCompositeOperation = "lighter";
-    if (opt.neb && K.neb > 0) for (const A of anchors) for (let k = 0; k < 3; k++) {
-      const x = ph + k, w = Math.pow(Math.sin(Math.PI * x / 3), 2), s = 1.7 * Math.pow(2, x - 1);
-      nebPat.setTransform(new DOMMatrix().translateSelf(A.sx, A.sy).rotateSelf(x * 8).scaleSelf(s));
-      ctx.globalAlpha = Math.min(1, w * 0.52 * K.neb) * A.w;
-      ctx.fillStyle = nebPat;
-      ctx.fillRect(0, 0, S.vw, S.vh);
-    }
-    ctx.globalAlpha = 1;
+    const ph = beginBackdrop(t);
+    drawNebula(ph);
     const F = collect(t);
-    warpList.length = 0;
-    for (const v of S.vis) {
-      if (v.full || v.sr < 5) continue;
-      const ww = Math.max(8, Math.min(60, v.sr * 0.12));
-      warpList.push({
-        sx: v.sx,
-        sy: v.sy,
-        sr: v.sr,
-        ww,
-        amp: Math.min(14, 3 + v.sr * 0.06),
-        i2: Math.max(0, v.sr - 2.5 * ww) ** 2,
-        o2: (v.sr + 3 * ww) ** 2
-      });
-      if (warpList.length > QL[S.qLevel].warp) break;
-    }
-    const keep = [AX, AY];
-    for (const A of anchors) {
-      AX = A.sx;
-      AY = A.sy;
-      AW = A.w;
-      if (opt.grid) drawGrid(ph);
-      if (opt.q) drawRipples(t);
-      if (opt.hz) drawHorizon();
-    }
-    [AX, AY] = keep;
-    AW = 1;
+    buildWarp();
+    drawAnchored(t, ph);
     drawBubbles(F);
     emit("render:world", { ctx, t });
-    ctx.globalCompositeOperation = "source-over";
-    const fr = S.RGEN * S.Z;
-    const fog = ctx.createRadialGradient(AX, AY, fr * 0.8, AX, AY, fr * 0.93);
-    fog.addColorStop(0, "rgba(12,8,32,0)");
-    fog.addColorStop(1, "rgba(12,8,32,1)");
-    ctx.fillStyle = fog;
-    ctx.fillRect(0, 0, S.vw, S.vh);
-    if (opt.vig) {
-      const vg = ctx.createRadialGradient(S.vw / 2, S.vh / 2, Math.min(S.vw, S.vh) * 0.35, S.vw / 2, S.vh / 2, Math.hypot(S.vw, S.vh) * 0.6);
-      vg.addColorStop(0, "rgba(6,3,18,0)");
-      vg.addColorStop(1, "rgba(6,3,18,.55)");
-      ctx.fillStyle = vg;
-      ctx.fillRect(0, 0, S.vw, S.vh);
-    }
+    drawFog();
     emit("render:overlay", { ctx, t });
   }
 
@@ -4795,7 +4921,53 @@ details[open] summary::after{content:" －"}
     });
   }
 
-  // src/ui/selfcheck-ui.js
+  // src/ui/checks-render.js
+  var STD = { H: 0.25, RH: 140, R0: 3, RGEN: 3e3, typical: false, vacN: 12, crunchP: 0.25, oddDimP: 0.15 };
+  var testUniverse = (p, actions) => createUniverse({ ...STD, ...p }, { gamma: 25e-7, innerMul: 1, wallK: 1 }, { actions });
+  function inScene(fn) {
+    const keep = { U: S.U, PAL: S.PAL, HUB: S.HUB, RH: S.RH, R0: S.R0, RGEN: S.RGEN, Z: S.Z, px: P.x, py: P.y, fade: S.anchorFade, tv: S.tView, last: S.texLastT };
+    try {
+      return fn();
+    } catch (e) {
+      return { pass: false, detail: "發生錯誤：" + e.message };
+    } finally {
+      S.U = keep.U;
+      S.PAL = keep.PAL;
+      S.HUB = keep.HUB;
+      S.RH = keep.RH;
+      S.R0 = keep.R0;
+      S.RGEN = keep.RGEN;
+      S.Z = keep.Z;
+      P.x = keep.px;
+      P.y = keep.py;
+      S.anchorFade = keep.fade;
+      S.tView = keep.tv;
+      S.texLastT = keep.last;
+    }
+  }
+  function show(T) {
+    S.U = T;
+    S.PAL = buildPalettes(T.VAC);
+    S.HUB = T.p.H;
+    S.RH = T.p.RH;
+    S.R0 = T.p.R0;
+    S.RGEN = T.p.RGEN;
+    S.anchorFade = null;
+    S.tView = T.tSim;
+  }
+  function compareAround(T, Pl, fs) {
+    const vP = S.vis.find((v) => v.b === Pl);
+    let n = 0, bad = 0;
+    if (!vP) return { n, bad, vP };
+    for (let k = 0; k < 48; k++) for (const f of fs) {
+      const a = Math.PI * 2 * k / 48, sx = vP.cx + Math.cos(a) * vP.r * f, sy = vP.cy + Math.sin(a) * vP.r * f;
+      if (sx < 0 || sy < 0 || sx > S.vw || sy > S.vh || Math.abs(Math.hypot(sx - vP.cx, sy - vP.cy) - vP.r) < 3) continue;
+      const pv = paintedAt(sx, sy), o = T.ownerAt(P.x + (sx - S.vw / 2) / S.Z, P.y + (sy - S.vh / 2) / S.Z, S.tView);
+      n++;
+      if ((pv ? pv.b : null) !== (o ? o.b : null)) bad++;
+    }
+    return { n, bad, vP };
+  }
   var HOLE_SCENE = {
     seed: 7,
     t: 60.19999999999914,
@@ -4810,316 +4982,187 @@ details[open] summary::after{content:" －"}
     });
     return [...HOLE_SCENE.other, ...st].sort((a, b) => a.step - b.step);
   };
+  var renderChecks = [
+    { name: "巨大泡泡繪製", desc: "典型觀測者模式演化 10 分鐘後（觀測者已被半徑上億像素的泡泡吞沒），畫面幾何必須仍在畫面尺度、繪製不得變慢", run: () => inScene(() => {
+      let worst = 0, ms = 0;
+      for (const seed of [23, 777, 4242]) {
+        const T = testUniverse({ seed, typical: true });
+        T.presim(600);
+        show(T);
+        P.x = 0;
+        P.y = 0;
+        for (const zf of [1, 0.4, 6]) {
+          S.Z = Math.max(S.minZ, Math.min(MAXZ, defaultZoom() * zf));
+          S.maxPathCoord = 0;
+          render(T.tSim);
+          const t0 = performance.now();
+          for (let i = 0; i < 4; i++) render(T.tSim - i * 0.5);
+          ms = Math.max(ms, (performance.now() - t0) / 4);
+          worst = Math.max(worst, S.maxPathCoord);
+        }
+      }
+      return { pass: worst < 1e6 && ms < 16, detail: `最大路徑座標 ${Math.round(worst).toLocaleString("zh-TW")} 像素，最慢每格 ${ms.toFixed(1)} 毫秒` };
+    }) },
+    { name: "紋理流速上限", desc: `放大到最大並平移到模擬範圍邊緣（離觀測者最遠處）連續播放，口袋宇宙內的能量雲與星空在畫面上的移動速度不得超過每秒 ${TEX_VMAX} 像素`, run: () => inScene(() => {
+      S.texSpeedSeen = 0;
+      for (const zf of [1, 4, 100]) {
+        S.Z = Math.max(S.minZ, Math.min(MAXZ, defaultZoom() * zf));
+        P.x = S.RGEN;
+        P.y = 0;
+        clampCam();
+        for (let i = 0; i < 20; i++) render(S.tView + i / 30);
+      }
+      return { pass: S.texSpeedSeen <= TEX_VMAX + 0.01, detail: `觀測到的最大移動速度 ${S.texSpeedSeen.toFixed(1)} 像素／秒` };
+    }) },
+    { name: "重新置中淡入的繪製效能", desc: "焦點跟隨重新置中時，背景（能量雲、網格、漣漪、視界、泡內紋理）在新舊兩個錨點各畫一次並交叉淡入：這段期間每格仍應低於 16 毫秒", run: () => inScene(() => {
+      S.anchorFade = { x: 1.2 * S.RH, y: -0.4 * S.RH, t: S.tView, t0: performance.now() };
+      render(S.tView);
+      const t0 = performance.now();
+      for (let i = 0; i < 10; i++) {
+        S.anchorFade.t0 = performance.now() - 300;
+        render(S.tView);
+      }
+      const ms = (performance.now() - t0) / 10;
+      return { pass: ms < 16, detail: `淡入期間平均每格 ${ms.toFixed(1)} 毫秒（畫質：${QL[S.qLevel].name}）` };
+    }) },
+    { name: "重新置中時畫面連續", desc: "玩家前進觸發焦點跟隨（原點換到新的共動點）的那一格，畫面變化不應明顯大於一般的一格（背景錨點交叉淡入）", run: () => inScene(() => {
+      const at = [], other = [];
+      const T = testUniverse({ seed: 4242 });
+      T.presim(20);
+      T.on("rebase", onRebase);
+      show(T);
+      S.Z = defaultZoom();
+      T.act({ type: "spawn", x: 0, y: 0, vac: T.VAC.filter((v) => v.eps < 1).sort((a, b) => a.eps - b.eps)[0].i, r: 25 });
+      T.advance(2 / 30);
+      const Pl = T.player;
+      if (!Pl) throw new Error("玩家誕生失敗");
+      T.act({ type: "steer", dx: 0, dy: -1, rT: 25 });
+      const g = $("sky").getContext("2d");
+      let prev = null, rec = T.recenters;
+      for (let i = 0; i < 150; i++) {
+        T.advance(1 / 30);
+        S.tView = T.tLive;
+        const c = T.circleAt(Pl, S.tView);
+        P.x = c.cx;
+        P.y = c.cy;
+        render(S.tView);
+        const W = $("sky").width, H = $("sky").height, d = g.getImageData(0, 0, W, H).data;
+        if (prev) {
+          let sum = 0, n = 0;
+          for (let k = 0; k < d.length; k += 4 * 53) {
+            sum += Math.abs(d[k] - prev[k]) + Math.abs(d[k + 1] - prev[k + 1]) + Math.abs(d[k + 2] - prev[k + 2]);
+            n++;
+          }
+          (T.recenters !== rec ? at : other).push(sum / n);
+        }
+        rec = T.recenters;
+        prev = d;
+      }
+      const med = other.slice().sort((a, b) => a - b)[other.length >> 1] || 1, worst = Math.max(0, ...at);
+      return { pass: at.length > 0 && worst < 2.5 * med, detail: `重新置中 ${at.length} 次，那一格的畫面變化最大 ${worst.toFixed(1)}（一般一格的中位數 ${med.toFixed(1)}）` };
+    }) },
+    { name: "玩家在較低真空的泡泡內的繪製", desc: "較低真空的泡泡光錐包住玩家、推進前緣還沒到時，它的領域中間有個洞（玩家）。畫面上玩家附近每一點最後畫到的宇宙（paintedAt）必須等於核心的 ownerAt：之前射線法被洞擋住，從玩家到泡壁之間露出背景；「蓋住整個畫面」的判斷也漏掉了比取樣格子小的玩家，玩家本身變成背景色", run: () => inScene(() => {
+      let n = 0, bad = 0, scene = "";
+      const T = testUniverse({ seed: HOLE_SCENE.seed }, holeSceneActions());
+      T.presim(HOLE_SCENE.t);
+      show(T);
+      const Pl = T.player;
+      if (!Pl) throw new Error("情境失效：玩家不存在（核心改變後請重新錄製情境）");
+      for (const z of [1, 2.5]) {
+        const c = T.circleAt(Pl, S.tView);
+        S.Z = z;
+        P.x = c.cx;
+        P.y = c.cy;
+        render(S.tView);
+        const vP = S.vis.find((v) => v.b === Pl), host = S.vis.find((v) => v !== vP && (v.rules || []).some((R) => Territory.isHole(R, v)));
+        if (!vP || !host) throw new Error("情境失效：玩家不在任何泡泡的洞裡（核心改變後請重新錄製情境）");
+        if (z === 1) scene = `玩家在 #${host.b.id} 的洞裡${host.full ? "（該泡泡蓋住整個畫面）" : ""}`;
+        const m = compareAround(T, Pl, [0.3, 0.7, 1.15, 1.6, 2.5, 4, 7]);
+        n += m.n;
+        bad += m.bad;
+      }
+      return { pass: n > 300 && !bad, detail: `${scene}；${n} 個點中 ${bad} 個畫面與歸屬不一致` };
+    }) },
+    { name: "再循環區域的繪製", desc: "玩家在 Λ > 0 的口袋宇宙中以自己為中心再循環（區域與玩家同心）：繪製不得出錯（同心的兩圓沒有交點，之前相撞閃光讀到不存在的交點而中斷繪製），玩家附近每一點最後畫到的宇宙等於 ownerAt", run: () => inScene(() => {
+      let n = 0, bad = 0;
+      const T = testUniverse({ seed: 4242 });
+      T.presim(1);
+      const V = T.VAC.filter((v) => v.eps < 1 && v.kind !== "rf" && v.kind !== "up").sort((a, b) => a.eps - b.eps);
+      let ok = false;
+      for (let k = 0; k < 400 && !ok; k++) {
+        const a = k * 2.399, rr = k * 6, x = Math.cos(a) * rr, y = Math.sin(a) * rr;
+        if (T.ownerAt(x, y, T.tSim)) continue;
+        ok = T.act({ type: "spawn", x, y, vac: V[0].i, r: 20 });
+        T.advance(1 / 30);
+        ok = ok.result.ok;
+      }
+      const Pl = T.player;
+      if (!Pl) throw new Error("玩家誕生失敗");
+      const c0 = T.circleAt(Pl, T.tSim);
+      T.act({ type: "nucleate", x: c0.cx + 30, y: c0.cy, vac: V.filter((v) => v.kind === "ds").pop().i });
+      T.presim(5);
+      const ra = T.act({ type: "recycle" });
+      T.advance(1 / 30);
+      if (!ra.result.ok) throw new Error("無法再循環：" + ra.result.reason);
+      T.presim(2);
+      {
+        const c = T.circleAt(Pl, T.tSim), R = T.hist.find((b) => b.id === ra.result.id), q = T.circleAt(R, T.tSim);
+        if (Math.hypot(c.cx - q.cx, c.cy - q.cy) !== 0) throw new Error("情境失效：再循環區域與玩家不是精確同心");
+      }
+      show(T);
+      for (const z of [defaultZoom(), defaultZoom() * 0.4]) {
+        const c = T.circleAt(Pl, S.tView);
+        S.Z = z;
+        P.x = c.cx;
+        P.y = c.cy;
+        render(S.tView);
+        const m = compareAround(T, Pl, [0.4, 1.3, 2.5, 4, 6]);
+        n += m.n;
+        bad += m.bad;
+      }
+      return { pass: n > 200 && bad <= n * 0.01, detail: `繪製沒有錯誤；${n} 個點中 ${bad} 個畫面與歸屬不一致` };
+    }) },
+    { name: "方案 B 的繪製效能", desc: "同一組種子分別以「單一膨脹率」與「各區域各自的膨脹率（方案 B）」演化後繪製。以每格時間的中位數比較（無頭瀏覽器偶爾會有與內容無關的數秒停頓）：預設縮放下方案 B 仍應低於 16 毫秒；縮到最小只列出供參考（方案 B 的口袋內兄弟泡泡較擁擠、疇壁較多）", run: () => inScene(() => {
+      const ms = { off: [0, 0], on: [0, 0] };
+      for (const [seed, typical, T] of [[4242, false, 120], [99, false, 90], [7, false, 60], [23, true, 30]]) for (const localH of [false, true]) {
+        const U = testUniverse({ seed, typical, localH });
+        U.presim(T);
+        show(U);
+        const k = localH ? "on" : "off";
+        [defaultZoom(), S.minZ].forEach((z, zi) => {
+          S.Z = z;
+          P.x = 0;
+          P.y = 0;
+          clampCam();
+          render(S.tView);
+          const f2 = [];
+          for (let i = 0; i < 9; i++) {
+            const t0 = performance.now();
+            render(S.tView - i % 3 * 0.03);
+            f2.push(performance.now() - t0);
+          }
+          ms[k][zi] = Math.max(ms[k][zi], f2.sort((a, b) => a - b)[4]);
+        });
+      }
+      const f = (a) => `預設縮放 ${a[0].toFixed(1)}、縮到最小 ${a[1].toFixed(1)} 毫秒`;
+      return { pass: ms.on[0] < 16, detail: `最慢的中位數｜單一膨脹率：${f(ms.off)}；方案 B：${f(ms.on)}` };
+    }) },
+    { name: "繪製效能", desc: "目前畫面的單格繪製時間應低於 16 毫秒（每秒 60 格的預算）", run() {
+      const t0 = performance.now();
+      for (let i = 0; i < 10; i++) render(S.tView);
+      const ms = (performance.now() - t0) / 10;
+      return { pass: ms < 16, detail: `平均每格 ${ms.toFixed(1)} 毫秒（畫質：${QL[S.qLevel].name}）` };
+    } }
+  ];
+
+  // src/ui/selfcheck-ui.js
   var extraChecks = [];
   function init5() {
     $("checkBtn").addEventListener("click", async () => {
       const btn = $("checkBtn"), out = $("checkOut");
       btn.disabled = true;
       out.innerHTML = "";
-      const rows = [...SelfCheck.tests, ...extraChecks, { name: "巨大泡泡繪製", desc: "典型觀測者模式演化 10 分鐘後（觀測者已被半徑上億像素的泡泡吞沒），畫面幾何必須仍在畫面尺度、繪製不得變慢", run() {
-        const keep = { U: S.U, PAL: S.PAL, HUB: S.HUB, RH: S.RH, R0: S.R0, RGEN: S.RGEN, Z: S.Z, px: P.x, py: P.y };
-        let worst = 0, ms = 0, ok = true, err = "";
-        try {
-          for (const seed of [23, 777, 4242]) {
-            const T = createUniverse({ seed, H: 0.25, RH: 140, R0: 3, RGEN: 3e3, typical: true, vacN: 12, crunchP: 0.25, oddDimP: 0.15 }, { gamma: 25e-7, innerMul: 1, wallK: 1 });
-            T.presim(600);
-            S.U = T;
-            S.PAL = buildPalettes(T.VAC);
-            S.HUB = T.p.H;
-            S.RH = T.p.RH;
-            S.R0 = T.p.R0;
-            S.RGEN = T.p.RGEN;
-            P.x = 0;
-            P.y = 0;
-            S.Z = defaultZoom();
-            for (const zf of [1, 0.4, 6]) {
-              S.Z = Math.max(S.minZ, Math.min(MAXZ, defaultZoom() * zf));
-              S.maxPathCoord = 0;
-              render(T.tSim);
-              const t0 = performance.now();
-              for (let i = 0; i < 4; i++) render(T.tSim - i * 0.5);
-              ms = Math.max(ms, (performance.now() - t0) / 4);
-              worst = Math.max(worst, S.maxPathCoord);
-            }
-          }
-        } catch (e) {
-          ok = false;
-          err = e.message;
-        }
-        S.U = keep.U;
-        S.PAL = keep.PAL;
-        S.HUB = keep.HUB;
-        S.RH = keep.RH;
-        S.R0 = keep.R0;
-        S.RGEN = keep.RGEN;
-        S.Z = keep.Z;
-        P.x = keep.px;
-        P.y = keep.py;
-        if (!ok) return { pass: false, detail: "發生錯誤：" + err };
-        return { pass: worst < 1e6 && ms < 16, detail: `最大路徑座標 ${Math.round(worst).toLocaleString("zh-TW")} 像素，最慢每格 ${ms.toFixed(1)} 毫秒` };
-      } }, { name: "紋理流速上限", desc: `放大到最大並平移到模擬範圍邊緣（離觀測者最遠處）連續播放，口袋宇宙內的能量雲與星空在畫面上的移動速度不得超過每秒 ${TEX_VMAX} 像素`, run() {
-        const keep = { Z: S.Z, px: P.x, py: P.y, last: S.texLastT };
-        S.texSpeedSeen = 0;
-        try {
-          for (const zf of [1, 4, 100]) {
-            S.Z = Math.max(S.minZ, Math.min(MAXZ, defaultZoom() * zf));
-            P.x = S.RGEN;
-            P.y = 0;
-            clampCam();
-            for (let i = 0; i < 20; i++) render(S.tView + i / 30);
-          }
-        } finally {
-          S.Z = keep.Z;
-          P.x = keep.px;
-          P.y = keep.py;
-          S.texLastT = keep.last;
-        }
-        return { pass: S.texSpeedSeen <= TEX_VMAX + 0.01, detail: `觀測到的最大移動速度 ${S.texSpeedSeen.toFixed(1)} 像素／秒` };
-      } }, { name: "重新置中淡入的繪製效能", desc: "焦點跟隨重新置中時，背景（能量雲、網格、漣漪、視界、泡內紋理）在新舊兩個錨點各畫一次並交叉淡入：這段期間每格仍應低於 16 毫秒", run() {
-        const keep = S.anchorFade;
-        let ms = 0;
-        try {
-          S.anchorFade = { x: 1.2 * S.RH, y: -0.4 * S.RH, t: S.tView, t0: performance.now() };
-          render(S.tView);
-          const t0 = performance.now();
-          for (let i = 0; i < 10; i++) {
-            S.anchorFade.t0 = performance.now() - 300;
-            render(S.tView);
-          }
-          ms = (performance.now() - t0) / 10;
-        } finally {
-          S.anchorFade = keep;
-        }
-        return { pass: ms < 16, detail: `淡入期間平均每格 ${ms.toFixed(1)} 毫秒（畫質：${QL[S.qLevel].name}）` };
-      } }, { name: "重新置中時畫面連續", desc: "玩家前進觸發焦點跟隨（原點換到新的共動點）的那一格，畫面變化不應明顯大於一般的一格（背景錨點交叉淡入）", run() {
-        const keep = { U: S.U, PAL: S.PAL, HUB: S.HUB, RH: S.RH, R0: S.R0, RGEN: S.RGEN, Z: S.Z, px: P.x, py: P.y, fade: S.anchorFade, tv: S.tView };
-        const at = [], other = [];
-        try {
-          const T = createUniverse({ seed: 4242, H: 0.25, RH: 140, R0: 3, RGEN: 3e3, typical: false, vacN: 12, crunchP: 0.25, oddDimP: 0.15 }, { gamma: 25e-7, innerMul: 1, wallK: 1 });
-          T.presim(20);
-          T.on("rebase", onRebase);
-          S.U = T;
-          S.PAL = buildPalettes(T.VAC);
-          S.HUB = T.p.H;
-          S.RH = T.p.RH;
-          S.R0 = T.p.R0;
-          S.RGEN = T.p.RGEN;
-          S.Z = defaultZoom();
-          S.anchorFade = null;
-          T.act({ type: "spawn", x: 0, y: 0, vac: T.VAC.filter((v) => v.eps < 1).sort((a, b) => a.eps - b.eps)[0].i, r: 25 });
-          T.advance(2 / 30);
-          const Pl = T.player;
-          if (!Pl) throw new Error("玩家誕生失敗");
-          T.act({ type: "steer", dx: 0, dy: -1, rT: 25 });
-          const g = $("sky").getContext("2d");
-          let prev = null, rec = T.recenters;
-          for (let i = 0; i < 150; i++) {
-            T.advance(1 / 30);
-            S.tView = T.tLive;
-            const c = T.circleAt(Pl, S.tView);
-            P.x = c.cx;
-            P.y = c.cy;
-            render(S.tView);
-            const W = $("sky").width, H = $("sky").height, d = g.getImageData(0, 0, W, H).data;
-            if (prev) {
-              let sum2 = 0, n = 0;
-              for (let k = 0; k < d.length; k += 4 * 53) {
-                sum2 += Math.abs(d[k] - prev[k]) + Math.abs(d[k + 1] - prev[k + 1]) + Math.abs(d[k + 2] - prev[k + 2]);
-                n++;
-              }
-              (T.recenters !== rec ? at : other).push(sum2 / n);
-            }
-            rec = T.recenters;
-            prev = d;
-          }
-        } catch (e) {
-          return { pass: false, detail: "發生錯誤：" + e.message };
-        } finally {
-          S.U = keep.U;
-          S.PAL = keep.PAL;
-          S.HUB = keep.HUB;
-          S.RH = keep.RH;
-          S.R0 = keep.R0;
-          S.RGEN = keep.RGEN;
-          S.Z = keep.Z;
-          P.x = keep.px;
-          P.y = keep.py;
-          S.anchorFade = keep.fade;
-          S.tView = keep.tv;
-        }
-        const med = other.slice().sort((a, b) => a - b)[other.length >> 1] || 1, worst = Math.max(0, ...at);
-        return { pass: at.length > 0 && worst < 2.5 * med, detail: `重新置中 ${at.length} 次，那一格的畫面變化最大 ${worst.toFixed(1)}（一般一格的中位數 ${med.toFixed(1)}）` };
-      } }, { name: "玩家在較低真空的泡泡內的繪製", desc: "較低真空的泡泡光錐包住玩家、推進前緣還沒到時，它的領域中間有個洞（玩家）。畫面上玩家附近每一點最後畫到的宇宙（paintedAt）必須等於核心的 ownerAt：之前射線法被洞擋住，從玩家到泡壁之間露出背景；「蓋住整個畫面」的判斷也漏掉了比取樣格子小的玩家，玩家本身變成背景色", run() {
-        const keep = { U: S.U, PAL: S.PAL, HUB: S.HUB, RH: S.RH, R0: S.R0, RGEN: S.RGEN, Z: S.Z, px: P.x, py: P.y, fade: S.anchorFade, tv: S.tView };
-        let n = 0, bad = 0, scene = "";
-        try {
-          const T = createUniverse({ seed: HOLE_SCENE.seed, H: 0.25, RH: 140, R0: 3, RGEN: 3e3, typical: false, vacN: 12, crunchP: 0.25, oddDimP: 0.15 }, { gamma: 25e-7, innerMul: 1, wallK: 1 }, { actions: holeSceneActions() });
-          T.presim(HOLE_SCENE.t);
-          S.U = T;
-          S.PAL = buildPalettes(T.VAC);
-          S.HUB = T.p.H;
-          S.RH = T.p.RH;
-          S.R0 = T.p.R0;
-          S.RGEN = T.p.RGEN;
-          S.anchorFade = null;
-          S.tView = T.tSim;
-          const Pl = T.player;
-          if (!Pl) throw new Error("情境失效：玩家不存在（核心改變後請重新錄製情境）");
-          for (const z of [1, 2.5]) {
-            const c = T.circleAt(Pl, S.tView);
-            S.Z = z;
-            P.x = c.cx;
-            P.y = c.cy;
-            render(S.tView);
-            const vP = S.vis.find((v) => v.b === Pl), host = S.vis.find((v) => v !== vP && (v.rules || []).some((R) => Territory.isHole(R, v)));
-            if (!vP || !host) throw new Error("情境失效：玩家不在任何泡泡的洞裡（核心改變後請重新錄製情境）");
-            if (z === 1) scene = `玩家在 #${host.b.id} 的洞裡${host.full ? "（該泡泡蓋住整個畫面）" : ""}`;
-            for (let k = 0; k < 48; k++) for (const f of [0.3, 0.7, 1.15, 1.6, 2.5, 4, 7]) {
-              const a = Math.PI * 2 * k / 48, sx = vP.cx + Math.cos(a) * vP.r * f, sy = vP.cy + Math.sin(a) * vP.r * f;
-              if (sx < 0 || sy < 0 || sx > S.vw || sy > S.vh || Math.abs(Math.hypot(sx - vP.cx, sy - vP.cy) - vP.r) < 3) continue;
-              const pv = paintedAt(sx, sy), o = T.ownerAt(P.x + (sx - S.vw / 2) / S.Z, P.y + (sy - S.vh / 2) / S.Z, S.tView);
-              n++;
-              if ((pv ? pv.b : null) !== (o ? o.b : null)) bad++;
-            }
-          }
-        } catch (e) {
-          return { pass: false, detail: "發生錯誤：" + e.message };
-        } finally {
-          S.U = keep.U;
-          S.PAL = keep.PAL;
-          S.HUB = keep.HUB;
-          S.RH = keep.RH;
-          S.R0 = keep.R0;
-          S.RGEN = keep.RGEN;
-          S.Z = keep.Z;
-          P.x = keep.px;
-          P.y = keep.py;
-          S.anchorFade = keep.fade;
-          S.tView = keep.tv;
-        }
-        return { pass: n > 300 && !bad, detail: `${scene}；${n} 個點中 ${bad} 個畫面與歸屬不一致` };
-      } }, { name: "再循環區域的繪製", desc: "玩家在 Λ > 0 的口袋宇宙中以自己為中心再循環（區域與玩家同心）：繪製不得出錯（同心的兩圓沒有交點，之前相撞閃光讀到不存在的交點而中斷繪製），玩家附近每一點最後畫到的宇宙等於 ownerAt", run() {
-        const keep = { U: S.U, PAL: S.PAL, HUB: S.HUB, RH: S.RH, R0: S.R0, RGEN: S.RGEN, Z: S.Z, px: P.x, py: P.y, fade: S.anchorFade, tv: S.tView };
-        let n = 0, bad = 0;
-        try {
-          const T = createUniverse({ seed: 4242, H: 0.25, RH: 140, R0: 3, RGEN: 3e3, typical: false, vacN: 12, crunchP: 0.25, oddDimP: 0.15 }, { gamma: 25e-7, innerMul: 1, wallK: 1 });
-          T.presim(1);
-          const V = T.VAC.filter((v) => v.eps < 1 && v.kind !== "rf" && v.kind !== "up").sort((a, b) => a.eps - b.eps);
-          let ok = false;
-          for (let k = 0; k < 400 && !ok; k++) {
-            const a = k * 2.399, rr = k * 6, x = Math.cos(a) * rr, y = Math.sin(a) * rr;
-            if (T.ownerAt(x, y, T.tSim)) continue;
-            ok = T.act({ type: "spawn", x, y, vac: V[0].i, r: 20 });
-            T.advance(1 / 30);
-            ok = ok.result.ok;
-          }
-          const Pl = T.player;
-          if (!Pl) throw new Error("玩家誕生失敗");
-          const c0 = T.circleAt(Pl, T.tSim);
-          T.act({ type: "nucleate", x: c0.cx + 30, y: c0.cy, vac: V.filter((v) => v.kind === "ds").pop().i });
-          T.presim(5);
-          const ra = T.act({ type: "recycle" });
-          T.advance(1 / 30);
-          if (!ra.result.ok) throw new Error("無法再循環：" + ra.result.reason);
-          T.presim(2);
-          {
-            const c = T.circleAt(Pl, T.tSim), R = T.hist.find((b) => b.id === ra.result.id), q = T.circleAt(R, T.tSim);
-            if (Math.hypot(c.cx - q.cx, c.cy - q.cy) !== 0) throw new Error("情境失效：再循環區域與玩家不是精確同心");
-          }
-          S.U = T;
-          S.PAL = buildPalettes(T.VAC);
-          S.HUB = T.p.H;
-          S.RH = T.p.RH;
-          S.R0 = T.p.R0;
-          S.RGEN = T.p.RGEN;
-          S.anchorFade = null;
-          S.tView = T.tSim;
-          for (const z of [defaultZoom(), defaultZoom() * 0.4]) {
-            const c = T.circleAt(Pl, S.tView);
-            S.Z = z;
-            P.x = c.cx;
-            P.y = c.cy;
-            render(S.tView);
-            const vP = S.vis.find((v) => v.b === Pl);
-            for (let k = 0; k < 48; k++) for (const f of [0.4, 1.3, 2.5, 4, 6]) {
-              const a = Math.PI * 2 * k / 48, sx = vP.cx + Math.cos(a) * vP.r * f, sy = vP.cy + Math.sin(a) * vP.r * f;
-              if (sx < 0 || sy < 0 || sx > S.vw || sy > S.vh || Math.abs(Math.hypot(sx - vP.cx, sy - vP.cy) - vP.r) < 3) continue;
-              const [x, y] = [P.x + (sx - S.vw / 2) / S.Z, P.y + (sy - S.vh / 2) / S.Z];
-              const pv = paintedAt(sx, sy), o = T.ownerAt(x, y, S.tView);
-              n++;
-              if ((pv ? pv.b : null) !== (o ? o.b : null)) bad++;
-            }
-          }
-        } catch (e) {
-          return { pass: false, detail: "發生錯誤：" + e.message };
-        } finally {
-          S.U = keep.U;
-          S.PAL = keep.PAL;
-          S.HUB = keep.HUB;
-          S.RH = keep.RH;
-          S.R0 = keep.R0;
-          S.RGEN = keep.RGEN;
-          S.Z = keep.Z;
-          P.x = keep.px;
-          P.y = keep.py;
-          S.anchorFade = keep.fade;
-          S.tView = keep.tv;
-        }
-        return { pass: n > 200 && bad <= n * 0.01, detail: `繪製沒有錯誤；${n} 個點中 ${bad} 個畫面與歸屬不一致` };
-      } }, { name: "方案 B 的繪製效能", desc: "同一組種子分別以「單一膨脹率」與「各區域各自的膨脹率（方案 B）」演化後繪製。以每格時間的中位數比較（無頭瀏覽器偶爾會有與內容無關的數秒停頓）：預設縮放下方案 B 仍應低於 16 毫秒；縮到最小只列出供參考（方案 B 的口袋內兄弟泡泡較擁擠、疇壁較多）", run() {
-        const keep = { U: S.U, PAL: S.PAL, HUB: S.HUB, RH: S.RH, R0: S.R0, RGEN: S.RGEN, Z: S.Z, px: P.x, py: P.y, fade: S.anchorFade, tv: S.tView };
-        const ms = { off: [0, 0], on: [0, 0] };
-        try {
-          for (const [seed, typical, T] of [[4242, false, 120], [99, false, 90], [7, false, 60], [23, true, 30]]) for (const localH of [false, true]) {
-            const U = createUniverse({ seed, H: 0.25, RH: 140, R0: 3, RGEN: 3e3, typical, localH, vacN: 12, crunchP: 0.25, oddDimP: 0.15 }, { gamma: 25e-7, innerMul: 1, wallK: 1 });
-            U.presim(T);
-            S.U = U;
-            S.PAL = buildPalettes(U.VAC);
-            S.HUB = U.p.H;
-            S.RH = U.p.RH;
-            S.R0 = U.p.R0;
-            S.RGEN = U.p.RGEN;
-            S.anchorFade = null;
-            S.tView = U.tSim;
-            const k = localH ? "on" : "off";
-            [defaultZoom(), S.minZ].forEach((z, zi) => {
-              S.Z = z;
-              P.x = 0;
-              P.y = 0;
-              clampCam();
-              render(S.tView);
-              const f2 = [];
-              for (let i = 0; i < 9; i++) {
-                const t0 = performance.now();
-                render(S.tView - i % 3 * 0.03);
-                f2.push(performance.now() - t0);
-              }
-              ms[k][zi] = Math.max(ms[k][zi], f2.sort((a, b) => a - b)[4]);
-            });
-          }
-        } catch (e) {
-          return { pass: false, detail: "發生錯誤：" + e.message };
-        } finally {
-          S.U = keep.U;
-          S.PAL = keep.PAL;
-          S.HUB = keep.HUB;
-          S.RH = keep.RH;
-          S.R0 = keep.R0;
-          S.RGEN = keep.RGEN;
-          S.Z = keep.Z;
-          P.x = keep.px;
-          P.y = keep.py;
-          S.anchorFade = keep.fade;
-          S.tView = keep.tv;
-        }
-        const f = (a) => `預設縮放 ${a[0].toFixed(1)}、縮到最小 ${a[1].toFixed(1)} 毫秒`;
-        return { pass: ms.on[0] < 16, detail: `最慢的中位數｜單一膨脹率：${f(ms.off)}；方案 B：${f(ms.on)}` };
-      } }, { name: "繪製效能", desc: "目前畫面的單格繪製時間應低於 16 毫秒（每秒 60 格的預算）", run() {
-        const t0 = performance.now();
-        for (let i = 0; i < 10; i++) render(S.tView);
-        const ms = (performance.now() - t0) / 10;
-        return { pass: ms < 16, detail: `平均每格 ${ms.toFixed(1)} 毫秒（畫質：${QL[S.qLevel].name}）` };
-      } }];
+      const rows = [...SelfCheck.tests, ...extraChecks, ...renderChecks];
       let passN = 0;
       for (const T of rows) {
         const li = document.createElement("li");
@@ -5241,17 +5284,17 @@ details[open] summary::after{content:" －"}
     pt.setAttribute("aria-expanded", open);
     store.set("ctl", open ? "1" : "0");
   }
-  function setNotes(show) {
-    body.classList.toggle("no-notes", !show);
-    $("notesBtn").textContent = show ? "隱藏說明文字" : "顯示說明文字";
-    $("notesBtn").setAttribute("aria-pressed", show);
-    store.set("notes", show ? "1" : "0");
+  function setNotes(show2) {
+    body.classList.toggle("no-notes", !show2);
+    $("notesBtn").textContent = show2 ? "隱藏說明文字" : "顯示說明文字";
+    $("notesBtn").setAttribute("aria-pressed", show2);
+    store.set("notes", show2 ? "1" : "0");
   }
-  function setLede(show) {
-    $("ledeBtn").closest(".plate").classList.toggle("compact", !show);
-    $("ledeBtn").textContent = show ? "收起說明" : "展開說明";
-    $("ledeBtn").setAttribute("aria-expanded", show);
-    store.set("lede", show ? "1" : "0");
+  function setLede(show2) {
+    $("ledeBtn").closest(".plate").classList.toggle("compact", !show2);
+    $("ledeBtn").textContent = show2 ? "收起說明" : "展開說明";
+    $("ledeBtn").setAttribute("aria-expanded", show2);
+    store.set("lede", show2 ? "1" : "0");
   }
   function setUI(hidden) {
     body.classList.toggle("ui-hidden", hidden);

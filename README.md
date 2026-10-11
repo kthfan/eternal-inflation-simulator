@@ -39,9 +39,11 @@ src/
   core/        模擬核心（純計算、可重現、不依賴瀏覽器）
     math.js        亂數、雜湊、Poisson、顏色
     territory.js   領域幾何：「某一點屬於哪個宇宙」的唯一規則
-    universe.js    真空地景、泡泡演化、疇壁、退場、歷史
-    selfcheck.js   不變式檢查（npm test 與瀏覽器共用）
-  render/      繪製（紋理、攝影機、每格場景）
+    space.js       空間的流動與幾何（U.circleAt：所有圓的唯一來源）
+    world.js、walls.js、actions.js、player.js、focus.js、landscape.js   誕生與歷史、泡泡之間、動作紀錄、玩家宇宙、焦點跟隨、真空地景
+    universe.js    組裝：createUniverse 與每一步的順序
+    selfcheck.js、checks/   不變式檢查（npm test 與瀏覽器共用）
+  render/      繪製（攝影機、版面與領域路徑、背景、疇壁、每格場景、紋理）
   ui/          介面（時間軸、面板、資訊卡、輸入、效能、自我檢查按鈕）
   audio/       生成式音樂
   app/         組裝：共用狀態 S、設定、主迴圈、擴充點 hooks、外掛 API、進入點 startApp

@@ -3,7 +3,8 @@ import { emit } from '../app/hooks.js';
 import { S } from '../app/state.js';
 import { isHab, tune } from '../app/config.js';
 import { P, clampCam, defaultZoom } from '../render/camera.js';
-import { crunchGeo, heatGeo, rgba } from '../render/scene.js';
+import { crunchGeo, heatGeo } from '../render/scene.js';
+import { rgba } from '../render/style.js';
 import { $ } from './dom.js';
 import { seek } from './timeline.js';
 

@@ -13,7 +13,8 @@
 │ src/render   繪製：只讀取模擬結果與 Territory，不做歸屬判斷     │
 ├──────────────────────────────────────────────────────────────┤
 │ src/core     模擬核心：純計算、可重現、不依賴瀏覽器             │
-│   math → territory → universe → selfcheck                    │
+│   math → territory → space/walls/world/actions/player/focus   │
+│        → universe（組裝）→ checks/* → selfcheck               │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -28,6 +29,24 @@
 - `Territory` 的所有函式與座標系無關：同一套程式同時用在物理座標（縮放 1）與螢幕座標（縮放 Z）。
 
 ## 模擬核心（src/core）
+
+| 模組 | 內容 |
+|---|---|
+| `constants.js` | `STEP`、`EMAX`、`LONG`、`FALSE_EPS`、`UP_EPS` 等共用常數 |
+| `landscape.js` | 由種子生成真空地景（含激發態假真空、再循環假真空） |
+| `territory.js` | **歸屬的唯一定義**（規則、`drawContains`、`ownerAt`、射線、洞、交界線） |
+| `space.js` | **空間的流動與幾何**：`U.circleAt`（所有圓的唯一來源）。根空間（假真空）與區域空間（方案 B），見下方 |
+| `walls.js` | 泡泡之間：相撞時刻、疇壁位移、玩家的接觸區間與推進前緣、交給 Territory 的規則情境 `U.frame` |
+| `world.js` | 誕生（自然與指定成核）、存活清單、歸屬查詢、內部時間（大擠壓、熱寂）、流出、退場、歷史修剪 |
+| `actions.js` | 動作紀錄（排程、重播、套用）與一般的 `nucleate` 動作；各模組以 `W.onAction` 註冊自己的動作 |
+| `player.js` | 玩家宇宙：`PLAYER` 參數、軌跡段（`SEG` 欄位清單）、誕生、操控、曲速、再循環、遊戲結束、能量帳、接觸 |
+| `focus.js` | 焦點跟隨：`rebase`（平移原點）、`follow`、方案 B 的 `comove` |
+| `universe.js` | `createUniverse`：建立內部情境 `W`、依序安裝上面的模組、定義一步的順序；重新匯出常數與 `PLAYER` |
+| `checks/*`、`selfcheck.js` | 自我檢查（共用工具 `checks/helpers.js`；依主題分成 world、actions、player、focus、regions） |
+
+模組之間透過內部情境 `W` 互相呼叫（安裝時登記、執行時才查找，所以安裝順序只影響初始化）；對外只公開 `U` 上的方法。
+**「是不是方案 B」只在空間的選擇（`W.spaceOf(b)`、`W.regionSpace(R)`）與 `universe.js` 的步進順序中判斷**，其他模組只向空間要膨脹率、哈伯半徑、座標轉換。
+
 
 - `createUniverse(p, tune, { actions })` 建立獨立的宇宙實例（`actions` 為要重播的動作紀錄）。
   - `p`（建立後不變）：`seed, H, RH, R0, RGEN, typical, vacN, crunchP, oddDimP, localH`（`localH`：方案 B，見下方）
@@ -73,16 +92,17 @@
 輸家因此畫在贏家之後時（`R.lYield`），輸家自己讓出贏家側；疇壁已越過輸家中心時（`R.cE`），輸家在贏家圓內的部分全部讓出。
 
 **領域中的洞**（`Territory.isHole`）：玩家被較低真空的泡泡 W 的光錐整個包住、推進前緣還沒到時，W 的領域中間有一個洞（玩家圓內、前緣外）。
-射線法（`cellRay`，假設領域對中心呈星形）碰到洞就停，所以 `cellRay` 略過這種規則，畫面另外以剪裁把洞挖掉（`scene.js` 的 `holeClip`，
+射線法（`cellRay`，假設領域對中心呈星形）碰到洞就停，所以 `cellRay` 略過這種規則，畫面另外以剪裁把洞挖掉（`layout.js` 的 `holeClip`，
 洞的形狀由 `Territory.holeSpan` 從玩家中心沿射線求出）；有洞落在畫面上的泡泡也不能當成「蓋住整個畫面」而略過底下的泡泡。歸屬不受影響。
-`scene.js` 的 `paintedAt(sx, sy)` 回傳上一格畫面上這一點實際最後畫到的泡泡（用實際的路徑、剪裁與略過範圍），供檢查與核心的 `ownerAt` 比對。
+`layout.js` 的 `paintedAt(sx, sy)` 回傳上一格畫面上這一點實際最後畫到的泡泡（用實際的路徑、剪裁與略過範圍），供檢查與核心的 `ownerAt` 比對。
 
 **焦點跟隨（`rebase`）**：玩家離原點超過 `PLAYER.recenter·RH` 時，在步進的最後把原點換到玩家所在的共動點。
 所有泡泡的誕生位置（與玩家的每段軌跡）減去該共動點在當時的位置，圓只差一個平移、物理不變；流出時刻以新原點重算（已退場者除外）；
-發出 `U.on('rebase', { x, y, t })`，攝影機跟著平移，背景錨點在新舊原點之間交叉淡入（`S.anchorFade`、`scene.js` 的 `anchorList`）。
+發出 `U.on('rebase', { x, y, t })`，攝影機跟著平移，背景錨點在新舊原點之間交叉淡入（`S.anchorFade`、`backdrop.js` 的 `anchorList`）。
 後選模式在有玩家時改以玩家為對象（誕生點離玩家泡壁不到一個哈伯半徑的泡泡不出現）。
 
 **方案 B（`p.localH`，實驗中）**：口袋宇宙內部以自己的膨脹率 `U.hIn(b) = H·√(ε/ε_假真空)` 流動（Λ ≤ 0 為 0）。
+實作上是 `space.js` 的「區域空間」：每個母宇宙一個（快取在 `R._space`），提供膨脹率 `h`、哈伯半徑 `hubble`、`circle`、`seg`、`toLocal`、`advector`、`place`；
 子泡泡（`b.dyn`）存的是相對母宇宙錨點的偏移 `ox, oy`，`circleAt` 為 `A_母(t) + 偏移·e^{h(t−tn)}`；玩家軌跡段記下所在區域 `ctl.reg` 與 `ctl.h`。
 每一步依序：`follow`（有玩家）或 `comove`（沒有玩家時觀測者跟著所在區域流動，`U.obsRegion`）→ `keepAnchors`（焦點所在區域鏈換錨點）→ 成核 →
 玩家 → 每 15 步 `sweep`（子泡泡流出改由掃描判斷）。關閉時與原本逐位元相同。模型、已知限制與效能見 docs/ROADMAP.md D11。
@@ -97,6 +117,16 @@
 交界線（泡壁、疇壁、平分線）的可見性一律以「兩側實際顯示的宇宙」判斷（`displayOwner`），三泡交會處也能連續。
 
 ## 繪製（src/render）
+
+| 模組 | 內容 |
+|---|---|
+| `camera.js` | 攝影機、畫布、配色 `buildPalettes`、重新置中 `onRebase` |
+| `layout.js` | 畫面上的版面：`collect`（畫面上的泡泡與規則）、領域路徑 `cellPath`、洞、泡壁 `wallPath`、疇壁折線、`paintedAt` |
+| `backdrop.js` | 背景：錨點與交叉淡入、能量雲、網格與扭曲、漣漪、哈伯視界、霧與暗角 |
+| `walls.js` | 疇壁的樣式、淡入淡出、相撞閃光 |
+| `style.js` | 顯示選項 `opt` 與顏色、漸層小工具 |
+| `scene.js` | 泡泡內部（漸層、紋理、大擠壓、熱寂）與每格的順序 `render(t)` |
+| `textures.js` | 能量雲與星空的紋理 |
 
 每格流程（`render(t)`）：
 1. 背景：假真空能量雲（三層無限縮放）、時空網格（含扭曲）、量子漣漪、哈伯視界

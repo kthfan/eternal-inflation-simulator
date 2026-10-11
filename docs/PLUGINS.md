@@ -90,7 +90,7 @@ api.restart({ actions: api.U.actionLog() });               // 以相同種子重
   曲速的方向跟著 `steer` 的方向改變（沒有輸入時維持）。
 - `recycle {}`：再循環（D13），以玩家為中心向上穿隧出再循環假真空（`kind: 'rf'`）。`api.U.recycleCheck()` 回傳此刻能否使用（`{ reason, trapped }` 或 `{ r0, cost, … }`）。
   `P.ctl.trap` 為困在 Λ ≤ 0 處的秒數，達到 `api.PLAYER.recycle.trapT` 時遊戲結束：玩家被放手，`ctl.fate = 'trapped'`（被吞沒則是 `'eaten'`）。
-- 需要新的動作類型時，在 `src/core/universe.js` 的動作紀錄區加入（所有版本共用），並補上自我檢查。
+- 需要新的動作類型時，在核心對應的模組以 `W.onAction(type, fn, seeded)` 註冊（一般動作在 `src/core/actions.js`，玩家的在 `src/core/player.js`；所有版本共用），並補上自我檢查。
 
 ## 範例
 
